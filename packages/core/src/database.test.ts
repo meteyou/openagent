@@ -32,6 +32,7 @@ describe('database', () => {
     expect(tableNames).toContain('tool_calls')
     expect(tableNames).toContain('users')
     expect(tableNames).toContain('sessions')
+    expect(tableNames).toContain('health_checks')
 
     db.close()
   })
