@@ -1,7 +1,7 @@
 <template>
   <div class="w-full max-w-sm px-5">
     <Card class="shadow-lg">
-      <CardHeader class="items-center gap-2 pb-2 text-center">
+      <CardHeader class="items-center gap-2 pb-6 text-center">
         <AppLogo size="lg" />
         <CardTitle class="mt-2 text-2xl font-bold">{{ $t('app.title') }}</CardTitle>
       </CardHeader>
