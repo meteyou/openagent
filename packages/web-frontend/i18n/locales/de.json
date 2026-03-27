@@ -106,7 +106,20 @@
     "deleteConfirmButton": "Löschen",
     "cannotDeleteActive": "Der aktive Anbieter kann nicht gelöscht werden",
     "save": "Speichern",
-    "cancel": "Abbrechen"
+    "cancel": "Abbrechen",
+    "columns": {
+      "name": "Name",
+      "type": "Typ",
+      "model": "Modell",
+      "status": "Status",
+      "actions": "Aktionen",
+      "cost": "Kosten"
+    },
+    "costPerMillion": "$/M Tokens",
+    "costInput": "In",
+    "costOutput": "Out",
+    "costFree": "Kostenlos",
+    "costNA": "—"
   },
   "logs": {
     "title": "Aktivitätsprotokolle",

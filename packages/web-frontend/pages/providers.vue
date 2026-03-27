@@ -9,7 +9,7 @@
       </template>
     </PageHeader>
 
-    <div class="mx-auto flex w-full max-w-4xl flex-1 flex-col overflow-y-auto p-6">
+    <div class="mx-auto flex w-full max-w-5xl flex-1 flex-col overflow-y-auto p-6">
       <!-- Error banner -->
       <Alert v-if="error" variant="destructive" class="mb-4">
         <AlertDescription class="flex items-center justify-between">
@@ -19,6 +19,21 @@
             class="ml-2 opacity-70 transition-opacity hover:opacity-100"
             :aria-label="$t('aria.closeAlert')"
             @click="error = null"
+          >
+            <AppIcon name="close" class="h-4 w-4" />
+          </button>
+        </AlertDescription>
+      </Alert>
+
+      <!-- Success banner (test result) -->
+      <Alert v-if="successMessage" variant="success" class="mb-4">
+        <AlertDescription class="flex items-center justify-between">
+          <span>{{ successMessage }}</span>
+          <button
+            type="button"
+            class="ml-2 opacity-70 transition-opacity hover:opacity-100"
+            :aria-label="$t('aria.closeAlert')"
+            @click="successMessage = null"
           >
             <AppIcon name="close" class="h-4 w-4" />
           </button>
@@ -45,21 +60,102 @@
         </Button>
       </div>
 
-      <!-- Provider list -->
-      <div v-else class="flex flex-col gap-3">
-        <ProviderCard
-          v-for="provider in providers"
-          :key="provider.id"
-          :provider="provider"
-          :is-active="provider.id === activeProviderId"
-          :is-testing="testingId === provider.id"
-          :test-result="testResults[provider.id]"
-          :presets="presets"
-          @test="handleTest(provider.id)"
-          @activate="handleActivate(provider.id)"
-          @edit="openEdit(provider)"
-          @delete="openDelete(provider)"
-        />
+      <!-- Providers table -->
+      <div v-else class="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+        <div class="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow class="hover:bg-transparent">
+                <TableHead>{{ $t('providers.columns.name') }}</TableHead>
+                <TableHead>{{ $t('providers.columns.cost') }}</TableHead>
+                <TableHead>{{ $t('providers.columns.status') }}</TableHead>
+                <TableHead class="w-12" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow
+                v-for="provider in sortedProviders"
+                :key="provider.id"
+                class="cursor-pointer"
+                @click="openEdit(provider)"
+              >
+                <!-- Name + Base URL -->
+                <TableCell>
+                  <div class="min-w-0">
+                    <div class="flex items-center gap-2">
+                      <span class="font-semibold text-foreground">{{ provider.name }}</span>
+                      <Badge v-if="provider.id === activeProviderId" variant="default" class="px-1.5 py-0 text-[10px]">
+                        {{ $t('providers.active') }}
+                      </Badge>
+                    </div>
+                    <span class="text-xs text-muted-foreground">
+                      {{ getTypeLabel(provider.providerType) }}
+                      <span class="opacity-40">·</span>
+                      {{ provider.defaultModel }}
+                    </span>
+                  </div>
+                </TableCell>
+
+                <!-- Cost -->
+                <TableCell>
+                  <div v-if="provider.cost" class="text-xs text-muted-foreground">
+                    <div class="flex items-center gap-1">
+                      <span class="text-foreground font-medium">${{ formatCost(provider.cost.input) }}</span>
+                      <span class="opacity-40">/</span>
+                      <span class="text-foreground font-medium">${{ formatCost(provider.cost.output) }}</span>
+                    </div>
+                    <span class="text-[10px]">{{ $t('providers.costPerMillion') }}</span>
+                  </div>
+                  <span v-else class="text-xs text-muted-foreground">{{ $t('providers.costNA') }}</span>
+                </TableCell>
+
+                <!-- Status -->
+                <TableCell>
+                  <Badge :variant="getStatusVariant(provider.status)">
+                    {{ getStatusLabel(provider.status) }}
+                  </Badge>
+                </TableCell>
+
+                <!-- Row actions -->
+                <TableCell class="text-right" @click.stop>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger>
+                      <Button variant="ghost" size="icon-sm" :aria-label="$t('providers.columns.actions')">
+                        <AppIcon name="moreVertical" class="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem @click="handleTest(provider.id)">
+                        <AppIcon name="refresh" class="h-4 w-4" />
+                        {{ $t('providers.testConnection') }}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        v-if="provider.id !== activeProviderId"
+                        @click="handleActivate(provider.id)"
+                      >
+                        <AppIcon name="check" class="h-4 w-4" />
+                        {{ $t('providers.setActive') }}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem @click="openEdit(provider)">
+                        <AppIcon name="edit" class="h-4 w-4" />
+                        {{ $t('users.edit') }}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        destructive
+                        :disabled="provider.id === activeProviderId"
+                        @click="openDelete(provider)"
+                      >
+                        <AppIcon name="trash" class="h-4 w-4" />
+                        {{ $t('providers.delete') }}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </div>
       </div>
     </div>
   </div>
@@ -92,6 +188,8 @@
 import type { Provider } from '~/composables/useProviders'
 import type { ProviderFormPayload } from '~/components/ProviderFormDialog.vue'
 
+const { t } = useI18n()
+
 const {
   providers,
   activeProviderId,
@@ -107,16 +205,52 @@ const {
   activateProvider,
 } = useProviders()
 
-/* ── Modal state ── */
+/* ── State ── */
 const showForm = ref(false)
 const formMode = ref<'create' | 'edit'>('create')
 const editingProvider = ref<Provider | null>(null)
 const deleteTarget = ref<Provider | null>(null)
-const testResults = ref<Record<string, { success: boolean; message?: string; error?: string }>>({})
+const successMessage = ref<string | null>(null)
+
+const sortedProviders = computed(() =>
+  [...providers.value].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })),
+)
 
 onMounted(() => {
   fetchProviders()
 })
+
+/* ── Helpers ── */
+function getTypeLabel(providerType: string): string {
+  const preset = presets.value[providerType]
+  return preset?.label ?? providerType
+}
+
+function getStatusVariant(status?: string): 'success' | 'destructive' | 'muted' {
+  switch (status) {
+    case 'connected': return 'success'
+    case 'error': return 'destructive'
+    default: return 'muted'
+  }
+}
+
+function formatCost(value: number): string {
+  if (value >= 1) return value.toFixed(2)
+  if (value >= 0.01) return value.toFixed(2)
+  return value.toFixed(3)
+}
+
+function getStatusLabel(status?: string): string {
+  switch (status) {
+    case 'connected': return t('providers.statusConnected')
+    case 'error': return t('providers.statusError')
+    default: return t('providers.statusUntested')
+  }
+}
+
+function autoHideSuccess() {
+  setTimeout(() => { successMessage.value = null }, 4000)
+}
 
 /* ── Create / Edit ── */
 function openCreate() {
@@ -177,12 +311,12 @@ async function handleDelete() {
 /* ── Test / Activate ── */
 async function handleTest(id: string) {
   const result = await testProvider(id)
-  testResults.value[id] = result
-  setTimeout(() => {
-    const updated = { ...testResults.value }
-    delete updated[id]
-    testResults.value = updated
-  }, 5000)
+  if (result.success) {
+    successMessage.value = result.message ?? t('providers.testSuccess')
+  } else {
+    error.value = result.error ?? t('providers.testFailed')
+  }
+  autoHideSuccess()
 }
 
 async function handleActivate(id: string) {
