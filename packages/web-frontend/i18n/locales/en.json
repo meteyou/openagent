@@ -61,6 +61,7 @@
   },
   "providers": {
     "title": "Providers",
+    "subtitle": "Manage AI model providers and configure your active connection.",
     "addProvider": "Add Provider",
     "editProvider": "Edit Provider",
     "noProviders": "No providers configured yet. Add one to get started.",
@@ -93,6 +94,7 @@
   },
   "logs": {
     "title": "Activity Logs",
+    "subtitle": "Monitor tool calls, execution times, and errors in real time or historically.",
     "live": "Live",
     "historical": "Historical",
     "pause": "Pause",

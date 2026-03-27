@@ -61,6 +61,7 @@
   },
   "providers": {
     "title": "Anbieter",
+    "subtitle": "KI-Modellanbieter verwalten und aktive Verbindung konfigurieren.",
     "addProvider": "Anbieter hinzufügen",
     "editProvider": "Anbieter bearbeiten",
     "noProviders": "Noch keine Anbieter konfiguriert. Fügen Sie einen hinzu.",
@@ -93,6 +94,7 @@
   },
   "logs": {
     "title": "Aktivitätsprotokolle",
+    "subtitle": "Tool-Aufrufe, Ausführungszeiten und Fehler in Echtzeit oder historisch überwachen.",
     "live": "Live",
     "historical": "Historisch",
     "pause": "Pausieren",
