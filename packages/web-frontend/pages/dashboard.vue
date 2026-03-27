@@ -194,7 +194,7 @@ async function loadDashboard() {
       apiFetch<{ users: Array<{ id: number }> }>('/api/users'),
       apiFetch<{ providers: Array<{ id: string; name: string }>; activeProvider: string | null }>('/api/providers'),
       apiFetch<{ pagination: { total: number } }>('/api/logs?limit=1'),
-      apiFetch<{ summary: { requests: number; estimatedCost: number } }>('/api/usage'),
+      apiFetch<{ allTime: { requests: number; estimatedCost: number } }>('/api/stats/summary'),
       apiFetch<{
         language: string
         sessionTimeoutMinutes: number
@@ -207,8 +207,8 @@ async function loadDashboard() {
       users: usersData.users.length,
       providers: providersData.providers.length,
       logs: logsData.pagination.total,
-      requests: usageData.summary.requests,
-      estimatedCost: usageData.summary.estimatedCost,
+      requests: usageData.allTime.requests,
+      estimatedCost: usageData.allTime.estimatedCost,
     }
     providers.value = providersData.providers
     activeProvider.value = providersData.activeProvider
@@ -229,7 +229,7 @@ function formatCurrency(value: number): string {
     style: 'currency',
     currency: 'USD',
     minimumFractionDigits: 2,
-    maximumFractionDigits: 4,
+    maximumFractionDigits: 2,
   }).format(value)
 }
 </script>

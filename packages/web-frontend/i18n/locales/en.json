@@ -250,31 +250,54 @@
   "usage": {
     "kicker": "Consumption analytics",
     "title": "Token Usage",
-    "subtitle": "Track model activity, compare providers, and keep an eye on estimated spend.",
+    "subtitle": "Watch daily token flow, compare providers, and translate raw usage into readable spend estimates.",
     "refresh": "Refresh",
-    "loading": "Loading usage...",
-    "empty": "No usage data yet.",
-    "byProvider": "By provider",
-    "byProviderDescription": "See which providers are handling the most requests and cost.",
-    "byModel": "By model",
-    "byModelDescription": "Top models ranked by estimated spend and request volume.",
-    "recentRequests": "Recent requests",
-    "recentRequestsDescription": "Latest token usage records captured by the backend.",
+    "loading": "Loading usage stats...",
+    "emptyTitle": "No token usage yet",
+    "emptyDescription": "Once the agent starts talking to models, this page will light up with daily totals, provider breakdowns, and estimated USD costs.",
+    "emptyFilteredTitle": "No usage matches these filters",
+    "emptyFilteredDescription": "Try widening the date range or clearing the provider/model filters to see more activity.",
     "summary": {
-      "requests": "Requests",
-      "totalTokens": "Total tokens",
-      "promptTokens": "Prompt tokens",
-      "completionTokens": "Completion tokens",
-      "estimatedCost": "Estimated cost"
+      "tokensToday": "Tokens today",
+      "tokensTodayMeta": "Prompt + completion tokens recorded today",
+      "costToday": "Cost today",
+      "costTodayMeta": "Estimated spend in USD for today's requests",
+      "tokensMonth": "Tokens this month",
+      "tokensMonthMeta": "All tokens recorded since the month began",
+      "costMonth": "Cost this month",
+      "costMonthMeta": "Estimated USD spend since the month began"
     },
-    "columns": {
+    "filters": {
+      "title": "Filters",
+      "description": "Slice usage by time range, provider, or model before drilling into the chart and breakdown table.",
+      "dateFrom": "From",
+      "dateTo": "To",
       "provider": "Provider",
       "model": "Model",
-      "requests": "Requests",
-      "tokens": "Tokens",
-      "cost": "Cost",
-      "timestamp": "Timestamp",
-      "session": "Session"
+      "allProviders": "All providers",
+      "allModels": "All models",
+      "apply": "Apply filters",
+      "reset": "Reset"
+    },
+    "chart": {
+      "title": "Daily usage",
+      "description": "A day-by-day view of total token volume across the selected range.",
+      "rangeLabel": "Selected range",
+      "empty": "No daily usage to chart for the current filters."
+    },
+    "table": {
+      "title": "Provider / model breakdown",
+      "description": "Compare prompt tokens, completion tokens, total volume, and estimated spend for each provider/model pair.",
+      "selectedTotal": "Tokens in selection",
+      "empty": "No grouped usage rows to display.",
+      "columns": {
+        "provider": "Provider",
+        "model": "Model",
+        "promptTokens": "Prompt tokens",
+        "completionTokens": "Completion tokens",
+        "totalTokens": "Total tokens",
+        "cost": "Est. cost"
+      }
     }
   }
 }
