@@ -11,6 +11,8 @@ import type { AgentCore } from '@openagent/core'
 import { setupWebSocketChat } from './ws-chat.js'
 import { setupWebSocketLogs } from './ws-logs.js'
 import { generateAccessToken } from './auth.js'
+import { RuntimeMetrics } from './runtime-metrics.js'
+import type { HeartbeatService, HeartbeatSnapshot } from './heartbeat.js'
 
 let db: Database
 let server: http.Server
@@ -23,6 +25,13 @@ let tempDataDir: string
 let previousDataDir: string | undefined
 const setTimeoutMinutes = vi.fn()
 const refreshSystemPrompt = vi.fn()
+const restartHeartbeat = vi.fn()
+const heartbeatSnapshot: HeartbeatSnapshot = {
+  agentStatus: 'running',
+  intervalMinutes: 5,
+  activeProvider: null,
+  lastCheck: null,
+}
 
 beforeAll(async () => {
   previousDataDir = process.env.DATA_DIR
@@ -34,9 +43,14 @@ beforeAll(async () => {
     getSessionManager: () => ({ setTimeoutMinutes }),
     refreshSystemPrompt,
   } as unknown as AgentCore
-  const app = createApp({ db, agentCore: mockAgentCore })
+  const mockHeartbeatService = {
+    restart: restartHeartbeat,
+    getSnapshot: () => heartbeatSnapshot,
+  } as unknown as HeartbeatService
+  const runtimeMetrics = new RuntimeMetrics()
+  const app = createApp({ db, agentCore: mockAgentCore, heartbeatService: mockHeartbeatService, runtimeMetrics })
   server = http.createServer(app)
-  wss = setupWebSocketChat(server, db, null)
+  wss = setupWebSocketChat(server, db, null, runtimeMetrics)
   const logsSetup = setupWebSocketLogs(server)
   logsWss = logsSetup.wss
   broadcastLog = logsSetup.broadcast
@@ -75,6 +89,90 @@ describe('health endpoint', () => {
     expect(body.status).toBe('ok')
     expect(typeof body.uptime).toBe('number')
     expect(typeof body.version).toBe('string')
+  })
+})
+
+describe('API health monitoring', () => {
+  let adminToken: string
+
+  beforeAll(async () => {
+    const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'admin', password: 'admin' }),
+    })
+    const body = (await loginRes.json()) as { accessToken: string }
+    adminToken = body.accessToken
+  })
+
+  it('GET /api/health returns runtime snapshot and activity summary', async () => {
+    heartbeatSnapshot.activeProvider = {
+      id: 'provider-1',
+      name: 'Primary OpenAI',
+      model: 'gpt-4o-mini',
+      status: 'degraded',
+    }
+    heartbeatSnapshot.lastCheck = {
+      checkedAt: '2026-03-27T12:00:00.000Z',
+      providerId: 'provider-1',
+      providerName: 'Primary OpenAI',
+      providerType: 'openai',
+      model: 'gpt-4o-mini',
+      status: 'degraded',
+      latencyMs: 6200,
+      errorMessage: null,
+    }
+
+    db.prepare(`INSERT INTO sessions (id, source, started_at, message_count, summary_written) VALUES (?, ?, datetime('now'), ?, ?)`)
+      .run('health-session-1', 'web', 1, 0)
+    db.prepare(`INSERT INTO chat_messages (session_id, role, content, timestamp) VALUES (?, ?, ?, datetime('now'))`)
+      .run('health-session-1', 'user', 'hello')
+
+    const res = await fetch(`${baseUrl}/api/health`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    })
+    const body = (await res.json()) as {
+      agent: { status: string }
+      provider: { status: string; model: string }
+      lastCheck: { latencyMs: number; checkedAt: string }
+      queueDepth: number
+      activity: { messagesToday: number; sessionsToday: number }
+    }
+
+    expect(res.status).toBe(200)
+    expect(body.agent.status).toBe('running')
+    expect(body.provider.status).toBe('degraded')
+    expect(body.provider.model).toBe('gpt-4o-mini')
+    expect(body.lastCheck.latencyMs).toBe(6200)
+    expect(body.queueDepth).toBe(0)
+    expect(body.activity.messagesToday).toBeGreaterThanOrEqual(1)
+    expect(body.activity.sessionsToday).toBeGreaterThanOrEqual(1)
+  })
+
+  it('GET /api/health/history returns paginated health checks', async () => {
+    db.prepare(
+      `INSERT INTO health_checks (timestamp, provider, status, latency_ms, error_message)
+       VALUES (?, ?, ?, ?, ?)`
+    ).run('2026-03-27T10:00:00.000Z', 'Primary OpenAI', 'healthy', 220, null)
+    db.prepare(
+      `INSERT INTO health_checks (timestamp, provider, status, latency_ms, error_message)
+       VALUES (?, ?, ?, ?, ?)`
+    ).run('2026-03-27T10:05:00.000Z', 'Primary OpenAI', 'down', 15000, 'Connection timed out')
+
+    const res = await fetch(`${baseUrl}/api/health/history?page=1&limit=2`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    })
+    const body = (await res.json()) as {
+      history: Array<{ status: string; errorMessage: string | null }>
+      pagination: { total: number; limit: number }
+    }
+
+    expect(res.status).toBe(200)
+    expect(body.history).toHaveLength(2)
+    expect(body.history[0].status).toBe('down')
+    expect(body.history[0].errorMessage).toBe('Connection timed out')
+    expect(body.pagination.limit).toBe(2)
+    expect(body.pagination.total).toBeGreaterThanOrEqual(2)
   })
 })
 
@@ -622,6 +720,7 @@ describe('settings API', () => {
   it('updates settings and applies live changes', async () => {
     setTimeoutMinutes.mockClear()
     refreshSystemPrompt.mockClear()
+    restartHeartbeat.mockClear()
 
     const res = await fetch(`${baseUrl}/api/settings`, {
       method: 'PUT',
@@ -653,6 +752,7 @@ describe('settings API', () => {
     expect(body.telegramBotToken).toBe('telegram-secret')
     expect(setTimeoutMinutes).toHaveBeenCalledWith(30)
     expect(refreshSystemPrompt).toHaveBeenCalled()
+    expect(restartHeartbeat).toHaveBeenCalled()
 
     const settingsPath = path.join(tempDataDir, 'config', 'settings.json')
     const telegramPath = path.join(tempDataDir, 'config', 'telegram.json')
@@ -660,6 +760,67 @@ describe('settings API', () => {
     const telegram = JSON.parse(fs.readFileSync(telegramPath, 'utf-8')) as { botToken: string }
     expect(settings.language).toBe('German')
     expect(telegram.botToken).toBe('telegram-secret')
+  })
+})
+
+describe('providers API', () => {
+  let adminToken: string
+
+  beforeAll(async () => {
+    const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'admin', password: 'admin' }),
+    })
+    const body = (await loginRes.json()) as { accessToken: string }
+    adminToken = body.accessToken
+  })
+
+  it('restarts heartbeat monitoring when the active provider changes', async () => {
+    restartHeartbeat.mockClear()
+
+    const firstRes = await fetch(`${baseUrl}/api/providers`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: 'Provider One',
+        providerType: 'openai',
+        apiKey: 'sk-provider-one',
+        defaultModel: 'gpt-4o-mini',
+      }),
+    })
+    const firstBody = (await firstRes.json()) as { provider: { id: string } }
+    expect(firstRes.status).toBe(201)
+    expect(restartHeartbeat).toHaveBeenCalledTimes(1)
+
+    const secondRes = await fetch(`${baseUrl}/api/providers`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: 'Provider Two',
+        providerType: 'openai',
+        apiKey: 'sk-provider-two',
+        defaultModel: 'gpt-4o-mini',
+      }),
+    })
+    const secondBody = (await secondRes.json()) as { provider: { id: string } }
+    expect(secondRes.status).toBe(201)
+
+    restartHeartbeat.mockClear()
+    const activateRes = await fetch(`${baseUrl}/api/providers/${secondBody.provider.id}/activate`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${adminToken}` },
+    })
+
+    expect(activateRes.status).toBe(200)
+    expect(restartHeartbeat).toHaveBeenCalledTimes(1)
+    expect(firstBody.provider.id).not.toBe(secondBody.provider.id)
   })
 })
 
