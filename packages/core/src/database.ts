@@ -50,12 +50,24 @@ CREATE TABLE IF NOT EXISTS sessions (
   FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
+CREATE TABLE IF NOT EXISTS health_checks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+  provider TEXT,
+  status TEXT NOT NULL CHECK(status IN ('healthy', 'degraded', 'down', 'unconfigured')),
+  latency_ms INTEGER,
+  error_message TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_token_usage_timestamp ON token_usage(timestamp);
 CREATE INDEX IF NOT EXISTS idx_token_usage_provider ON token_usage(provider);
 CREATE INDEX IF NOT EXISTS idx_tool_calls_session ON tool_calls(session_id);
 CREATE INDEX IF NOT EXISTS idx_tool_calls_timestamp ON tool_calls(timestamp);
 CREATE INDEX IF NOT EXISTS idx_tool_calls_tool_name ON tool_calls(tool_name);
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_health_checks_timestamp ON health_checks(timestamp);
+CREATE INDEX IF NOT EXISTS idx_health_checks_provider ON health_checks(provider);
+CREATE INDEX IF NOT EXISTS idx_health_checks_status ON health_checks(status);
 
 CREATE TABLE IF NOT EXISTS chat_messages (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -48,5 +48,21 @@ export {
 export type { TokenUsageRecord, ToolCallRecord, ToolCallQueryOptions, ToolCallQueryResult } from './token-logger.js'
 export { queryUsageStats, getUsageSummary } from './usage-stats.js'
 export type { UsageGroupBy, UsageStatsQueryOptions, UsageTotals, UsageStatsRow, UsageStatsResult, UsageSummary } from './usage-stats.js'
+export {
+  performProviderHealthCheck,
+  logHealthCheck,
+  getLatestHealthCheck,
+  queryHealthCheckHistory,
+  getActivitySummary,
+} from './provider-health.js'
+export type {
+  ProviderHealthStatus,
+  ProviderHealthCheckOptions,
+  ProviderHealthCheckResult,
+  HealthCheckLogInput,
+  HealthCheckHistoryRecord,
+  HealthCheckHistoryResult,
+  ActivitySummary,
+} from './provider-health.js'
 export { AgentCore } from './agent.js'
 export type { ResponseChunk, AgentCoreOptions } from './agent.js'
