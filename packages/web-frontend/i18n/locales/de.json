@@ -148,7 +148,7 @@
     "title": "Gedächtnis",
     "subtitle": "Bearbeiten Sie Persönlichkeit, Kernspeicher und tägliche Notizen direkt im Dashboard.",
     "soulTab": "Seele",
-    "agentsTab": "Kernspeicher",
+    "coreMemoryTab": "Kernspeicher",
     "dailyTab": "Täglich",
     "loading": "Gedächtnis wird geladen...",
     "edit": "Bearbeiten",

@@ -148,7 +148,7 @@
     "title": "Memory",
     "subtitle": "Edit personality, core memory, and day-by-day notes without leaving the dashboard.",
     "soulTab": "Soul",
-    "agentsTab": "Core Memory",
+    "coreMemoryTab": "Core Memory",
     "dailyTab": "Daily",
     "loading": "Loading memory...",
     "editorPlaceholder": "Write markdown here...",
