@@ -4,6 +4,7 @@ import type { AgentCore } from '@openagent/core'
 import { createAuthRouter } from './routes/auth.js'
 import { createChatRouter } from './routes/chat.js'
 import { createLogsRouter } from './routes/logs.js'
+import { createProvidersRouter } from './routes/providers.js'
 import { ensureAdminUser } from './auth.js'
 
 const startTime = Date.now()
@@ -36,6 +37,7 @@ export function createApp(options?: AppOptions): express.Express {
     app.use('/api/auth', createAuthRouter(options.db))
     app.use('/api/chat', createChatRouter(options.db))
     app.use('/api/logs', createLogsRouter(options.db))
+    app.use('/api/providers', createProvidersRouter())
   }
 
   return app
