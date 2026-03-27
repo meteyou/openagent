@@ -1,17 +1,22 @@
+import crypto from 'node:crypto'
 import { Router } from 'express'
 import {
   loadProviders,
   loadProvidersMasked,
   loadProvidersDecrypted,
   addProvider,
+  addOAuthProvider,
   updateProvider,
   deleteProvider,
   setActiveProvider,
   updateProviderStatus,
+  getAvailableModels,
   PROVIDER_TYPE_PRESETS,
   performProviderHealthCheck,
 } from '@openagent/core'
 import type { ProviderType } from '@openagent/core'
+import { getOAuthProvider } from '@mariozechner/pi-ai/oauth'
+import type { OAuthCredentials } from '@mariozechner/pi-ai/oauth'
 import { jwtMiddleware } from '../auth.js'
 import type { AuthenticatedRequest } from '../auth.js'
 
@@ -20,6 +25,34 @@ const VALID_PROVIDER_TYPES = Object.keys(PROVIDER_TYPE_PRESETS)
 export interface ProvidersRouterOptions {
   onActiveProviderChanged?: () => void
 }
+
+/**
+ * In-memory state for pending OAuth login flows
+ */
+interface PendingOAuthLogin {
+  status: 'pending' | 'completed' | 'error'
+  providerType: string
+  name: string
+  defaultModel: string
+  authUrl?: string
+  instructions?: string
+  credentials?: OAuthCredentials
+  error?: string
+  resolveManualCode?: (code: string) => void
+  createdAt: number
+}
+
+const pendingOAuthLogins = new Map<string, PendingOAuthLogin>()
+
+// Clean up stale logins older than 10 minutes
+setInterval(() => {
+  const cutoff = Date.now() - 10 * 60 * 1000
+  for (const [id, login] of pendingOAuthLogins) {
+    if (login.createdAt < cutoff) {
+      pendingOAuthLogins.delete(id)
+    }
+  }
+}, 60 * 1000)
 
 export function createProvidersRouter(options: ProvidersRouterOptions = {}): Router {
   const router = Router()
@@ -48,6 +81,196 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
       })
     } catch (err) {
       res.status(500).json({ error: `Failed to load providers: ${(err as Error).message}` })
+    }
+  })
+
+  /**
+   * GET /api/providers/models/:providerType
+   * Get available models for a provider type from pi-ai
+   */
+  router.get('/models/:providerType', (_req: AuthenticatedRequest, res) => {
+    const providerType = _req.params.providerType as string
+
+    if (!VALID_PROVIDER_TYPES.includes(providerType)) {
+      res.status(400).json({ error: `Invalid provider type. Must be one of: ${VALID_PROVIDER_TYPES.join(', ')}` })
+      return
+    }
+
+    try {
+      const models = getAvailableModels(providerType as ProviderType)
+      res.json({ models })
+    } catch (err) {
+      res.status(500).json({ error: `Failed to get models: ${(err as Error).message}` })
+    }
+  })
+
+  /**
+   * POST /api/providers/oauth/login
+   * Start an OAuth login flow for a subscription provider
+   */
+  router.post('/oauth/login', async (req: AuthenticatedRequest, res) => {
+    const { providerType, name, defaultModel } = req.body as {
+      providerType?: string
+      name?: string
+      defaultModel?: string
+    }
+
+    if (!providerType || !VALID_PROVIDER_TYPES.includes(providerType)) {
+      res.status(400).json({ error: 'Invalid provider type' })
+      return
+    }
+    if (!name?.trim()) {
+      res.status(400).json({ error: 'Provider name is required' })
+      return
+    }
+    if (!defaultModel?.trim()) {
+      res.status(400).json({ error: 'Default model is required' })
+      return
+    }
+
+    const preset = PROVIDER_TYPE_PRESETS[providerType as ProviderType]
+    if (preset.authMethod !== 'oauth' || !preset.oauthProviderId) {
+      res.status(400).json({ error: 'This provider type does not use OAuth' })
+      return
+    }
+
+    const oauthProvider = getOAuthProvider(preset.oauthProviderId)
+    if (!oauthProvider) {
+      res.status(400).json({ error: `OAuth provider "${preset.oauthProviderId}" not found` })
+      return
+    }
+
+    const loginId = crypto.randomUUID()
+    const loginState: PendingOAuthLogin = {
+      status: 'pending',
+      providerType,
+      name: name.trim(),
+      defaultModel: defaultModel.trim(),
+      createdAt: Date.now(),
+    }
+    pendingOAuthLogins.set(loginId, loginState)
+
+    // Promise that resolves when onAuth is called
+    let resolveAuthInfo: (info: { url: string; instructions?: string }) => void
+    const authInfoPromise = new Promise<{ url: string; instructions?: string }>((resolve) => {
+      resolveAuthInfo = resolve
+    })
+
+    // Start login flow in background
+    oauthProvider.login({
+      onAuth: (info) => {
+        loginState.authUrl = info.url
+        loginState.instructions = info.instructions
+        resolveAuthInfo!(info)
+      },
+      onPrompt: async (prompt) => {
+        // Use defaults for prompts (e.g., GitHub Enterprise domain → github.com)
+        if (prompt.allowEmpty) return ''
+        return prompt.placeholder ?? ''
+      },
+      onProgress: () => {},
+      onManualCodeInput: oauthProvider.usesCallbackServer
+        ? () => new Promise<string>((resolve) => {
+            loginState.resolveManualCode = resolve
+          })
+        : undefined,
+    }).then(credentials => {
+      loginState.status = 'completed'
+      loginState.credentials = credentials
+    }).catch(err => {
+      loginState.status = 'error'
+      loginState.error = (err as Error).message
+      // Resolve authInfo if it hasn't been resolved yet (error before onAuth)
+      resolveAuthInfo!({ url: '', instructions: '' })
+    })
+
+    // Wait for auth URL (or error)
+    const authInfo = await authInfoPromise
+
+    if (loginState.status === 'error') {
+      pendingOAuthLogins.delete(loginId)
+      res.status(500).json({ error: loginState.error ?? 'OAuth login failed' })
+      return
+    }
+
+    res.json({
+      loginId,
+      authUrl: authInfo.url,
+      instructions: authInfo.instructions,
+      usesCallbackServer: oauthProvider.usesCallbackServer ?? false,
+    })
+  })
+
+  /**
+   * GET /api/providers/oauth/status/:loginId
+   * Poll for OAuth login completion
+   */
+  router.get('/oauth/status/:loginId', (req: AuthenticatedRequest, res) => {
+    const loginId = req.params.loginId as string
+    const loginState = pendingOAuthLogins.get(loginId)
+    if (!loginState) {
+      res.status(404).json({ error: 'Login session not found or expired' })
+      return
+    }
+
+    if (loginState.status === 'completed' && loginState.credentials) {
+      try {
+        const beforeActiveProvider = loadProviders().activeProvider ?? null
+        const provider = addOAuthProvider({
+          name: loginState.name,
+          providerType: loginState.providerType as ProviderType,
+          defaultModel: loginState.defaultModel,
+          oauthCredentials: loginState.credentials,
+        })
+        const afterActiveProvider = loadProviders().activeProvider ?? null
+
+        if (beforeActiveProvider !== afterActiveProvider) {
+          options.onActiveProviderChanged?.()
+        }
+
+        pendingOAuthLogins.delete(loginId)
+        res.json({
+          status: 'completed',
+          provider: { ...provider, apiKey: '', apiKeyMasked: '' },
+        })
+      } catch (err) {
+        res.status(400).json({ status: 'error', error: (err as Error).message })
+      }
+      return
+    }
+
+    if (loginState.status === 'error') {
+      pendingOAuthLogins.delete(loginId)
+      res.json({ status: 'error', error: loginState.error })
+      return
+    }
+
+    res.json({ status: 'pending' })
+  })
+
+  /**
+   * POST /api/providers/oauth/code/:loginId
+   * Submit manual OAuth code (fallback for remote servers)
+   */
+  router.post('/oauth/code/:loginId', (req: AuthenticatedRequest, res) => {
+    const codeLoginId = req.params.loginId as string
+    const loginState = pendingOAuthLogins.get(codeLoginId)
+    if (!loginState) {
+      res.status(404).json({ error: 'Login session not found or expired' })
+      return
+    }
+
+    const { code } = req.body as { code?: string }
+    if (!code?.trim()) {
+      res.status(400).json({ error: 'Code is required' })
+      return
+    }
+
+    if (loginState.resolveManualCode) {
+      loginState.resolveManualCode(code.trim())
+      res.json({ status: 'pending', message: 'Code submitted, processing...' })
+    } else {
+      res.status(400).json({ error: 'This login flow does not accept manual code input' })
     }
   })
 
