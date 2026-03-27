@@ -45,6 +45,17 @@
 
         <!-- Navigation -->
         <nav class="flex flex-1 flex-col gap-1 overflow-y-auto p-2.5 py-3.5">
+          <template v-if="isAdmin">
+            <NuxtLink
+              to="/dashboard"
+              :class="navItemClass('/dashboard')"
+              @click="closeSidebarOnMobile"
+            >
+              <AppIcon name="dashboard" class="shrink-0" />
+              <span>{{ $t('nav.dashboard') }}</span>
+            </NuxtLink>
+          </template>
+
           <NuxtLink
             to="/"
             :class="navItemClass('/')"
@@ -56,39 +67,12 @@
 
           <template v-if="isAdmin">
             <NuxtLink
-              to="/dashboard"
-              :class="navItemClass('/dashboard')"
-              @click="closeSidebarOnMobile"
-            >
-              <AppIcon name="dashboard" class="shrink-0" />
-              <span>{{ $t('nav.dashboard') }}</span>
-            </NuxtLink>
-
-            <NuxtLink
               to="/memory"
               :class="navItemClass('/memory')"
               @click="closeSidebarOnMobile"
             >
               <AppIcon name="brain" class="shrink-0" />
               <span>{{ $t('nav.memory') }}</span>
-            </NuxtLink>
-
-            <NuxtLink
-              to="/providers"
-              :class="navItemClass('/providers')"
-              @click="closeSidebarOnMobile"
-            >
-              <AppIcon name="plug" class="shrink-0" />
-              <span>{{ $t('nav.providers') }}</span>
-            </NuxtLink>
-
-            <NuxtLink
-              to="/usage"
-              :class="navItemClass('/usage')"
-              @click="closeSidebarOnMobile"
-            >
-              <AppIcon name="trendDown" class="shrink-0" />
-              <span>{{ $t('nav.usage') }}</span>
             </NuxtLink>
 
             <NuxtLink
@@ -101,13 +85,16 @@
             </NuxtLink>
 
             <NuxtLink
-              to="/settings"
-              :class="navItemClass('/settings')"
+              to="/usage"
+              :class="navItemClass('/usage')"
               @click="closeSidebarOnMobile"
             >
-              <AppIcon name="settings" class="shrink-0" />
-              <span>{{ $t('nav.settings') }}</span>
+              <AppIcon name="trendDown" class="shrink-0" />
+              <span>{{ $t('nav.usage') }}</span>
             </NuxtLink>
+
+            <!-- Separator -->
+            <div class="my-2 border-t border-sidebar-border/60" />
 
             <NuxtLink
               to="/users"
@@ -116,6 +103,24 @@
             >
               <AppIcon name="users" class="shrink-0" />
               <span>{{ $t('nav.users') }}</span>
+            </NuxtLink>
+
+            <NuxtLink
+              to="/providers"
+              :class="navItemClass('/providers')"
+              @click="closeSidebarOnMobile"
+            >
+              <AppIcon name="plug" class="shrink-0" />
+              <span>{{ $t('nav.providers') }}</span>
+            </NuxtLink>
+
+            <NuxtLink
+              to="/settings"
+              :class="navItemClass('/settings')"
+              @click="closeSidebarOnMobile"
+            >
+              <AppIcon name="settings" class="shrink-0" />
+              <span>{{ $t('nav.settings') }}</span>
             </NuxtLink>
           </template>
         </nav>
