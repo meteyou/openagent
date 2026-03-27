@@ -11,9 +11,12 @@ import {
   setActiveProvider,
   updateProviderStatus,
   getAvailableModels,
+  buildModel,
   PROVIDER_TYPE_PRESETS,
   performProviderHealthCheck,
 } from '@openagent/core'
+import { getModels as getPiAiModels } from '@mariozechner/pi-ai'
+import type { KnownProvider as PiAiKnownProvider } from '@mariozechner/pi-ai'
 import type { ProviderType } from '@openagent/core'
 import { getOAuthProvider } from '@mariozechner/pi-ai/oauth'
 import type { OAuthCredentials } from '@mariozechner/pi-ai/oauth'
@@ -74,8 +77,36 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
   router.get('/', (_req: AuthenticatedRequest, res) => {
     try {
       const data = loadProvidersMasked()
+      const decrypted = loadProvidersDecrypted()
+      const providersWithCost = data.providers.map(p => {
+        const full = decrypted.providers.find(d => d.id === p.id)
+        let cost: { input: number; output: number } | null = null
+        if (full) {
+          try {
+            const model = buildModel(full)
+            if (model.cost.input > 0 || model.cost.output > 0) {
+              cost = { input: model.cost.input, output: model.cost.output }
+            }
+          } catch { /* ignore */ }
+
+          // Fallback: look up cost directly from pi-ai model registry
+          if (!cost) {
+            const preset = PROVIDER_TYPE_PRESETS[full.providerType as ProviderType]
+            if (preset?.piAiProvider) {
+              try {
+                const piModels = getPiAiModels(preset.piAiProvider as PiAiKnownProvider)
+                const match = piModels.find(m => m.id === full.defaultModel)
+                if (match && (match.cost.input > 0 || match.cost.output > 0)) {
+                  cost = { input: match.cost.input, output: match.cost.output }
+                }
+              } catch { /* ignore */ }
+            }
+          }
+        }
+        return { ...p, cost }
+      })
       res.json({
-        providers: data.providers,
+        providers: providersWithCost,
         activeProvider: data.activeProvider ?? null,
         presets: PROVIDER_TYPE_PRESETS,
       })
