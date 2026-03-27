@@ -68,10 +68,10 @@
 
       <!-- Daily tab -->
       <TabsContent value="daily" class="flex flex-1 flex-col overflow-hidden min-h-0 mt-0">
-        <!-- Daily list view -->
-        <div v-if="!selectedDaily" class="flex flex-1 flex-col overflow-y-auto min-h-0">
+        <!-- Daily list view (table) -->
+        <div v-if="!selectedDaily" class="flex flex-1 flex-col overflow-hidden min-h-0">
           <!-- Daily toolbar -->
-          <div class="mb-4 flex flex-wrap items-start justify-between gap-4 rounded-xl border border-border bg-card p-4">
+          <div class="mb-4 flex shrink-0 flex-wrap items-start justify-between gap-4 rounded-xl border border-border bg-card p-4">
             <div>
               <h2 class="text-sm font-semibold text-foreground">{{ $t('memory.dailyBrowserTitle') }}</h2>
               <p class="mt-1 text-xs text-muted-foreground">{{ $t('memory.dailyBrowserDescription') }}</p>
@@ -89,20 +89,63 @@
             <AppIcon name="calendar" size="xl" class="h-10 w-10 opacity-40" />
             <p class="text-sm">{{ $t('memory.noDailyFiles') }}</p>
           </div>
-          <div v-else class="flex flex-col gap-2">
-            <button
-              v-for="file in dailyFiles"
-              :key="file.date"
-              type="button"
-              class="flex cursor-pointer items-center justify-between rounded-xl border border-border bg-card px-4 py-3 text-left transition-all hover:border-primary/30 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              @click="openDailyFile(file.date)"
-            >
-              <div>
-                <span class="block text-sm font-semibold text-foreground">{{ file.date }}</span>
-                <span class="text-xs text-muted-foreground">{{ $t('memory.lastUpdated', { date: formatDate(file.modifiedAt) }) }}</span>
+
+          <!-- Table + Pagination -->
+          <div v-else class="flex flex-1 flex-col overflow-hidden min-h-0">
+            <div class="flex-1 overflow-y-auto min-h-0 rounded-xl border border-border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{{ $t('memory.dailyColumnDate') }}</TableHead>
+                    <TableHead>{{ $t('memory.dailyColumnUpdated') }}</TableHead>
+                    <TableHead class="text-right">{{ $t('memory.dailyColumnSize') }}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  <TableRow
+                    v-for="(file, idx) in paginatedDailyFiles"
+                    :key="file.date"
+                    class="cursor-pointer"
+                    :class="idx % 2 === 1 ? 'bg-muted/50' : ''"
+                    @click="openDailyFile(file.date)"
+                  >
+                    <TableCell class="font-semibold">{{ file.date }}</TableCell>
+                    <TableCell class="text-muted-foreground">{{ formatDate(file.modifiedAt) }}</TableCell>
+                    <TableCell class="text-right text-muted-foreground">{{ formatSize(file.size) }}</TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </div>
+
+            <!-- Pagination -->
+            <div v-if="totalPages > 1" class="flex shrink-0 items-center justify-between pt-3">
+              <span class="text-xs text-muted-foreground">
+                {{ $t('memory.dailyPagination', { from: paginationFrom, to: paginationTo, total: dailyFiles.length }) }}
+              </span>
+              <div class="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  :disabled="currentPage <= 1"
+                  :aria-label="$t('memory.dailyPrevPage')"
+                  @click="currentPage--"
+                >
+                  <AppIcon name="arrowLeft" class="h-4 w-4" />
+                </Button>
+                <span class="px-2 text-xs text-muted-foreground">
+                  {{ currentPage }} / {{ totalPages }}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  :disabled="currentPage >= totalPages"
+                  :aria-label="$t('memory.dailyNextPage')"
+                  @click="currentPage++"
+                >
+                  <AppIcon name="arrowRight" class="h-4 w-4" />
+                </Button>
               </div>
-              <span class="text-xs text-muted-foreground">{{ formatSize(file.size) }}</span>
-            </button>
+            </div>
           </div>
         </div>
 
@@ -164,6 +207,24 @@ const dailyFiles = ref<{ filename: string; date: string; size: number; modifiedA
 const selectedDaily = ref<string | null>(null)
 const dailyDateInput = ref(new Date().toISOString().slice(0, 10))
 
+// Pagination
+const PAGE_SIZE = 10
+const currentPage = ref(1)
+
+const totalPages = computed(() => Math.max(1, Math.ceil(dailyFiles.value.length / PAGE_SIZE)))
+
+const paginatedDailyFiles = computed(() => {
+  const start = (currentPage.value - 1) * PAGE_SIZE
+  return dailyFiles.value.slice(start, start + PAGE_SIZE)
+})
+
+const paginationFrom = computed(() => {
+  if (dailyFiles.value.length === 0) return 0
+  return (currentPage.value - 1) * PAGE_SIZE + 1
+})
+
+const paginationTo = computed(() => Math.min(currentPage.value * PAGE_SIZE, dailyFiles.value.length))
+
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   return `${(bytes / 1024).toFixed(1)} KB`
@@ -191,6 +252,7 @@ async function switchTab(tab: 'soul' | 'agents' | 'daily') {
 
 async function refreshDailyFiles() {
   selectedDaily.value = null
+  currentPage.value = 1
   dailyFiles.value = await loadDailyFiles()
 }
 

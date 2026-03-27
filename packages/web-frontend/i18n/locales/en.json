@@ -151,9 +151,6 @@
     "agentsTab": "Core Memory",
     "dailyTab": "Daily",
     "loading": "Loading memory...",
-    "edit": "Edit",
-    "preview": "Preview",
-    "split": "Split",
     "editorPlaceholder": "Write markdown here...",
     "save": "Save changes",
     "saveSuccess": "Memory updated successfully.",
@@ -163,7 +160,12 @@
     "dailyBrowserDescription": "Jump to any day, review existing notes, or create a new memory entry for the selected date.",
     "dailyEditorDescription": "Daily notes are included in the rolling memory context for the agent.",
     "openDate": "Open date",
-    "lastUpdated": "Updated {date}"
+    "dailyColumnDate": "Date",
+    "dailyColumnUpdated": "Last updated",
+    "dailyColumnSize": "Size",
+    "dailyPagination": "{from}–{to} of {total}",
+    "dailyPrevPage": "Previous page",
+    "dailyNextPage": "Next page"
   },
   "settings": {
     "kicker": "Runtime configuration",
