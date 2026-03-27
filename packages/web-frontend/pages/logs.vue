@@ -54,12 +54,14 @@
           v-model="dateFrom"
           type="date"
           class="w-[145px]"
+          :aria-label="$t('logs.dateFrom')"
           @change="applyFilters"
         />
         <Input
           v-model="dateTo"
           type="date"
           class="w-[145px]"
+          :aria-label="$t('logs.dateTo')"
           @change="applyFilters"
         />
       </div>

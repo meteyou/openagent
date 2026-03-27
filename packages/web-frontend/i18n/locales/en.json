@@ -2,8 +2,7 @@
   "app": {
     "title": "OpenAgent",
     "adminConsole": "Admin console",
-    "workspace": "Workspace",
-    "toggleMenu": "Toggle menu"
+    "workspace": "Workspace"
   },
   "nav": {
     "chat": "Chat",
@@ -30,26 +29,18 @@
     "description": "This page is only available to administrators."
   },
   "auth": {
-    "login": "Login",
     "logout": "Logout",
     "username": "Username",
     "password": "Password",
     "loginButton": "Sign In",
-    "loginError": "Invalid username or password",
-    "loginRequired": "Please log in to continue"
+    "loginError": "Invalid username or password"
   },
   "chat": {
     "placeholder": "Type a message...",
     "send": "Send",
     "newSession": "New Session",
     "stop": "Stop",
-    "sessionReset": "Session has been reset.",
-    "taskAborted": "Task has been aborted.",
-    "connecting": "Connecting...",
-    "connected": "Connected",
-    "disconnected": "Disconnected",
     "noMessages": "No messages yet. Start a conversation!",
-    "loadingHistory": "Loading chat history...",
     "typing": "Typing..."
   },
   "status": {
@@ -57,24 +48,15 @@
     "offline": "Offline",
     "connecting": "Connecting"
   },
-  "user": {
-    "menu": "User menu",
-    "profile": "Profile"
-  },
   "theme": {
-    "toggle": "Toggle theme",
-    "dark": "Dark mode",
-    "light": "Light mode",
-    "system": "System",
     "switchToDark": "Switch to dark mode",
     "switchToLight": "Switch to light mode"
   },
   "aria": {
-    "openMenu": "Open menu",
-    "closeMenu": "Close menu",
     "toggleSidebar": "Toggle sidebar",
     "userMenu": "User menu",
-    "themeToggle": "Toggle color theme"
+    "themeToggle": "Toggle color theme",
+    "closeAlert": "Dismiss"
   },
   "providers": {
     "title": "Providers",
@@ -91,7 +73,6 @@
     "apiKeyHint": "Leave empty to keep existing key",
     "model": "Default Model",
     "modelPlaceholder": "e.g. gpt-4o",
-    "status": "Status",
     "statusConnected": "Connected",
     "statusError": "Error",
     "statusUntested": "Untested",
@@ -107,9 +88,7 @@
     "deleteConfirmButton": "Delete",
     "cannotDeleteActive": "Cannot delete the active provider",
     "save": "Save",
-    "cancel": "Cancel",
-    "required": "This field is required",
-    "apiKeyRequired": "API key is required for this provider type"
+    "cancel": "Cancel"
   },
   "logs": {
     "title": "Activity Logs",

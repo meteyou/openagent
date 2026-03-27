@@ -3,7 +3,7 @@
     :is="iconComponent"
     :size="iconSize"
     :stroke-width="1.8"
-    class="app-icon"
+    class="block shrink-0"
     aria-hidden="true"
   />
 </template>
@@ -101,10 +101,3 @@ const iconSize = computed(() => {
   }
 })
 </script>
-
-<style scoped>
-.app-icon {
-  display: block;
-  flex-shrink: 0;
-}
-</style>

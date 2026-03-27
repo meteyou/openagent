@@ -19,6 +19,7 @@
         <button
           type="button"
           class="ml-2 opacity-70 transition-opacity hover:opacity-100"
+          :aria-label="$t('aria.closeAlert')"
           @click="error = null"
         >
           <AppIcon name="close" class="h-4 w-4" />
@@ -103,6 +104,7 @@
                 variant="outline"
                 size="icon-sm"
                 :title="$t('users.edit')"
+                :aria-label="$t('users.edit')"
                 @click="openEditForm(provider)"
               >
                 <AppIcon name="edit" class="h-4 w-4" />
@@ -112,6 +114,7 @@
                 size="icon-sm"
                 :disabled="provider.id === activeProviderId"
                 :title="provider.id === activeProviderId ? $t('providers.cannotDeleteActive') : $t('providers.delete')"
+                :aria-label="provider.id === activeProviderId ? $t('providers.cannotDeleteActive') : $t('providers.delete')"
                 class="text-destructive hover:bg-destructive/10 hover:text-destructive border-destructive/30"
                 @click="confirmDelete(provider)"
               >

@@ -1,5 +1,12 @@
 <template>
-  <span class="app-logo" :class="[`app-logo--${size}`]">
+  <span
+    class="inline-flex items-center justify-center bg-primary/[0.12] text-primary border border-primary/[0.22]"
+    :class="{
+      'w-[34px] h-[34px] rounded-[14px]': size === 'sm',
+      'w-10 h-10 rounded-[14px]': size === 'md',
+      'w-[52px] h-[52px] rounded-[18px]': size === 'lg',
+    }"
+  >
     <AppIcon name="bot" :size="iconSize" />
   </span>
 </template>
@@ -19,31 +26,3 @@ const iconSize = computed(() => {
   }
 })
 </script>
-
-<style scoped>
-.app-logo {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 14px;
-  background: rgba(90, 102, 255, 0.12);
-  color: var(--color-primary);
-  border: 1px solid rgba(90, 102, 255, 0.22);
-}
-
-.app-logo--sm {
-  width: 34px;
-  height: 34px;
-}
-
-.app-logo--md {
-  width: 40px;
-  height: 40px;
-}
-
-.app-logo--lg {
-  width: 52px;
-  height: 52px;
-  border-radius: 18px;
-}
-</style>

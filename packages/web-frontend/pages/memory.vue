@@ -19,7 +19,7 @@
     <Alert v-if="error" variant="destructive" class="mb-3 shrink-0">
       <AlertDescription class="flex items-center justify-between">
         <span>{{ error }}</span>
-        <button type="button" class="ml-2 opacity-70 hover:opacity-100 transition-opacity" @click="clearMessages()">
+        <button type="button" class="ml-2 opacity-70 hover:opacity-100 transition-opacity" :aria-label="$t('aria.closeAlert')" @click="clearMessages()">
           <AppIcon name="close" class="h-4 w-4" />
         </button>
       </AlertDescription>
@@ -28,7 +28,7 @@
     <Alert v-if="successMessage" variant="success" class="mb-3 shrink-0">
       <AlertDescription class="flex items-center justify-between">
         <span>{{ $t('memory.saveSuccess') }}</span>
-        <button type="button" class="ml-2 opacity-70 hover:opacity-100 transition-opacity" @click="clearMessages()">
+        <button type="button" class="ml-2 opacity-70 hover:opacity-100 transition-opacity" :aria-label="$t('aria.closeAlert')" @click="clearMessages()">
           <AppIcon name="close" class="h-4 w-4" />
         </button>
       </AlertDescription>

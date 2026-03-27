@@ -2,8 +2,7 @@
   "app": {
     "title": "OpenAgent",
     "adminConsole": "Admin-Konsole",
-    "workspace": "Arbeitsbereich",
-    "toggleMenu": "Menü umschalten"
+    "workspace": "Arbeitsbereich"
   },
   "nav": {
     "chat": "Chat",
@@ -30,26 +29,18 @@
     "description": "Diese Seite ist nur für Administratoren verfügbar."
   },
   "auth": {
-    "login": "Anmelden",
     "logout": "Abmelden",
     "username": "Benutzername",
     "password": "Passwort",
     "loginButton": "Anmelden",
-    "loginError": "Ungültiger Benutzername oder Passwort",
-    "loginRequired": "Bitte melden Sie sich an, um fortzufahren"
+    "loginError": "Ungültiger Benutzername oder Passwort"
   },
   "chat": {
     "placeholder": "Nachricht eingeben...",
     "send": "Senden",
     "newSession": "Neue Sitzung",
     "stop": "Stopp",
-    "sessionReset": "Sitzung wurde zurückgesetzt.",
-    "taskAborted": "Aufgabe wurde abgebrochen.",
-    "connecting": "Verbindung wird hergestellt...",
-    "connected": "Verbunden",
-    "disconnected": "Getrennt",
     "noMessages": "Noch keine Nachrichten. Starten Sie eine Unterhaltung!",
-    "loadingHistory": "Chat-Verlauf wird geladen...",
     "typing": "Schreibt..."
   },
   "status": {
@@ -57,24 +48,15 @@
     "offline": "Offline",
     "connecting": "Verbindung"
   },
-  "user": {
-    "menu": "Benutzermenü",
-    "profile": "Profil"
-  },
   "theme": {
-    "toggle": "Design umschalten",
-    "dark": "Dunkelmodus",
-    "light": "Hellmodus",
-    "system": "System",
     "switchToDark": "Zu Dunkelmodus wechseln",
     "switchToLight": "Zu Hellmodus wechseln"
   },
   "aria": {
-    "openMenu": "Menü öffnen",
-    "closeMenu": "Menü schließen",
     "toggleSidebar": "Seitenleiste umschalten",
     "userMenu": "Benutzermenü",
-    "themeToggle": "Farbdesign umschalten"
+    "themeToggle": "Farbdesign umschalten",
+    "closeAlert": "Schließen"
   },
   "providers": {
     "title": "Anbieter",
@@ -91,7 +73,6 @@
     "apiKeyHint": "Leer lassen, um bestehenden Schlüssel beizubehalten",
     "model": "Standardmodell",
     "modelPlaceholder": "z.B. gpt-4o",
-    "status": "Status",
     "statusConnected": "Verbunden",
     "statusError": "Fehler",
     "statusUntested": "Ungetestet",
@@ -107,9 +88,7 @@
     "deleteConfirmButton": "Löschen",
     "cannotDeleteActive": "Der aktive Anbieter kann nicht gelöscht werden",
     "save": "Speichern",
-    "cancel": "Abbrechen",
-    "required": "Dieses Feld ist erforderlich",
-    "apiKeyRequired": "API-Schlüssel ist für diesen Anbietertyp erforderlich"
+    "cancel": "Abbrechen"
   },
   "logs": {
     "title": "Aktivitätsprotokolle",

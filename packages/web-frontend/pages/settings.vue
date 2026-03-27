@@ -22,6 +22,7 @@
         <button
           type="button"
           class="ml-2 opacity-70 transition-opacity hover:opacity-100"
+          :aria-label="$t('aria.closeAlert')"
           @click="clearMessages()"
         >
           <AppIcon name="close" class="h-4 w-4" />
@@ -36,6 +37,7 @@
         <button
           type="button"
           class="ml-2 opacity-70 transition-opacity hover:opacity-100"
+          :aria-label="$t('aria.closeAlert')"
           @click="clearMessages()"
         >
           <AppIcon name="close" class="h-4 w-4" />
