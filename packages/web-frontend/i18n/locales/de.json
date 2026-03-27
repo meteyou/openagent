@@ -250,31 +250,54 @@
   "usage": {
     "kicker": "Verbrauchsanalysen",
     "title": "Token-Verbrauch",
-    "subtitle": "Verfolgen Sie Modellaktivität, vergleichen Sie Anbieter und behalten Sie geschätzte Kosten im Blick.",
+    "subtitle": "Beobachten Sie den täglichen Token-Fluss, vergleichen Sie Anbieter und übersetzen Sie rohe Nutzung in verständliche Kostenschätzungen.",
     "refresh": "Aktualisieren",
-    "loading": "Verbrauch wird geladen...",
-    "empty": "Noch keine Verbrauchsdaten.",
-    "byProvider": "Nach Anbieter",
-    "byProviderDescription": "Zeigt, welche Anbieter die meisten Anfragen und Kosten verursachen.",
-    "byModel": "Nach Modell",
-    "byModelDescription": "Top-Modelle sortiert nach geschätzten Kosten und Anfragevolumen.",
-    "recentRequests": "Letzte Anfragen",
-    "recentRequestsDescription": "Neueste Token-Verbrauchseinträge aus dem Backend.",
+    "loading": "Verbrauchsstatistiken werden geladen...",
+    "emptyTitle": "Noch kein Token-Verbrauch",
+    "emptyDescription": "Sobald der Agent mit Modellen spricht, zeigt diese Seite tägliche Summen, Anbieter-Aufschlüsselungen und geschätzte USD-Kosten an.",
+    "emptyFilteredTitle": "Keine Daten für diese Filter",
+    "emptyFilteredDescription": "Erweitern Sie den Zeitraum oder entfernen Sie Anbieter-/Modellfilter, um mehr Aktivität zu sehen.",
     "summary": {
-      "requests": "Anfragen",
-      "totalTokens": "Gesamte Tokens",
-      "promptTokens": "Prompt-Tokens",
-      "completionTokens": "Antwort-Tokens",
-      "estimatedCost": "Geschätzte Kosten"
+      "tokensToday": "Tokens heute",
+      "tokensTodayMeta": "Heute erfasste Prompt- und Antwort-Tokens",
+      "costToday": "Kosten heute",
+      "costTodayMeta": "Geschätzte USD-Kosten der heutigen Anfragen",
+      "tokensMonth": "Tokens diesen Monat",
+      "tokensMonthMeta": "Alle seit Monatsbeginn erfassten Tokens",
+      "costMonth": "Kosten diesen Monat",
+      "costMonthMeta": "Geschätzte USD-Kosten seit Monatsbeginn"
     },
-    "columns": {
+    "filters": {
+      "title": "Filter",
+      "description": "Filtern Sie nach Zeitraum, Anbieter oder Modell, bevor Sie Diagramm und Tabelle auswerten.",
+      "dateFrom": "Von",
+      "dateTo": "Bis",
       "provider": "Anbieter",
       "model": "Modell",
-      "requests": "Anfragen",
-      "tokens": "Tokens",
-      "cost": "Kosten",
-      "timestamp": "Zeitpunkt",
-      "session": "Sitzung"
+      "allProviders": "Alle Anbieter",
+      "allModels": "Alle Modelle",
+      "apply": "Filter anwenden",
+      "reset": "Zurücksetzen"
+    },
+    "chart": {
+      "title": "Tägliche Nutzung",
+      "description": "Eine taggenaue Ansicht des gesamten Token-Volumens im ausgewählten Zeitraum.",
+      "rangeLabel": "Ausgewählter Zeitraum",
+      "empty": "Für die aktuellen Filter gibt es keine tägliche Nutzung zum Anzeigen."
+    },
+    "table": {
+      "title": "Anbieter-/Modell-Aufschlüsselung",
+      "description": "Vergleichen Sie Prompt-Tokens, Antwort-Tokens, Gesamtvolumen und geschätzte Kosten pro Anbieter-/Modell-Kombination.",
+      "selectedTotal": "Tokens in Auswahl",
+      "empty": "Keine gruppierten Nutzungszeilen vorhanden.",
+      "columns": {
+        "provider": "Anbieter",
+        "model": "Modell",
+        "promptTokens": "Prompt-Tokens",
+        "completionTokens": "Antwort-Tokens",
+        "totalTokens": "Gesamt-Tokens",
+        "cost": "Gesch. Kosten"
+      }
     }
   }
 }
