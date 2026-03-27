@@ -1,3 +1,10 @@
+export interface MemoryConsolidationSettings {
+  enabled: boolean
+  runAtHour: number
+  lookbackDays: number
+  providerId: string
+}
+
 export interface Settings {
   sessionTimeoutMinutes: number
   language: string
@@ -5,6 +12,7 @@ export interface Settings {
   yoloMode: boolean
   batchingDelayMs: number
   telegramBotToken: string
+  memoryConsolidation: MemoryConsolidationSettings
 }
 
 export function useSettings() {
@@ -45,6 +53,12 @@ export function useSettings() {
         yoloMode: result.yoloMode,
         batchingDelayMs: result.batchingDelayMs,
         telegramBotToken: result.telegramBotToken,
+        memoryConsolidation: result.memoryConsolidation ?? {
+          enabled: false,
+          runAtHour: 3,
+          lookbackDays: 3,
+          providerId: '',
+        },
       }
       successMessage.value = 'saved'
       return true

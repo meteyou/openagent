@@ -146,6 +146,102 @@
         </CardContent>
       </Card>
 
+      <!-- Memory consolidation section -->
+      <Card>
+        <CardHeader>
+          <CardTitle>{{ $t('settings.consolidationSection') }}</CardTitle>
+          <CardDescription>{{ $t('settings.consolidationSectionDescription') }}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div class="flex flex-col gap-5">
+            <!-- Enable toggle -->
+            <div class="flex items-center justify-between">
+              <div class="flex flex-col gap-0.5">
+                <Label for="consolidation-enabled">{{ $t('settings.consolidationEnabled') }}</Label>
+                <p class="text-xs text-muted-foreground">{{ $t('settings.consolidationEnabledHint') }}</p>
+              </div>
+              <Switch
+                id="consolidation-enabled"
+                v-model="form.memoryConsolidation.enabled"
+              />
+            </div>
+
+            <!-- Settings grid (only shown when enabled) -->
+            <div v-if="form.memoryConsolidation.enabled" class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div class="flex flex-col gap-1.5">
+                <Label for="consolidation-hour">{{ $t('settings.consolidationRunAtHour') }}</Label>
+                <div class="flex items-center gap-3">
+                  <Input
+                    id="consolidation-hour"
+                    v-model.number="form.memoryConsolidation.runAtHour"
+                    type="number"
+                    min="0"
+                    max="23"
+                    class="w-24"
+                  />
+                  <span class="text-sm text-muted-foreground">{{ $t('settings.oClock') }}</span>
+                </div>
+                <p class="text-xs text-muted-foreground">{{ $t('settings.consolidationRunAtHourHint') }}</p>
+              </div>
+
+              <div class="flex flex-col gap-1.5">
+                <Label for="consolidation-days">{{ $t('settings.consolidationLookbackDays') }}</Label>
+                <div class="flex items-center gap-3">
+                  <Input
+                    id="consolidation-days"
+                    v-model.number="form.memoryConsolidation.lookbackDays"
+                    type="number"
+                    min="1"
+                    max="30"
+                    class="w-24"
+                  />
+                  <span class="text-sm text-muted-foreground">{{ $t('settings.days') }}</span>
+                </div>
+                <p class="text-xs text-muted-foreground">{{ $t('settings.consolidationLookbackDaysHint') }}</p>
+              </div>
+            </div>
+
+            <!-- Provider select (only shown when enabled) -->
+            <div v-if="form.memoryConsolidation.enabled" class="flex flex-col gap-1.5">
+              <Label for="consolidation-provider">{{ $t('settings.consolidationProvider') }}</Label>
+              <Select id="consolidation-provider" v-model="form.memoryConsolidation.providerId">
+                <option value="">{{ $t('settings.consolidationProviderDefault') }}</option>
+                <option v-for="p in providers" :key="p.id" :value="p.id">
+                  {{ p.name }} ({{ p.defaultModel }})
+                </option>
+              </Select>
+              <p class="text-xs text-muted-foreground">{{ $t('settings.consolidationProviderHint') }}</p>
+            </div>
+
+            <!-- Manual run + status (only shown when enabled) -->
+            <div v-if="form.memoryConsolidation.enabled" class="flex items-center gap-4">
+              <Button
+                variant="outline"
+                size="sm"
+                :disabled="consolidationRunning"
+                @click="handleRunConsolidation"
+              >
+                <span
+                  v-if="consolidationRunning"
+                  class="mr-1 h-3.5 w-3.5 animate-spin rounded-full border-2 border-foreground/30 border-t-foreground"
+                  aria-hidden="true"
+                />
+                {{ consolidationRunning ? $t('settings.consolidationRunning') : $t('settings.consolidationRunNow') }}
+              </Button>
+              <div v-if="consolidationStatus" class="text-xs text-muted-foreground">
+                <span class="font-medium">{{ $t('settings.consolidationLastRun') }}:</span>
+                {{ consolidationStatus.lastRun ? new Date(consolidationStatus.lastRun).toLocaleString() : $t('settings.consolidationNeverRun') }}
+                <template v-if="consolidationStatus.lastResult">
+                  · <span :class="consolidationStatus.lastResult.updated ? 'text-green-600 dark:text-green-400' : ''">
+                    {{ consolidationStatus.lastResult.updated ? $t('settings.consolidationResultUpdated') : $t('settings.consolidationResultNoChange') }}
+                  </span>
+                </template>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       <!-- Telegram section -->
       <Card>
         <CardHeader>
@@ -184,8 +280,11 @@
 </template>
 
 <script setup lang="ts">
+import type { MemoryConsolidationSettings } from '~/composables/useSettings'
+
 const { user } = useAuth()
 const isAdmin = computed(() => user.value?.role === 'admin')
+const { apiFetch } = useApi()
 
 const {
   settings,
@@ -198,17 +297,32 @@ const {
   clearMessages,
 } = useSettings()
 
+// Providers list for the consolidation provider dropdown
+const { providers, fetchProviders } = useProviders()
+
+// Consolidation status
+const consolidationRunning = ref(false)
+const consolidationStatus = ref<{
+  lastRun: string | null
+  lastResult: { updated: boolean; reason?: string } | null
+} | null>(null)
+
 const form = ref<{
   sessionTimeoutMinutes: number
   language: string
   heartbeatIntervalMinutes: number
   batchingDelayMs: number
   telegramBotToken: string
+  memoryConsolidation: MemoryConsolidationSettings
 } | null>(null)
 
 onMounted(async () => {
   if (!isAdmin.value) return
-  await fetchSettings()
+  await Promise.all([
+    fetchSettings(),
+    fetchProviders(),
+    fetchConsolidationStatus(),
+  ])
   hydrateForm()
 })
 
@@ -224,6 +338,36 @@ function hydrateForm() {
     heartbeatIntervalMinutes: settings.value.heartbeatIntervalMinutes,
     batchingDelayMs: settings.value.batchingDelayMs,
     telegramBotToken: settings.value.telegramBotToken,
+    memoryConsolidation: { ...settings.value.memoryConsolidation },
+  }
+}
+
+async function fetchConsolidationStatus() {
+  try {
+    consolidationStatus.value = await apiFetch<{
+      lastRun: string | null
+      lastResult: { updated: boolean; reason?: string } | null
+    }>('/api/memory/consolidation/status')
+  } catch {
+    // Ignore - status display is optional
+  }
+}
+
+async function handleRunConsolidation() {
+  consolidationRunning.value = true
+  try {
+    const result = await apiFetch<{ updated: boolean; reason?: string }>('/api/memory/consolidation/run', {
+      method: 'POST',
+    })
+    // Refresh status after run
+    consolidationStatus.value = {
+      lastRun: new Date().toISOString(),
+      lastResult: result,
+    }
+  } catch (err) {
+    error.value = (err as Error).message
+  } finally {
+    consolidationRunning.value = false
   }
 }
 
