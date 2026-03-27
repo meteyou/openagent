@@ -8,7 +8,10 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces",
-    "dev": "npm run dev --workspace=packages/web-backend",
+    "dev": "node scripts/dev.mjs",
+    "dev:all": "node scripts/dev.mjs",
+    "dev:backend": "npm run dev --workspace=packages/web-backend",
+    "dev:frontend": "npm run dev --workspace=packages/web-frontend",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint packages/",
