@@ -1,6 +1,6 @@
 <template>
   <div v-if="!isAdmin" class="admin-gate">
-    <span class="gate-icon">🔒</span>
+    <AppIcon name="lock" class="gate-icon" size="xl" />
     <h1>{{ $t('admin.title') }}</h1>
     <p>{{ $t('admin.description') }}</p>
   </div>
@@ -14,13 +14,16 @@
       </div>
 
       <button class="btn btn-outline" :disabled="loading" @click="loadStats">
+        <AppIcon name="refresh" />
         {{ $t('usage.refresh') }}
       </button>
     </header>
 
     <div v-if="error" class="error-banner">
       <span>{{ error }}</span>
-      <button class="error-dismiss" @click="error = null">✕</button>
+      <button class="error-dismiss" @click="error = null">
+        <AppIcon name="close" />
+      </button>
     </div>
 
     <div v-if="loading" class="loading-state">{{ $t('usage.loading') }}</div>
@@ -81,14 +84,14 @@
       </section>
 
       <section v-if="!hasAnyUsage" class="empty-state glass-panel">
-        <span class="empty-icon">📉</span>
+        <AppIcon name="trendDown" class="empty-icon" size="xl" />
         <h2>{{ $t('usage.emptyTitle') }}</h2>
         <p>{{ $t('usage.emptyDescription') }}</p>
       </section>
 
       <template v-else>
         <section v-if="!hasFilteredResults" class="empty-state compact glass-panel">
-          <span class="empty-icon">🧭</span>
+          <AppIcon name="compass" class="empty-icon" size="xl" />
           <h2>{{ $t('usage.emptyFilteredTitle') }}</h2>
           <p>{{ $t('usage.emptyFilteredDescription') }}</p>
         </section>
@@ -444,14 +447,12 @@ function formatFullDate(value: string): string {
 }
 
 .gate-icon {
-  font-size: 44px;
+  width: 40px;
+  height: 40px;
 }
 
 .glass-panel {
-  background:
-    radial-gradient(circle at top right, rgba(59, 130, 246, 0.14), transparent 32%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.015)),
-    var(--color-bg-secondary);
+  background: var(--color-bg-secondary);
   border: 1px solid rgba(255, 255, 255, 0.07);
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.22);
 }
@@ -529,10 +530,10 @@ function formatFullDate(value: string): string {
 .summary-card::after {
   content: '';
   position: absolute;
-  inset: auto -12% -30% auto;
-  width: 120px;
-  height: 120px;
-  background: radial-gradient(circle, rgba(56, 189, 248, 0.12), transparent 70%);
+  inset: 0 auto auto 0;
+  width: 100%;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.04);
   pointer-events: none;
 }
 
@@ -659,7 +660,7 @@ function formatFullDate(value: string): string {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, rgba(14, 165, 233, 0.9), rgba(59, 130, 246, 0.9));
+  background: var(--color-primary);
   color: white;
 }
 
@@ -689,7 +690,8 @@ function formatFullDate(value: string): string {
 }
 
 .empty-icon {
-  font-size: 34px;
+  width: 32px;
+  height: 32px;
 }
 
 .empty-state p {
@@ -755,8 +757,8 @@ function formatFullDate(value: string): string {
   width: 100%;
   max-width: 26px;
   border-radius: 999px 999px 10px 10px;
-  background: linear-gradient(180deg, rgba(125, 211, 252, 0.95), rgba(37, 99, 235, 0.8));
-  box-shadow: 0 10px 24px rgba(14, 165, 233, 0.25);
+  background: rgba(90, 102, 255, 0.82);
+  box-shadow: 0 10px 24px rgba(7, 12, 24, 0.2);
 }
 
 .chart-label {

@@ -2,7 +2,7 @@
   <div class="login-page">
     <div class="login-card">
       <div class="login-header">
-        <span class="login-logo">🤖</span>
+        <AppLogo size="lg" />
         <h1 class="login-title">{{ $t('app.title') }}</h1>
       </div>
 
@@ -98,10 +98,8 @@ async function handleLogin() {
   margin-bottom: 32px;
 }
 
-.login-logo {
-  font-size: 48px;
-  display: block;
-  margin-bottom: 12px;
+.login-header :deep(.app-logo) {
+  margin: 0 auto 14px;
 }
 
 .login-title {

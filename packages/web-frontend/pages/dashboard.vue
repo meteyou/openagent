@@ -1,6 +1,6 @@
 <template>
   <div v-if="!isAdmin" class="admin-gate">
-    <span class="gate-icon">🔒</span>
+    <AppIcon name="lock" class="gate-icon" size="xl" />
     <h1>{{ $t('admin.title') }}</h1>
     <p>{{ $t('admin.description') }}</p>
   </div>
@@ -12,12 +12,17 @@
         <h1>{{ $t('dashboard.title') }}</h1>
         <p class="dashboard-subtitle">{{ $t('dashboard.subtitle') }}</p>
       </div>
-      <button class="btn btn-outline" :disabled="loading" @click="loadDashboard">{{ $t('dashboard.refresh') }}</button>
+      <button class="btn btn-outline" :disabled="loading" @click="loadDashboard">
+        <AppIcon name="refresh" />
+        {{ $t('dashboard.refresh') }}
+      </button>
     </div>
 
     <div v-if="error" class="error-banner">
       {{ error }}
-      <button class="error-dismiss" @click="error = null">✕</button>
+      <button class="error-dismiss" @click="error = null">
+        <AppIcon name="close" />
+      </button>
     </div>
 
     <div v-if="loading" class="loading-state">{{ $t('dashboard.loading') }}</div>
@@ -118,7 +123,7 @@
 
           <div class="action-grid">
             <NuxtLink v-for="action in quickActions" :key="action.to" :to="action.to" class="action-card">
-              <span class="action-icon">{{ action.icon }}</span>
+              <AppIcon :name="action.icon" class="action-icon" size="lg" />
               <div>
                 <strong>{{ action.label }}</strong>
                 <p>{{ action.description }}</p>
@@ -248,37 +253,37 @@ const statCards = computed(() => [
 const quickActions = computed(() => [
   {
     to: '/memory',
-    icon: '🧠',
+    icon: 'brain',
     label: t('nav.memory'),
     description: t('dashboard.actions.memory'),
   },
   {
     to: '/settings',
-    icon: '⚙️',
+    icon: 'settings',
     label: t('nav.settings'),
     description: t('dashboard.actions.settings'),
   },
   {
     to: '/providers',
-    icon: '🔌',
+    icon: 'plug',
     label: t('nav.providers'),
     description: t('dashboard.actions.providers'),
   },
   {
     to: '/users',
-    icon: '👥',
+    icon: 'users',
     label: t('nav.users'),
     description: t('dashboard.actions.users'),
   },
   {
     to: '/logs',
-    icon: '📋',
+    icon: 'logs',
     label: t('nav.logs'),
     description: t('dashboard.actions.logs'),
   },
   {
     to: '/usage',
-    icon: '📈',
+    icon: 'trendDown',
     label: t('nav.usage'),
     description: t('dashboard.actions.usage'),
   },
@@ -377,14 +382,12 @@ function statusBadgeClass(status: 'healthy' | 'degraded' | 'down' | 'unconfigure
 }
 
 .gate-icon {
-  font-size: 44px;
+  width: 40px;
+  height: 40px;
 }
 
 .glass {
-  background:
-    radial-gradient(circle at top right, rgba(99, 102, 241, 0.1), transparent 32%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.015)),
-    var(--color-bg-secondary);
+  background: var(--color-bg-secondary);
   border: 1px solid rgba(255, 255, 255, 0.06);
   box-shadow: 0 18px 36px rgba(0, 0, 0, 0.18);
 }
@@ -528,7 +531,7 @@ function statusBadgeClass(status: 'healthy' | 'degraded' | 'down' | 'unconfigure
   border-radius: 50%;
   display: grid;
   place-items: center;
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.08), transparent 65%);
+  background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.07);
   flex-shrink: 0;
 }
@@ -609,7 +612,9 @@ function statusBadgeClass(status: 'healthy' | 'degraded' | 'down' | 'unconfigure
 }
 
 .action-icon {
-  font-size: 24px;
+  width: 20px;
+  height: 20px;
+  color: var(--color-text-secondary);
 }
 
 .action-card strong {

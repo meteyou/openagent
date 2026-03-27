@@ -64,7 +64,7 @@
 
     <!-- Empty state -->
     <div v-else-if="!loading && logs.length === 0" class="logs-empty">
-      <span class="empty-icon">📋</span>
+      <AppIcon name="logs" class="empty-icon" size="xl" />
       <p>{{ $t('logs.noEntries') }}</p>
     </div>
 
@@ -80,15 +80,17 @@
         <div class="log-row">
           <span class="log-timestamp">{{ formatTimestamp(entry.timestamp) }}</span>
           <span class="log-tool" :class="toolClass(entry.toolName)">
-            <span class="tool-icon">{{ toolIcon(entry.toolName) }}</span>
+            <AppIcon :name="toolIcon(entry.toolName)" class="tool-icon" />
             {{ entry.toolName }}
           </span>
           <span class="log-input-preview">{{ entry.input || '—' }}</span>
           <span class="log-duration">{{ formatDuration(entry.durationMs) }}</span>
           <span class="log-status" :class="entry.status">
-            {{ entry.status === 'success' ? '✓' : '✗' }}
+            <AppIcon :name="entry.status === 'success' ? 'success' : 'warning'" />
           </span>
-          <span class="log-expand-icon">{{ expandedId === entry.id ? '▾' : '▸' }}</span>
+          <span class="log-expand-icon">
+            <AppIcon :name="expandedId === entry.id ? 'chevronDown' : 'chevronRight'" />
+          </span>
         </div>
 
         <!-- Expanded detail -->
@@ -120,7 +122,8 @@
         :disabled="pagination.page <= 1"
         @click="goToPage(pagination.page - 1)"
       >
-        ← {{ $t('logs.prev') }}
+        <AppIcon name="arrowLeft" />
+        {{ $t('logs.prev') }}
       </button>
       <span class="pagination-info">
         {{ $t('logs.pageInfo', { page: pagination.page, total: pagination.totalPages }) }}
@@ -130,7 +133,8 @@
         :disabled="pagination.page >= pagination.totalPages"
         @click="goToPage(pagination.page + 1)"
       >
-        {{ $t('logs.next') }} →
+        {{ $t('logs.next') }}
+        <AppIcon name="arrowRight" />
       </button>
     </div>
   </div>
@@ -248,13 +252,13 @@ function toolClass(name: string): string {
   return 'tool-default'
 }
 
-function toolIcon(name: string): string {
-  if (!name) return '🔧'
+function toolIcon(name: string): 'activity' | 'file' | 'brain' | 'wrench' {
+  if (!name) return 'wrench'
   const lower = name.toLowerCase()
-  if (lower.includes('bash') || lower.includes('exec') || lower.includes('command')) return '⚡'
-  if (lower.includes('file') || lower.includes('read') || lower.includes('write') || lower.includes('edit')) return '📄'
-  if (lower.includes('llm') || lower.includes('chat') || lower.includes('generate')) return '🧠'
-  return '🔧'
+  if (lower.includes('bash') || lower.includes('exec') || lower.includes('command')) return 'activity'
+  if (lower.includes('file') || lower.includes('read') || lower.includes('write') || lower.includes('edit')) return 'file'
+  if (lower.includes('llm') || lower.includes('chat') || lower.includes('generate')) return 'brain'
+  return 'wrench'
 }
 
 // Initialize
@@ -413,7 +417,8 @@ select.filter-input {
 }
 
 .empty-icon {
-  font-size: 48px;
+  width: 40px;
+  height: 40px;
   opacity: 0.5;
 }
 
@@ -472,7 +477,8 @@ select.filter-input {
 }
 
 .tool-icon {
-  font-size: 12px;
+  width: 14px;
+  height: 14px;
 }
 
 .tool-bash {
@@ -516,7 +522,9 @@ select.filter-input {
 }
 
 .log-status {
-  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 20px;
   text-align: center;
 }
@@ -530,8 +538,10 @@ select.filter-input {
 }
 
 .log-expand-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   color: var(--color-text-muted);
-  font-size: 11px;
   width: 16px;
   text-align: center;
 }

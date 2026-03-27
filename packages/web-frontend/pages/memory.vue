@@ -1,6 +1,6 @@
 <template>
   <div v-if="!isAdmin" class="admin-gate">
-    <span class="gate-icon">🔒</span>
+    <AppIcon name="lock" class="gate-icon" size="xl" />
     <h1>{{ $t('admin.title') }}</h1>
     <p>{{ $t('admin.description') }}</p>
   </div>
@@ -16,11 +16,15 @@
 
     <div v-if="error" class="error-banner">
       {{ error }}
-      <button class="error-dismiss" @click="clearMessages()">✕</button>
+      <button class="error-dismiss" @click="clearMessages()">
+        <AppIcon name="close" />
+      </button>
     </div>
     <div v-if="successMessage" class="success-banner">
       {{ $t('memory.saveSuccess') }}
-      <button class="success-dismiss" @click="clearMessages()">✕</button>
+      <button class="success-dismiss" @click="clearMessages()">
+        <AppIcon name="close" />
+      </button>
     </div>
 
     <div class="tabs">
@@ -108,7 +112,7 @@
 
         <div v-if="loading" class="loading-state">{{ $t('memory.loading') }}</div>
         <div v-else-if="dailyFiles.length === 0" class="empty-state">
-          <span class="empty-icon">📅</span>
+          <AppIcon name="calendar" class="empty-icon" size="xl" />
           <p>{{ $t('memory.noDailyFiles') }}</p>
         </div>
         <div v-else class="daily-list">
@@ -124,7 +128,10 @@
 
       <div v-else class="daily-editor-view">
         <div class="daily-editor-header">
-          <button class="btn btn-sm btn-outline" @click="closeDailyFile">← {{ $t('memory.backToList') }}</button>
+          <button class="btn btn-sm btn-outline" @click="closeDailyFile">
+            <AppIcon name="arrowLeft" />
+            {{ $t('memory.backToList') }}
+          </button>
           <div>
             <span class="daily-date-label">{{ selectedDaily }}</span>
             <p class="daily-editor-subtitle">{{ $t('memory.dailyEditorDescription') }}</p>
@@ -319,7 +326,8 @@ onMounted(async () => {
 }
 
 .gate-icon {
-  font-size: 44px;
+  width: 40px;
+  height: 40px;
 }
 
 .memory-header {
@@ -427,14 +435,13 @@ onMounted(async () => {
 }
 
 .empty-icon {
-  font-size: 48px;
+  width: 40px;
+  height: 40px;
   opacity: 0.5;
 }
 
 .glass {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01)),
-    var(--color-bg-secondary);
+  background: var(--color-bg-secondary);
   border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
@@ -622,7 +629,7 @@ onMounted(async () => {
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .btn-primary {
-  background: linear-gradient(135deg, var(--color-primary), #8b5cf6);
+  background: var(--color-primary);
   color: white;
 }
 

@@ -1,6 +1,6 @@
 <template>
   <div v-if="!isAdmin" class="admin-gate">
-    <span class="gate-icon">🔒</span>
+    <AppIcon name="lock" class="gate-icon" size="xl" />
     <h1>{{ $t('admin.title') }}</h1>
     <p>{{ $t('admin.description') }}</p>
   </div>
@@ -16,11 +16,15 @@
 
     <div v-if="error" class="error-banner">
       {{ error }}
-      <button class="error-dismiss" @click="clearMessages()">✕</button>
+      <button class="error-dismiss" @click="clearMessages()">
+        <AppIcon name="close" />
+      </button>
     </div>
     <div v-if="successMessage" class="success-banner">
       {{ $t('settings.saveSuccess') }}
-      <button class="success-dismiss" @click="clearMessages()">✕</button>
+      <button class="success-dismiss" @click="clearMessages()">
+        <AppIcon name="close" />
+      </button>
     </div>
 
     <div v-if="loading" class="loading-state">{{ $t('settings.loading') }}</div>
@@ -229,7 +233,8 @@ async function handleSave() {
 }
 
 .gate-icon {
-  font-size: 44px;
+  width: 40px;
+  height: 40px;
 }
 
 .settings-header {
@@ -303,9 +308,7 @@ async function handleSave() {
 }
 
 .glass {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01)),
-    var(--color-bg-secondary);
+  background: var(--color-bg-secondary);
   border: 1px solid rgba(255, 255, 255, 0.06);
   box-shadow: 0 14px 30px rgba(0, 0, 0, 0.16);
 }
@@ -420,7 +423,7 @@ async function handleSave() {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, var(--color-primary), #8b5cf6);
+  background: var(--color-primary);
   color: white;
 }
 

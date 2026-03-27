@@ -3,7 +3,7 @@
     <!-- Chat toolbar -->
     <div class="chat-toolbar">
       <button class="toolbar-btn" @click="handleNewSession" :title="$t('chat.newSession')">
-        <span class="btn-icon">✨</span>
+        <AppIcon name="sparkles" class="btn-icon" />
         <span class="btn-text">{{ $t('chat.newSession') }}</span>
       </button>
       <button
@@ -12,7 +12,7 @@
         :disabled="!isStreaming"
         :title="$t('chat.stop')"
       >
-        <span class="btn-icon">⏹</span>
+        <AppIcon name="square" class="btn-icon" />
         <span class="btn-text">{{ $t('chat.stop') }}</span>
       </button>
     </div>
@@ -24,7 +24,7 @@
       </div>
 
       <div v-else-if="messages.length === 0" class="empty-state">
-        <span class="empty-icon">💬</span>
+        <AppIcon name="chat" class="empty-icon" size="xl" />
         <p>{{ $t('chat.noMessages') }}</p>
       </div>
 
@@ -35,9 +35,9 @@
         :class="[`message-${msg.role}`, { streaming: msg.streaming }]"
       >
         <div class="message-avatar">
-          <span v-if="msg.role === 'user'">👤</span>
-          <span v-else-if="msg.role === 'assistant'">🤖</span>
-          <span v-else>ℹ️</span>
+          <AppIcon v-if="msg.role === 'user'" name="user" />
+          <AppIcon v-else-if="msg.role === 'assistant'" name="bot" />
+          <AppIcon v-else name="info" />
         </div>
         <div class="message-bubble">
           <div class="message-content" v-text="msg.content" />
@@ -235,7 +235,8 @@ function autoResize() {
 }
 
 .btn-icon {
-  font-size: 14px;
+  width: 16px;
+  height: 16px;
 }
 
 /* Messages area */
@@ -266,7 +267,8 @@ function autoResize() {
 }
 
 .empty-icon {
-  font-size: 48px;
+  width: 40px;
+  height: 40px;
   opacity: 0.5;
 }
 
@@ -308,9 +310,10 @@ function autoResize() {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
+  color: var(--color-text-secondary);
   flex-shrink: 0;
   background: var(--color-bg-tertiary);
+  border: 1px solid var(--color-border);
 }
 
 .message-bubble {

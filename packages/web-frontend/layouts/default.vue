@@ -8,7 +8,7 @@
 
     <aside class="sidebar" :class="{ open: sidebarOpen }">
       <div class="sidebar-header">
-        <span class="sidebar-logo">🤖</span>
+        <AppLogo />
         <div>
           <span class="sidebar-title">{{ $t('app.title') }}</span>
           <p class="sidebar-subtitle">{{ isAdmin ? $t('app.adminConsole') : $t('app.workspace') }}</p>
@@ -17,37 +17,37 @@
 
       <nav class="sidebar-nav">
         <NuxtLink to="/" class="nav-item" :class="navClass('/')" @click="sidebarOpen = false">
-          <span class="nav-icon">💬</span>
+          <AppIcon name="chat" class="nav-icon" />
           <span>{{ $t('nav.chat') }}</span>
         </NuxtLink>
 
         <template v-if="isAdmin">
           <NuxtLink to="/dashboard" class="nav-item" :class="navClass('/dashboard')" @click="sidebarOpen = false">
-            <span class="nav-icon">📊</span>
+            <AppIcon name="dashboard" class="nav-icon" />
             <span>{{ $t('nav.dashboard') }}</span>
           </NuxtLink>
           <NuxtLink to="/memory" class="nav-item" :class="navClass('/memory')" @click="sidebarOpen = false">
-            <span class="nav-icon">🧠</span>
+            <AppIcon name="brain" class="nav-icon" />
             <span>{{ $t('nav.memory') }}</span>
           </NuxtLink>
           <NuxtLink to="/providers" class="nav-item" :class="navClass('/providers')" @click="sidebarOpen = false">
-            <span class="nav-icon">🔌</span>
+            <AppIcon name="plug" class="nav-icon" />
             <span>{{ $t('nav.providers') }}</span>
           </NuxtLink>
           <NuxtLink to="/usage" class="nav-item" :class="navClass('/usage')" @click="sidebarOpen = false">
-            <span class="nav-icon">📈</span>
+            <AppIcon name="trendDown" class="nav-icon" />
             <span>{{ $t('nav.usage') }}</span>
           </NuxtLink>
           <NuxtLink to="/logs" class="nav-item" :class="navClass('/logs')" @click="sidebarOpen = false">
-            <span class="nav-icon">📋</span>
+            <AppIcon name="logs" class="nav-icon" />
             <span>{{ $t('nav.logs') }}</span>
           </NuxtLink>
           <NuxtLink to="/settings" class="nav-item" :class="navClass('/settings')" @click="sidebarOpen = false">
-            <span class="nav-icon">⚙️</span>
+            <AppIcon name="settings" class="nav-icon" />
             <span>{{ $t('nav.settings') }}</span>
           </NuxtLink>
           <NuxtLink to="/users" class="nav-item" :class="navClass('/users')" @click="sidebarOpen = false">
-            <span class="nav-icon">👥</span>
+            <AppIcon name="users" class="nav-icon" />
             <span>{{ $t('nav.users') }}</span>
           </NuxtLink>
         </template>
@@ -63,7 +63,7 @@
     <div class="main-area">
       <header class="app-header">
         <button class="menu-toggle" @click="sidebarOpen = !sidebarOpen" :aria-label="$t('app.toggleMenu')">
-          <span class="hamburger">☰</span>
+          <AppIcon name="menu" size="xl" />
         </button>
 
         <div class="header-status">
@@ -161,10 +161,7 @@ if (import.meta.client) {
 
 .sidebar {
   width: var(--sidebar-width);
-  background:
-    radial-gradient(circle at top left, rgba(99, 102, 241, 0.18), transparent 32%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 24%),
-    var(--color-bg-secondary);
+  background: var(--color-bg-secondary);
   border-right: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;
@@ -178,18 +175,6 @@ if (import.meta.client) {
   gap: 12px;
   padding: 18px 20px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.sidebar-logo {
-  width: 40px;
-  height: 40px;
-  border-radius: 14px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(99, 102, 241, 0.14);
-  box-shadow: inset 0 0 0 1px rgba(129, 140, 248, 0.2);
-  font-size: 20px;
 }
 
 .sidebar-title {
@@ -234,15 +219,15 @@ if (import.meta.client) {
 
 .nav-item.active,
 .nav-item.router-link-exact-active {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.18), rgba(99, 102, 241, 0.08));
-  color: #c7d2fe;
-  box-shadow: inset 0 0 0 1px rgba(129, 140, 248, 0.2);
+  background: rgba(90, 102, 255, 0.12);
+  color: #d5ddff;
+  box-shadow: inset 0 0 0 1px rgba(90, 102, 255, 0.22);
 }
 
 .nav-icon {
-  font-size: 18px;
-  width: 24px;
-  text-align: center;
+  width: 18px;
+  height: 18px;
+  color: currentColor;
 }
 
 .sidebar-footer {
@@ -299,10 +284,6 @@ if (import.meta.client) {
   color: var(--color-text);
   font-size: 24px;
   padding: 4px;
-}
-
-.hamburger {
-  line-height: 1;
 }
 
 .header-status {
@@ -365,7 +346,8 @@ if (import.meta.client) {
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--color-primary), #8b5cf6);
+  background: rgba(90, 102, 255, 0.16);
+  border: 1px solid rgba(90, 102, 255, 0.24);
   color: white;
   display: flex;
   align-items: center;

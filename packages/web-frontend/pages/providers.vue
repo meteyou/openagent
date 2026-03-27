@@ -3,7 +3,7 @@
     <div class="providers-header">
       <h1>{{ $t('providers.title') }}</h1>
       <button class="btn btn-primary" @click="openAddForm">
-        <span class="btn-icon">+</span>
+        <AppIcon name="add" class="btn-icon" />
         {{ $t('providers.addProvider') }}
       </button>
     </div>
@@ -11,7 +11,9 @@
     <!-- Error banner -->
     <div v-if="error" class="error-banner">
       {{ error }}
-      <button class="error-dismiss" @click="error = null">✕</button>
+      <button class="error-dismiss" @click="error = null">
+        <AppIcon name="close" />
+      </button>
     </div>
 
     <!-- Loading state -->
@@ -21,7 +23,7 @@
 
     <!-- Empty state -->
     <div v-else-if="providers.length === 0 && !showForm" class="empty-state">
-      <span class="empty-icon">🔌</span>
+      <AppIcon name="plug" class="empty-icon" size="xl" />
       <p>{{ $t('providers.noProviders') }}</p>
       <button class="btn btn-primary" @click="openAddForm">
         {{ $t('providers.addProvider') }}
@@ -78,15 +80,20 @@
               {{ $t('providers.setActive') }}
             </button>
             <button
-              class="btn btn-sm btn-outline"
+              class="btn btn-sm btn-outline btn-icon-only"
               @click="openEditForm(provider)"
-            >✏️</button>
+              :title="$t('users.edit')"
+            >
+              <AppIcon name="edit" />
+            </button>
             <button
-              class="btn btn-sm btn-outline btn-danger"
+              class="btn btn-sm btn-outline btn-danger btn-icon-only"
               :disabled="provider.id === activeProviderId"
               :title="provider.id === activeProviderId ? $t('providers.cannotDeleteActive') : $t('providers.delete')"
               @click="confirmDelete(provider)"
-            >🗑️</button>
+            >
+              <AppIcon name="trash" />
+            </button>
           </div>
         </div>
 
@@ -387,7 +394,8 @@ async function handleActivate(id: string) {
 }
 
 .empty-icon {
-  font-size: 48px;
+  width: 40px;
+  height: 40px;
   opacity: 0.5;
 }
 
@@ -581,8 +589,14 @@ async function handleActivate(id: string) {
 }
 
 .btn-icon {
-  font-size: 18px;
-  line-height: 1;
+  width: 16px;
+  height: 16px;
+}
+
+.btn-icon-only {
+  width: 34px;
+  padding-inline: 0;
+  justify-content: center;
 }
 
 /* Spinner */

@@ -1,6 +1,6 @@
 <template>
   <div v-if="!isAdmin" class="admin-gate">
-    <span class="gate-icon">🔒</span>
+    <AppIcon name="lock" class="gate-icon" size="xl" />
     <h1>{{ $t('admin.title') }}</h1>
     <p>{{ $t('admin.description') }}</p>
   </div>
@@ -13,24 +13,28 @@
         <p class="users-subtitle">{{ $t('users.subtitle') }}</p>
       </div>
       <button class="btn btn-primary" @click="openCreateModal">
-        <span class="btn-icon">+</span>
+        <AppIcon name="add" class="btn-icon" />
         {{ $t('users.addUser') }}
       </button>
     </div>
 
     <div v-if="errorMessage" class="error-banner">
       {{ errorMessage }}
-      <button class="error-dismiss" @click="clearMessages">✕</button>
+      <button class="error-dismiss" @click="clearMessages">
+        <AppIcon name="close" />
+      </button>
     </div>
     <div v-if="successMessage" class="success-banner">
       {{ successMessage }}
-      <button class="success-dismiss" @click="clearMessages">✕</button>
+      <button class="success-dismiss" @click="clearMessages">
+        <AppIcon name="close" />
+      </button>
     </div>
 
     <div v-if="loading && users.length === 0" class="loading-state">{{ $t('users.loading') }}</div>
 
     <div v-else-if="users.length === 0" class="empty-state">
-      <span class="empty-icon">👥</span>
+      <AppIcon name="users" class="empty-icon" size="xl" />
       <p>{{ $t('users.empty') }}</p>
     </div>
 
@@ -289,7 +293,8 @@ function autoHideSuccess() {
 }
 
 .gate-icon {
-  font-size: 44px;
+  width: 40px;
+  height: 40px;
 }
 
 .users-header {
@@ -319,9 +324,7 @@ function autoHideSuccess() {
 }
 
 .glass {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01)),
-    var(--color-bg-secondary);
+  background: var(--color-bg-secondary);
   border: 1px solid rgba(255, 255, 255, 0.06);
   box-shadow: 0 14px 30px rgba(0, 0, 0, 0.16);
 }
@@ -366,7 +369,8 @@ function autoHideSuccess() {
 }
 
 .empty-icon {
-  font-size: 44px;
+  width: 40px;
+  height: 40px;
 }
 
 .users-table-wrap {
@@ -488,7 +492,7 @@ function autoHideSuccess() {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, var(--color-primary), #8b5cf6);
+  background: var(--color-primary);
   color: white;
 }
 
@@ -520,8 +524,8 @@ function autoHideSuccess() {
 }
 
 .btn-icon {
-  font-size: 18px;
-  line-height: 1;
+  width: 16px;
+  height: 16px;
 }
 
 .modal-overlay {
