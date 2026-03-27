@@ -2,3 +2,20 @@ export { initDatabase, getDatabase } from './database.js'
 export type { Database } from './database.js'
 export { loadConfig, getConfigDir, ensureConfigTemplates } from './config.js'
 export { ensureMemoryStructure, getMemoryDir } from './memory.js'
+export {
+  loadProviders,
+  getActiveProvider,
+  buildModel,
+  estimateCost,
+  DEFAULT_PRICE_TABLE,
+} from './provider-config.js'
+export type { ProviderConfig, ProviderModelConfig, ProvidersFile } from './provider-config.js'
+export {
+  logTokenUsage,
+  logToolCall,
+  getTokenUsage,
+  getToolCalls,
+} from './token-logger.js'
+export type { TokenUsageRecord, ToolCallRecord } from './token-logger.js'
+export { AgentCore } from './agent.js'
+export type { ResponseChunk, AgentCoreOptions } from './agent.js'
