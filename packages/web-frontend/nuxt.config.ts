@@ -4,7 +4,13 @@ export default defineNuxtConfig({
   devtools: { enabled: true },
   ssr: false,
 
-  modules: ['@nuxtjs/i18n'],
+  modules: ['@nuxtjs/tailwindcss', '@nuxtjs/i18n'],
+
+  tailwindcss: {
+    configPath: '~/tailwind.config.ts',
+    cssPath: '~/assets/css/tailwind.css',
+    exposeConfig: false,
+  },
 
   i18n: {
     locales: [
