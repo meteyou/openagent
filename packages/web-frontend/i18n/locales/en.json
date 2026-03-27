@@ -106,7 +106,20 @@
     "deleteConfirmButton": "Delete",
     "cannotDeleteActive": "Cannot delete the active provider",
     "save": "Save",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "columns": {
+      "name": "Name",
+      "type": "Type",
+      "model": "Model",
+      "status": "Status",
+      "actions": "Actions",
+      "cost": "Cost"
+    },
+    "costPerMillion": "$/M tokens",
+    "costInput": "In",
+    "costOutput": "Out",
+    "costFree": "Free",
+    "costNA": "—"
   },
   "logs": {
     "title": "Activity Logs",

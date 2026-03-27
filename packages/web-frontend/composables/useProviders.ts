@@ -11,6 +11,7 @@ export interface Provider {
   status?: 'connected' | 'error' | 'untested'
   authMethod?: 'api-key' | 'oauth'
   oauthCredentials?: { expires: number }
+  cost?: { input: number; output: number } | null
 }
 
 export interface OAuthLoginResponse {
