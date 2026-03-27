@@ -18,10 +18,34 @@ export interface TelegramConfig {
 export interface TelegramBotOptions {
   agentCore: AgentCore
   config?: TelegramConfig
+  onQueueDepthChanged?: (queueDepth: number) => void
+}
+
+interface TelegramSettings {
+  batchingDelayMs?: number
+}
+
+interface QueuedMessage {
+  ctx: Context
+  text: string
+}
+
+interface PendingBatch {
+  ctx: Context
+  text: string
+  timer: ReturnType<typeof setTimeout>
+}
+
+interface ChatState {
+  pendingBatch: PendingBatch | null
+  queue: QueuedMessage[]
+  processing: boolean
+  abortRequested: boolean
 }
 
 /** Telegram's maximum message length */
 const MAX_MESSAGE_LENGTH = 4096
+const STOP_COMMANDS = new Set(['/stop', '/kill'])
 
 /**
  * Split a long text into chunks that fit within Telegram's message limit.
@@ -79,17 +103,41 @@ function formatUserContext(ctx: Context): string {
 }
 
 /**
- * Determine if this is a group chat
- */
-function isGroupChat(ctx: Context): boolean {
-  return ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup'
-}
-
-/**
  * Get a unique user identifier for session management
  */
 function getUserId(ctx: Context): string {
   return `telegram-${ctx.from?.id ?? 'unknown'}`
+}
+
+function getChatKey(ctx: Context): string {
+  return `telegram-chat-${ctx.chat?.id ?? ctx.from?.id ?? 'unknown'}`
+}
+
+function isHandledCommand(text: string): boolean {
+  return /^\/(start|new|stop|kill)(?:@[\w_]+)?\b/i.test(text.trim())
+}
+
+function normalizeCommand(text: string): string {
+  return text.trim().split(/\s+/, 1)[0].toLowerCase().replace(/@[\w_]+$/, '')
+}
+
+function loadTelegramRuntimeConfig(): TelegramConfig {
+  const telegram = loadConfig<TelegramConfig>('telegram.json')
+  let batchingDelayMs = telegram.batchingDelayMs ?? 2500
+
+  try {
+    const settings = loadConfig<TelegramSettings>('settings.json')
+    if (typeof settings.batchingDelayMs === 'number' && Number.isFinite(settings.batchingDelayMs) && settings.batchingDelayMs >= 0) {
+      batchingDelayMs = settings.batchingDelayMs
+    }
+  } catch {
+    // Fall back to telegram.json/defaults when settings are unavailable.
+  }
+
+  return {
+    ...telegram,
+    batchingDelayMs,
+  }
 }
 
 /**
@@ -100,10 +148,13 @@ export class TelegramBot {
   private agentCore: AgentCore
   private config: TelegramConfig
   private running = false
+  private chatStates = new Map<string, ChatState>()
+  private onQueueDepthChanged?: (queueDepth: number) => void
 
   constructor(options: TelegramBotOptions) {
     this.agentCore = options.agentCore
-    this.config = options.config ?? this.loadTelegramConfig()
+    this.config = options.config ?? loadTelegramRuntimeConfig()
+    this.onQueueDepthChanged = options.onQueueDepthChanged
 
     if (!this.config.botToken) {
       throw new Error(
@@ -116,17 +167,47 @@ export class TelegramBot {
     this.setupErrorHandler()
   }
 
-  /**
-   * Load Telegram config from the standard config location
-   */
-  private loadTelegramConfig(): TelegramConfig {
-    try {
-      return loadConfig<TelegramConfig>('telegram.json')
-    } catch {
-      throw new Error(
-        'Telegram config not found at /data/config/telegram.json. Ensure the config file exists or disable Telegram for web-only mode.'
-      )
+  private getOrCreateChatState(chatKey: string): ChatState {
+    const existing = this.chatStates.get(chatKey)
+    if (existing) return existing
+
+    const state: ChatState = {
+      pendingBatch: null,
+      queue: [],
+      processing: false,
+      abortRequested: false,
     }
+
+    this.chatStates.set(chatKey, state)
+    return state
+  }
+
+  private cleanupChatState(chatKey: string): void {
+    const state = this.chatStates.get(chatKey)
+    if (!state) return
+
+    if (!state.processing && !state.pendingBatch && state.queue.length === 0) {
+      this.chatStates.delete(chatKey)
+    }
+  }
+
+  private emitQueueDepthChanged(): void {
+    this.onQueueDepthChanged?.(this.getQueueDepth())
+  }
+
+  /**
+   * Total queue depth across all chats, including pending batches and active work.
+   */
+  getQueueDepth(): number {
+    let total = 0
+
+    for (const state of this.chatStates.values()) {
+      total += state.queue.length
+      if (state.pendingBatch) total += 1
+      if (state.processing) total += 1
+    }
+
+    return total
   }
 
   /**
@@ -142,6 +223,7 @@ export class TelegramBot {
         '',
         '`/new` — Start a fresh conversation (summarizes & resets current session)',
         '`/start` — Show this welcome message',
+        '`/stop` — Abort the current task and clear queued work',
         '',
         'Just send me a message to get started!',
       ].join('\n')
@@ -167,6 +249,14 @@ export class TelegramBot {
       }
     })
 
+    this.bot.command('stop', async (ctx) => {
+      await this.handleKillSwitch(ctx)
+    })
+
+    this.bot.command('kill', async (ctx) => {
+      await this.handleKillSwitch(ctx)
+    })
+
     // Regular text messages
     this.bot.on('message:text', async (ctx) => {
       await this.handleMessage(ctx)
@@ -180,14 +270,87 @@ export class TelegramBot {
     const text = ctx.message?.text
     if (!text) return
 
-    const userId = getUserId(ctx)
-    const isGroup = isGroupChat(ctx)
+    const normalizedCommand = normalizeCommand(text)
+    if (STOP_COMMANDS.has(normalizedCommand)) {
+      await this.handleKillSwitch(ctx)
+      return
+    }
 
-    // Build the message with user context for group chats or always for user identification
-    const userPrefix = formatUserContext(ctx)
-    const messageForAgent = isGroup
-      ? `${userPrefix}${text}`
-      : `${userPrefix}${text}`
+    if (isHandledCommand(text)) {
+      return
+    }
+
+    this.bufferMessage(ctx, text)
+  }
+
+  private bufferMessage(ctx: Context, text: string): void {
+    const chatKey = getChatKey(ctx)
+    const state = this.getOrCreateChatState(chatKey)
+
+    if (state.pendingBatch) {
+      clearTimeout(state.pendingBatch.timer)
+      state.pendingBatch = {
+        ctx,
+        text: `${state.pendingBatch.text}\n${text}`,
+        timer: this.createBatchTimer(chatKey),
+      }
+    } else {
+      state.pendingBatch = {
+        ctx,
+        text,
+        timer: this.createBatchTimer(chatKey),
+      }
+    }
+
+    this.emitQueueDepthChanged()
+  }
+
+  private createBatchTimer(chatKey: string): ReturnType<typeof setTimeout> {
+    return setTimeout(() => {
+      void this.flushPendingBatch(chatKey)
+    }, this.config.batchingDelayMs)
+  }
+
+  private async flushPendingBatch(chatKey: string): Promise<void> {
+    const state = this.chatStates.get(chatKey)
+    if (!state?.pendingBatch) return
+
+    const batch = state.pendingBatch
+    state.pendingBatch = null
+    state.queue.push({ ctx: batch.ctx, text: batch.text })
+    this.emitQueueDepthChanged()
+
+    await this.processQueue(chatKey)
+  }
+
+  private async processQueue(chatKey: string): Promise<void> {
+    const state = this.chatStates.get(chatKey)
+    if (!state || state.processing) return
+
+    state.processing = true
+    this.emitQueueDepthChanged()
+
+    try {
+      while (state.queue.length > 0) {
+        const queuedMessage = state.queue.shift()!
+        this.emitQueueDepthChanged()
+        await this.processQueuedMessage(chatKey, queuedMessage)
+      }
+    } finally {
+      state.processing = false
+      state.abortRequested = false
+      this.emitQueueDepthChanged()
+      this.cleanupChatState(chatKey)
+    }
+  }
+
+  private async processQueuedMessage(chatKey: string, queuedMessage: QueuedMessage): Promise<void> {
+    const state = this.chatStates.get(chatKey)
+    if (!state) return
+
+    const { ctx, text } = queuedMessage
+    const userId = getUserId(ctx)
+    const messageForAgent = `${formatUserContext(ctx)}${text}`
 
     try {
       // Send "typing" indicator
@@ -207,6 +370,8 @@ export class TelegramBot {
 
       try {
         for await (const chunk of this.agentCore.sendMessage(userId, messageForAgent, 'telegram')) {
+          if (state.abortRequested) break
+
           if (chunk.type === 'text' && chunk.text) {
             fullResponse += chunk.text
           }
@@ -215,14 +380,50 @@ export class TelegramBot {
         clearInterval(typingInterval)
       }
 
-      // Send the response
-      if (fullResponse.trim()) {
+      if (!state.abortRequested && fullResponse.trim()) {
         await this.sendLongMessage(ctx, fullResponse.trim())
       }
     } catch (err) {
+      if (state.abortRequested) {
+        return
+      }
+
       console.error('Error processing Telegram message:', err)
       await this.safeSendMessage(ctx, '⚠️ Sorry, I encountered an error processing your message. Please try again.')
     }
+  }
+
+  private async handleKillSwitch(ctx: Context): Promise<void> {
+    const chatKey = getChatKey(ctx)
+    const state = this.getOrCreateChatState(chatKey)
+    const hadActiveTask = state.processing
+    const removedQueuedMessages = state.queue.length + (state.pendingBatch ? 1 : 0)
+
+    if (state.pendingBatch) {
+      clearTimeout(state.pendingBatch.timer)
+      state.pendingBatch = null
+    }
+
+    state.queue = []
+    state.abortRequested = hadActiveTask
+    this.emitQueueDepthChanged()
+
+    if (hadActiveTask) {
+      try {
+        this.agentCore.abort()
+      } catch (err) {
+        console.error('Error aborting Telegram task:', err)
+      }
+    }
+
+    const confirmation = !hadActiveTask && removedQueuedMessages === 0
+      ? 'Nothing to stop.'
+      : removedQueuedMessages === 0
+        ? 'Task aborted. No queued messages.'
+        : `⛔ Aborted. ${removedQueuedMessages} messages removed from queue.`
+
+    await this.safeSendMessage(ctx, confirmation)
+    this.cleanupChatState(chatKey)
   }
 
   /**
@@ -355,7 +556,7 @@ export class TelegramBot {
  */
 export function createTelegramBot(agentCore: AgentCore): TelegramBot | null {
   try {
-    const config = loadConfig<TelegramConfig>('telegram.json')
+    const config = loadTelegramRuntimeConfig()
 
     if (!config.enabled) {
       console.log('ℹ️  Telegram bot disabled in config (enabled: false). Running in web-only mode.')
