@@ -44,7 +44,17 @@ export function setupWebSocketChat(
   db: Database,
   agentCore: AgentCore | null
 ): WebSocketServer {
-  const wss = new WebSocketServer({ server, path: '/ws/chat' })
+  const wss = new WebSocketServer({ noServer: true })
+
+  // Handle upgrade requests for /ws/chat path
+  server.on('upgrade', (request, socket, head) => {
+    const pathname = new URL(request.url ?? '', 'http://localhost').pathname
+    if (pathname !== '/ws/chat') return
+
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      wss.emit('connection', ws, request)
+    })
+  })
 
   // Track active connections
   const authenticatedClients = new Map<WebSocket, JwtPayload>()
