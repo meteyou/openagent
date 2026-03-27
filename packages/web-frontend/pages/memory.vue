@@ -34,7 +34,7 @@
     <Tabs v-model="activeTab" class="flex flex-1 flex-col overflow-hidden min-h-0">
       <TabsList class="mb-4 shrink-0 self-start">
         <TabsTrigger value="soul" @click="switchTab('soul')">{{ $t('memory.soulTab') }}</TabsTrigger>
-        <TabsTrigger value="agents" @click="switchTab('agents')">{{ $t('memory.agentsTab') }}</TabsTrigger>
+        <TabsTrigger value="core" @click="switchTab('core')">{{ $t('memory.coreMemoryTab') }}</TabsTrigger>
         <TabsTrigger value="daily" @click="switchTab('daily')">{{ $t('memory.dailyTab') }}</TabsTrigger>
       </TabsList>
 
@@ -53,15 +53,15 @@
       </TabsContent>
 
       <!-- Core Memory tab -->
-      <TabsContent value="agents" class="flex flex-1 flex-col overflow-hidden min-h-0 mt-0">
+      <TabsContent value="core" class="flex flex-1 flex-col overflow-hidden min-h-0 mt-0">
         <div v-if="loading" class="flex flex-1 items-center justify-center py-20 text-sm text-muted-foreground">
           {{ $t('memory.loading') }}
         </div>
         <div v-else class="flex flex-1 flex-col overflow-hidden min-h-0">
           <MarkdownEditor
-            v-model="agentsContent"
+            v-model="coreMemoryContent"
             :saving="saving"
-            @save="handleSaveAgents"
+            @save="handleSaveCoreMemory"
           />
         </div>
       </TabsContent>
@@ -190,18 +190,18 @@ const {
   successMessage,
   loadSoul,
   saveSoul,
-  loadAgents,
-  saveAgents,
+  loadCoreMemory,
+  saveCoreMemory,
   loadDailyFiles,
   loadDailyFile,
   saveDailyFile,
   clearMessages,
 } = useMemory()
 
-const activeTab = ref<'soul' | 'agents' | 'daily'>('soul')
+const activeTab = ref<'soul' | 'core' | 'daily'>('soul')
 
 const soulContent = ref('')
-const agentsContent = ref('')
+const coreMemoryContent = ref('')
 const dailyContent = ref('')
 const dailyFiles = ref<{ filename: string; date: string; size: number; modifiedAt: string }[]>([])
 const selectedDaily = ref<string | null>(null)
@@ -237,14 +237,14 @@ function formatDate(value: string): string {
   }).format(new Date(value))
 }
 
-async function switchTab(tab: 'soul' | 'agents' | 'daily') {
+async function switchTab(tab: 'soul' | 'core' | 'daily') {
   clearMessages()
   activeTab.value = tab
 
   if (tab === 'soul' && !soulContent.value) {
     soulContent.value = await loadSoul()
-  } else if (tab === 'agents' && !agentsContent.value) {
-    agentsContent.value = await loadAgents()
+  } else if (tab === 'core' && !coreMemoryContent.value) {
+    coreMemoryContent.value = await loadCoreMemory()
   } else if (tab === 'daily') {
     await refreshDailyFiles()
   }
@@ -261,8 +261,8 @@ async function handleSaveSoul() {
   autoHideSuccess()
 }
 
-async function handleSaveAgents() {
-  await saveAgents(agentsContent.value)
+async function handleSaveCoreMemory() {
+  await saveCoreMemory(coreMemoryContent.value)
   autoHideSuccess()
 }
 

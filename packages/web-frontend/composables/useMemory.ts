@@ -46,11 +46,11 @@ export function useMemory() {
     }
   }
 
-  async function loadAgents(): Promise<string> {
+  async function loadCoreMemory(): Promise<string> {
     loading.value = true
     error.value = null
     try {
-      const data = await apiFetch<{ content: string }>('/api/memory/agents')
+      const data = await apiFetch<{ content: string }>('/api/memory/core')
       return data.content
     } catch (err) {
       error.value = (err as Error).message
@@ -60,12 +60,12 @@ export function useMemory() {
     }
   }
 
-  async function saveAgents(content: string): Promise<boolean> {
+  async function saveCoreMemory(content: string): Promise<boolean> {
     saving.value = true
     error.value = null
     successMessage.value = null
     try {
-      await apiFetch('/api/memory/agents', {
+      await apiFetch('/api/memory/core', {
         method: 'PUT',
         body: JSON.stringify({ content }),
       })
@@ -138,8 +138,8 @@ export function useMemory() {
     successMessage,
     loadSoul,
     saveSoul,
-    loadAgents,
-    saveAgents,
+    loadCoreMemory,
+    saveCoreMemory,
     loadDailyFiles,
     loadDailyFile,
     saveDailyFile,
