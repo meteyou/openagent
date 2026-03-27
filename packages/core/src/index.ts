@@ -28,13 +28,19 @@ export {
   setActiveProvider,
   updateProviderStatus,
   getActiveProvider,
+  getApiKeyForProvider,
+  getAvailableModels,
+  addOAuthProvider,
+  updateOAuthCredentials,
+  encryptOAuthCredentials,
+  storedToOAuthCredentials,
   buildModel,
   estimateCost,
   DEFAULT_PRICE_TABLE,
   getConfiguredPriceTable,
   PROVIDER_TYPE_PRESETS,
 } from './provider-config.js'
-export type { ProviderConfig, ProviderModelConfig, ProvidersFile, ProviderType, ProviderTypePreset, TokenPriceTable } from './provider-config.js'
+export type { ProviderConfig, ProviderModelConfig, ProvidersFile, ProviderType, ProviderTypePreset, AuthMethod, AvailableModel, OAuthCredentialsStored, TokenPriceTable } from './provider-config.js'
 export { encrypt, decrypt, maskApiKey } from './encryption.js'
 export {
   logTokenUsage,

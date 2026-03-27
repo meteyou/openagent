@@ -1,25 +1,42 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
-import type { Api, Model } from '@mariozechner/pi-ai'
+import type { Api, KnownProvider, Model } from '@mariozechner/pi-ai'
+import { getModels as getPiAiModels } from '@mariozechner/pi-ai'
+import { getOAuthProvider, getOAuthApiKey } from '@mariozechner/pi-ai/oauth'
+import type { OAuthCredentials } from '@mariozechner/pi-ai/oauth'
 import { getConfigDir, ensureConfigTemplates, loadConfig } from './config.js'
 import { encrypt, decrypt, isEncrypted, maskApiKey } from './encryption.js'
 
 /**
  * Supported provider types with presets
  */
-export type ProviderType = 'openai' | 'anthropic' | 'ollama-local' | 'ollama-cloud' | 'kimi' | 'zai'
+export type ProviderType =
+  | 'openai' | 'anthropic' | 'ollama-local' | 'ollama-cloud' | 'kimi' | 'zai'
+  | 'openai-codex' | 'github-copilot' | 'google-gemini-cli' | 'google-antigravity' | 'anthropic-oauth'
+
+export type AuthMethod = 'api-key' | 'oauth'
 
 export interface ProviderTypePreset {
   type: ProviderType
   label: string
-  apiType: string // pi-ai API type
+  apiType: string // pi-ai API type (used for api-key providers)
   providerName: string
   baseUrl: string
   requiresApiKey: boolean
+  urlEditable: boolean
+  piAiProvider: string | null // maps to pi-ai KnownProvider for model lookup
+  authMethod: AuthMethod
+  oauthProviderId?: string // pi-ai OAuth provider ID
+}
+
+export interface AvailableModel {
+  id: string
+  name: string
 }
 
 export const PROVIDER_TYPE_PRESETS: Record<ProviderType, ProviderTypePreset> = {
+  // ── API Key providers ──
   openai: {
     type: 'openai',
     label: 'OpenAI',
@@ -27,6 +44,9 @@ export const PROVIDER_TYPE_PRESETS: Record<ProviderType, ProviderTypePreset> = {
     providerName: 'openai',
     baseUrl: 'https://api.openai.com/v1',
     requiresApiKey: true,
+    urlEditable: false,
+    piAiProvider: 'openai',
+    authMethod: 'api-key',
   },
   anthropic: {
     type: 'anthropic',
@@ -35,6 +55,9 @@ export const PROVIDER_TYPE_PRESETS: Record<ProviderType, ProviderTypePreset> = {
     providerName: 'anthropic',
     baseUrl: 'https://api.anthropic.com',
     requiresApiKey: true,
+    urlEditable: false,
+    piAiProvider: 'anthropic',
+    authMethod: 'api-key',
   },
   'ollama-local': {
     type: 'ollama-local',
@@ -43,6 +66,9 @@ export const PROVIDER_TYPE_PRESETS: Record<ProviderType, ProviderTypePreset> = {
     providerName: 'ollama',
     baseUrl: 'http://localhost:11434/v1',
     requiresApiKey: false,
+    urlEditable: true,
+    piAiProvider: null,
+    authMethod: 'api-key',
   },
   'ollama-cloud': {
     type: 'ollama-cloud',
@@ -51,6 +77,9 @@ export const PROVIDER_TYPE_PRESETS: Record<ProviderType, ProviderTypePreset> = {
     providerName: 'ollama',
     baseUrl: '',
     requiresApiKey: true,
+    urlEditable: true,
+    piAiProvider: null,
+    authMethod: 'api-key',
   },
   kimi: {
     type: 'kimi',
@@ -59,15 +88,100 @@ export const PROVIDER_TYPE_PRESETS: Record<ProviderType, ProviderTypePreset> = {
     providerName: 'moonshot',
     baseUrl: 'https://api.moonshot.ai/v1',
     requiresApiKey: true,
+    urlEditable: false,
+    piAiProvider: 'kimi-coding',
+    authMethod: 'api-key',
   },
   zai: {
     type: 'zai',
     label: 'z.ai',
     apiType: 'openai-completions',
     providerName: 'zai',
-    baseUrl: 'https://api.z.ai/v1',
+    baseUrl: 'https://api.z.ai/api/coding/paas/v4',
     requiresApiKey: true,
+    urlEditable: false,
+    piAiProvider: 'zai',
+    authMethod: 'api-key',
   },
+
+  // ── OAuth / Subscription providers ──
+  'openai-codex': {
+    type: 'openai-codex',
+    label: 'ChatGPT Plus/Pro (Codex)',
+    apiType: 'openai-codex-responses',
+    providerName: 'openai-codex',
+    baseUrl: '',
+    requiresApiKey: false,
+    urlEditable: false,
+    piAiProvider: 'openai-codex',
+    authMethod: 'oauth',
+    oauthProviderId: 'openai-codex',
+  },
+  'github-copilot': {
+    type: 'github-copilot',
+    label: 'GitHub Copilot',
+    apiType: 'openai-completions',
+    providerName: 'github-copilot',
+    baseUrl: '',
+    requiresApiKey: false,
+    urlEditable: false,
+    piAiProvider: 'github-copilot',
+    authMethod: 'oauth',
+    oauthProviderId: 'github-copilot',
+  },
+  'google-gemini-cli': {
+    type: 'google-gemini-cli',
+    label: 'Google Gemini (Free)',
+    apiType: 'google-gemini-cli',
+    providerName: 'google-gemini-cli',
+    baseUrl: '',
+    requiresApiKey: false,
+    urlEditable: false,
+    piAiProvider: 'google-gemini-cli',
+    authMethod: 'oauth',
+    oauthProviderId: 'google-gemini-cli',
+  },
+  'google-antigravity': {
+    type: 'google-antigravity',
+    label: 'Google Antigravity (Free)',
+    apiType: 'google-gemini-cli',
+    providerName: 'google-antigravity',
+    baseUrl: '',
+    requiresApiKey: false,
+    urlEditable: false,
+    piAiProvider: 'google-antigravity',
+    authMethod: 'oauth',
+    oauthProviderId: 'google-antigravity',
+  },
+  'anthropic-oauth': {
+    type: 'anthropic-oauth',
+    label: 'Anthropic (Claude Pro/Max)',
+    apiType: 'anthropic-messages',
+    providerName: 'anthropic',
+    baseUrl: 'https://api.anthropic.com',
+    requiresApiKey: false,
+    urlEditable: false,
+    piAiProvider: 'anthropic',
+    authMethod: 'oauth',
+    oauthProviderId: 'anthropic',
+  },
+}
+
+/**
+ * Get available models for a given provider type from pi-ai
+ */
+export function getAvailableModels(providerType: ProviderType): AvailableModel[] {
+  const preset = PROVIDER_TYPE_PRESETS[providerType]
+  if (!preset?.piAiProvider) {
+    return []
+  }
+
+  try {
+    const models = getPiAiModels(preset.piAiProvider as KnownProvider)
+    return models.map(m => ({ id: m.id, name: m.name }))
+  } catch {
+    return []
+  }
 }
 
 /**
@@ -84,6 +198,18 @@ export interface ProviderConfig {
   defaultModel: string
   models?: ProviderModelConfig[]
   status?: 'connected' | 'error' | 'untested'
+  authMethod?: AuthMethod
+  oauthCredentials?: OAuthCredentialsStored // encrypted at rest
+}
+
+/**
+ * OAuth credentials as stored in providers.json (encrypted)
+ */
+export interface OAuthCredentialsStored {
+  refresh: string // encrypted
+  access: string // encrypted
+  expires: number
+  extra?: string // encrypted JSON of additional fields
 }
 
 export interface ProviderModelConfig {
@@ -157,10 +283,18 @@ export function loadProvidersDecrypted(): ProvidersFile {
   const file = loadProviders()
   return {
     ...file,
-    providers: file.providers.map(p => ({
-      ...p,
-      apiKey: p.apiKey && isEncrypted(p.apiKey) ? decrypt(p.apiKey) : p.apiKey,
-    })),
+    providers: file.providers.map(p => {
+      // Sync fixed URLs from presets (handles preset URL changes)
+      const preset = PROVIDER_TYPE_PRESETS[p.providerType]
+      const baseUrl = (preset && !preset.urlEditable) ? preset.baseUrl : p.baseUrl
+
+      return {
+        ...p,
+        baseUrl,
+        apiKey: p.apiKey && isEncrypted(p.apiKey) ? decrypt(p.apiKey) : p.apiKey,
+        oauthCredentials: p.oauthCredentials ? decryptOAuthCredentials(p.oauthCredentials) : undefined,
+      }
+    }),
   }
 }
 
@@ -168,15 +302,61 @@ export function loadProvidersDecrypted(): ProvidersFile {
  * Get providers with API keys masked for display
  */
 export function loadProvidersMasked(): ProvidersFile & { providers: (ProviderConfig & { apiKeyMasked: string })[] } {
-  const file = loadProvidersDecrypted()
+  const file = loadProvidersDecrypted() // Already syncs URLs from presets
   return {
     ...file,
     providers: file.providers.map(p => ({
       ...p,
       apiKey: '', // Never send real key to frontend
       apiKeyMasked: p.apiKey ? maskApiKey(p.apiKey) : '',
+      oauthCredentials: p.oauthCredentials ? { refresh: '', access: '', expires: p.oauthCredentials.expires } : undefined,
     })),
   }
+}
+
+/**
+ * Encrypt OAuth credentials for storage
+ */
+export function encryptOAuthCredentials(creds: OAuthCredentials): OAuthCredentialsStored {
+  const { refresh, access, expires, ...extra } = creds
+  return {
+    refresh: encrypt(refresh),
+    access: encrypt(access),
+    expires,
+    extra: Object.keys(extra).length > 0 ? encrypt(JSON.stringify(extra)) : undefined,
+  }
+}
+
+/**
+ * Decrypt OAuth credentials from storage
+ */
+function decryptOAuthCredentials(stored: OAuthCredentialsStored): OAuthCredentialsStored {
+  return {
+    refresh: isEncrypted(stored.refresh) ? decrypt(stored.refresh) : stored.refresh,
+    access: isEncrypted(stored.access) ? decrypt(stored.access) : stored.access,
+    expires: stored.expires,
+    extra: stored.extra && isEncrypted(stored.extra) ? decrypt(stored.extra) : stored.extra,
+  }
+}
+
+/**
+ * Convert stored OAuth credentials to pi-ai OAuthCredentials format
+ */
+export function storedToOAuthCredentials(stored: OAuthCredentialsStored): OAuthCredentials {
+  const base: OAuthCredentials = {
+    refresh: stored.refresh,
+    access: stored.access,
+    expires: stored.expires,
+  }
+  if (stored.extra) {
+    try {
+      const extraFields = JSON.parse(stored.extra) as Record<string, unknown>
+      Object.assign(base, extraFields)
+    } catch {
+      // Ignore parse errors
+    }
+  }
+  return base
 }
 
 /**
@@ -187,7 +367,7 @@ function generateProviderId(): string {
 }
 
 /**
- * Add a new provider
+ * Add a new provider (API key based)
  */
 export function addProvider(input: {
   name: string
@@ -218,11 +398,60 @@ export function addProvider(input: {
     apiKey: input.apiKey ? encrypt(input.apiKey) : '',
     defaultModel: input.defaultModel,
     status: 'untested',
+    authMethod: preset.authMethod,
   }
 
   file.providers.push(provider)
 
   // If this is the first provider, make it active
+  if (file.providers.length === 1) {
+    file.activeProvider = provider.id
+  }
+
+  saveProviders(file)
+  return provider
+}
+
+/**
+ * Add a new OAuth-authenticated provider
+ */
+export function addOAuthProvider(input: {
+  name: string
+  providerType: ProviderType
+  defaultModel: string
+  oauthCredentials: OAuthCredentials
+}): ProviderConfig {
+  const preset = PROVIDER_TYPE_PRESETS[input.providerType]
+  if (!preset) {
+    throw new Error(`Unknown provider type: ${input.providerType}`)
+  }
+  if (preset.authMethod !== 'oauth') {
+    throw new Error(`Provider type "${input.providerType}" does not use OAuth`)
+  }
+
+  const file = loadProviders()
+
+  // Check for duplicate name
+  if (file.providers.some(p => p.name === input.name)) {
+    throw new Error(`Provider with name "${input.name}" already exists`)
+  }
+
+  const provider: ProviderConfig = {
+    id: generateProviderId(),
+    name: input.name,
+    type: preset.apiType,
+    providerType: input.providerType,
+    provider: preset.providerName,
+    baseUrl: preset.baseUrl,
+    apiKey: '',
+    defaultModel: input.defaultModel,
+    status: 'untested',
+    authMethod: 'oauth',
+    oauthCredentials: encryptOAuthCredentials(input.oauthCredentials),
+  }
+
+  file.providers.push(provider)
+
   if (file.providers.length === 1) {
     file.activeProvider = provider.id
   }
@@ -263,6 +492,7 @@ export function updateProvider(id: string, input: {
     existing.providerType = input.providerType
     existing.type = preset.apiType
     existing.provider = preset.providerName
+    existing.authMethod = preset.authMethod
     if (!input.baseUrl) {
       existing.baseUrl = preset.baseUrl
     }
@@ -273,12 +503,29 @@ export function updateProvider(id: string, input: {
   if (input.apiKey !== undefined) existing.apiKey = input.apiKey ? encrypt(input.apiKey) : ''
   if (input.defaultModel !== undefined) existing.defaultModel = input.defaultModel
 
+  // For providers with fixed URLs, always sync from preset
+  const currentPreset = PROVIDER_TYPE_PRESETS[existing.providerType]
+  if (currentPreset && !currentPreset.urlEditable) {
+    existing.baseUrl = currentPreset.baseUrl
+  }
+
   // Reset status when config changes
   existing.status = 'untested'
 
   file.providers[index] = existing
   saveProviders(file)
   return existing
+}
+
+/**
+ * Update OAuth credentials for a provider
+ */
+export function updateOAuthCredentials(id: string, credentials: OAuthCredentials): void {
+  const file = loadProviders()
+  const provider = file.providers.find(p => p.id === id)
+  if (!provider) return
+  provider.oauthCredentials = encryptOAuthCredentials(credentials)
+  saveProviders(file)
 }
 
 /**
@@ -341,6 +588,42 @@ export function getActiveProvider(): ProviderConfig | null {
 }
 
 /**
+ * Get API key for a provider, handling OAuth token refresh
+ */
+export async function getApiKeyForProvider(provider: ProviderConfig): Promise<string> {
+  // API key providers: return the key directly
+  if (provider.authMethod !== 'oauth' || !provider.oauthCredentials) {
+    return provider.apiKey
+  }
+
+  const preset = PROVIDER_TYPE_PRESETS[provider.providerType]
+  if (!preset?.oauthProviderId) {
+    return provider.apiKey
+  }
+
+  // Convert stored credentials to pi-ai format
+  const oauthCreds = storedToOAuthCredentials(provider.oauthCredentials)
+
+  // Use pi-ai to get API key (auto-refreshes expired tokens)
+  const result = await getOAuthApiKey(
+    preset.oauthProviderId,
+    { [preset.oauthProviderId]: oauthCreds },
+  )
+
+  if (!result) {
+    throw new Error(`Failed to get API key for OAuth provider ${provider.name}. Re-login may be required.`)
+  }
+
+  // Save refreshed credentials if they changed
+  if (result.newCredentials.access !== oauthCreds.access ||
+      result.newCredentials.expires !== oauthCreds.expires) {
+    updateOAuthCredentials(provider.id, result.newCredentials)
+  }
+
+  return result.apiKey
+}
+
+/**
  * Build a pi-ai Model object from a provider config
  */
 export function getConfiguredPriceTable(): TokenPriceTable {
@@ -358,6 +641,33 @@ export function getConfiguredPriceTable(): TokenPriceTable {
 
 export function buildModel(provider: ProviderConfig, modelId?: string): Model<Api> {
   const id = modelId ?? provider.defaultModel
+  const preset = PROVIDER_TYPE_PRESETS[provider.providerType]
+
+  // For OAuth providers, look up the model from pi-ai to get correct api type and metadata
+  if (preset?.authMethod === 'oauth' && preset.piAiProvider) {
+    try {
+      const piAiModels = getPiAiModels(preset.piAiProvider as KnownProvider)
+
+      // Let the OAuth provider modify models (e.g., set base URL for GitHub Copilot)
+      let models: Model<Api>[] = piAiModels as Model<Api>[]
+      if (preset.oauthProviderId && provider.oauthCredentials) {
+        const oauthProv = getOAuthProvider(preset.oauthProviderId)
+        if (oauthProv?.modifyModels) {
+          const creds = storedToOAuthCredentials(provider.oauthCredentials)
+          models = oauthProv.modifyModels([...models], creds) as Model<Api>[]
+        }
+      }
+
+      const piModel = models.find(m => m.id === id)
+      if (piModel) {
+        return piModel
+      }
+    } catch {
+      // Fall through to generic build
+    }
+  }
+
+  // Generic build for API key providers or fallback
   const modelConfig = provider.models?.find(m => m.id === id)
   const priceFallback = getConfiguredPriceTable()[id] ?? { input: 0, output: 0 }
 

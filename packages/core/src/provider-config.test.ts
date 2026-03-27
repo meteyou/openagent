@@ -4,6 +4,7 @@ import {
   loadProvidersDecrypted,
   loadProvidersMasked,
   getActiveProvider,
+  getAvailableModels,
   buildModel,
   estimateCost,
   addProvider,
@@ -411,5 +412,41 @@ describe('provider CRUD', () => {
     expect(PROVIDER_TYPE_PRESETS).toHaveProperty('ollama-cloud')
     expect(PROVIDER_TYPE_PRESETS).toHaveProperty('kimi')
     expect(PROVIDER_TYPE_PRESETS).toHaveProperty('zai')
+  })
+})
+
+describe('getAvailableModels', () => {
+  it('returns models for openai provider type', () => {
+    const models = getAvailableModels('openai')
+    expect(models.length).toBeGreaterThan(0)
+    expect(models[0]).toHaveProperty('id')
+    expect(models[0]).toHaveProperty('name')
+    const gpt4o = models.find(m => m.id === 'gpt-4o')
+    expect(gpt4o).toBeDefined()
+    expect(gpt4o!.name).toBe('GPT-4o')
+  })
+
+  it('returns models for anthropic provider type', () => {
+    const models = getAvailableModels('anthropic')
+    expect(models.length).toBeGreaterThan(0)
+    const sonnet = models.find(m => m.id.includes('sonnet'))
+    expect(sonnet).toBeDefined()
+  })
+
+  it('returns models for zai provider type', () => {
+    const models = getAvailableModels('zai')
+    expect(models.length).toBeGreaterThan(0)
+    const glm = models.find(m => m.id.startsWith('glm-'))
+    expect(glm).toBeDefined()
+  })
+
+  it('returns empty array for ollama-local (no pi-ai mapping)', () => {
+    const models = getAvailableModels('ollama-local')
+    expect(models).toEqual([])
+  })
+
+  it('returns empty array for ollama-cloud (no pi-ai mapping)', () => {
+    const models = getAvailableModels('ollama-cloud')
+    expect(models).toEqual([])
   })
 })
