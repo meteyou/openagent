@@ -1,5 +1,19 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { loadProviders, getActiveProvider, buildModel, estimateCost } from './provider-config.js'
+import {
+  loadProviders,
+  loadProvidersDecrypted,
+  loadProvidersMasked,
+  getActiveProvider,
+  buildModel,
+  estimateCost,
+  addProvider,
+  updateProvider,
+  deleteProvider,
+  setActiveProvider,
+  updateProviderStatus,
+  PROVIDER_TYPE_PRESETS,
+} from './provider-config.js'
+import { encrypt, decrypt, maskApiKey } from './encryption.js'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
@@ -19,15 +33,17 @@ describe('provider-config', () => {
     }
   })
 
-  function setupTmpConfig(providersContent: object): void {
+  function setupTmpConfig(providersContent?: object): void {
     tmpDir = path.join(os.tmpdir(), `openagent-provider-test-${Date.now()}`)
     const configDir = path.join(tmpDir, 'config')
     fs.mkdirSync(configDir, { recursive: true })
-    fs.writeFileSync(
-      path.join(configDir, 'providers.json'),
-      JSON.stringify(providersContent, null, 2),
-      'utf-8',
-    )
+    if (providersContent) {
+      fs.writeFileSync(
+        path.join(configDir, 'providers.json'),
+        JSON.stringify(providersContent, null, 2),
+        'utf-8',
+      )
+    }
     process.env.DATA_DIR = tmpDir
   }
 
@@ -42,8 +58,10 @@ describe('provider-config', () => {
     setupTmpConfig({
       providers: [
         {
+          id: 'test-id-1',
           name: 'my-openai',
           type: 'openai-completions',
+          providerType: 'openai',
           provider: 'openai',
           baseUrl: 'https://api.openai.com/v1',
           apiKey: 'sk-test',
@@ -66,8 +84,8 @@ describe('provider-config', () => {
   it('getActiveProvider returns first provider by default', () => {
     setupTmpConfig({
       providers: [
-        { name: 'first', type: 'openai-completions', provider: 'openai', baseUrl: 'https://api.openai.com/v1', apiKey: 'sk-1', defaultModel: 'gpt-4o' },
-        { name: 'second', type: 'anthropic-messages', provider: 'anthropic', baseUrl: 'https://api.anthropic.com', apiKey: 'sk-2', defaultModel: 'claude-3-5-sonnet-20241022' },
+        { id: 'id-1', name: 'first', type: 'openai-completions', providerType: 'openai', provider: 'openai', baseUrl: 'https://api.openai.com/v1', apiKey: 'sk-1', defaultModel: 'gpt-4o' },
+        { id: 'id-2', name: 'second', type: 'anthropic-messages', providerType: 'anthropic', provider: 'anthropic', baseUrl: 'https://api.anthropic.com', apiKey: 'sk-2', defaultModel: 'claude-3-5-sonnet-20241022' },
       ],
     })
 
@@ -78,10 +96,10 @@ describe('provider-config', () => {
   it('getActiveProvider respects activeProvider field', () => {
     setupTmpConfig({
       providers: [
-        { name: 'first', type: 'openai-completions', provider: 'openai', baseUrl: 'https://api.openai.com/v1', apiKey: 'sk-1', defaultModel: 'gpt-4o' },
-        { name: 'second', type: 'anthropic-messages', provider: 'anthropic', baseUrl: 'https://api.anthropic.com', apiKey: 'sk-2', defaultModel: 'claude-3-5-sonnet-20241022' },
+        { id: 'id-1', name: 'first', type: 'openai-completions', providerType: 'openai', provider: 'openai', baseUrl: 'https://api.openai.com/v1', apiKey: 'sk-1', defaultModel: 'gpt-4o' },
+        { id: 'id-2', name: 'second', type: 'anthropic-messages', providerType: 'anthropic', provider: 'anthropic', baseUrl: 'https://api.anthropic.com', apiKey: 'sk-2', defaultModel: 'claude-3-5-sonnet-20241022' },
       ],
-      activeProvider: 'second',
+      activeProvider: 'id-2',
     })
 
     const active = getActiveProvider()
@@ -90,8 +108,10 @@ describe('provider-config', () => {
 
   it('buildModel creates a valid Model object', () => {
     const provider = {
+      id: 'test-id',
       name: 'test',
       type: 'openai-completions',
+      providerType: 'openai' as const,
       provider: 'openai',
       baseUrl: 'https://api.openai.com/v1',
       apiKey: 'sk-test',
@@ -109,8 +129,10 @@ describe('provider-config', () => {
 
   it('buildModel uses model config overrides', () => {
     const provider = {
+      id: 'test-id',
       name: 'test',
       type: 'openai-completions',
+      providerType: 'openai' as const,
       provider: 'openai',
       baseUrl: 'https://api.openai.com/v1',
       apiKey: 'sk-test',
@@ -139,8 +161,10 @@ describe('provider-config', () => {
 
   it('buildModel allows overriding model ID', () => {
     const provider = {
+      id: 'test-id',
       name: 'test',
       type: 'openai-completions',
+      providerType: 'openai' as const,
       provider: 'openai',
       baseUrl: 'https://api.openai.com/v1',
       apiKey: 'sk-test',
@@ -154,24 +178,26 @@ describe('provider-config', () => {
 
   it('estimateCost calculates correctly', () => {
     const model = buildModel({
+      id: 'test-id',
       name: 'test',
       type: 'openai-completions',
+      providerType: 'openai' as const,
       provider: 'openai',
       baseUrl: 'https://api.openai.com/v1',
       apiKey: 'sk-test',
       defaultModel: 'gpt-4o',
     })
 
-    // 1000 input tokens at $2.50/M = $0.0025
-    // 500 output tokens at $10.00/M = $0.005
     const cost = estimateCost(model, 1000, 500)
     expect(cost).toBeCloseTo(0.0075, 6)
   })
 
   it('estimateCost includes cache costs', () => {
     const provider = {
+      id: 'test-id',
       name: 'test',
       type: 'openai-completions',
+      providerType: 'openai' as const,
       provider: 'openai',
       baseUrl: 'https://api.openai.com/v1',
       apiKey: 'sk-test',
@@ -186,10 +212,177 @@ describe('provider-config', () => {
 
     const model = buildModel(provider)
     const cost = estimateCost(model, 1000, 500, 2000, 1000)
-    // input: 1000/1M * 10 = 0.01
-    // output: 500/1M * 30 = 0.015
-    // cacheRead: 2000/1M * 2.5 = 0.005
-    // cacheWrite: 1000/1M * 5 = 0.005
     expect(cost).toBeCloseTo(0.035, 6)
+  })
+})
+
+describe('encryption', () => {
+  it('encrypt/decrypt roundtrip works', () => {
+    const plaintext = 'sk-test-api-key-12345'
+    const encrypted = encrypt(plaintext)
+    expect(encrypted).not.toBe(plaintext)
+    const decrypted = decrypt(encrypted)
+    expect(decrypted).toBe(plaintext)
+  })
+
+  it('maskApiKey masks correctly', () => {
+    expect(maskApiKey('sk-1234567890abcdef')).toBe('sk-1••••••••cdef')
+    expect(maskApiKey('short')).toBe('••••••••')
+    expect(maskApiKey('12345678')).toBe('••••••••')
+    expect(maskApiKey('123456789')).toBe('1234••••••••6789')
+  })
+})
+
+describe('provider CRUD', () => {
+  let tmpDir: string
+  const originalDataDir = process.env.DATA_DIR
+
+  afterEach(() => {
+    if (tmpDir) {
+      fs.rmSync(tmpDir, { recursive: true, force: true })
+    }
+    if (originalDataDir !== undefined) {
+      process.env.DATA_DIR = originalDataDir
+    } else {
+      delete process.env.DATA_DIR
+    }
+  })
+
+  function setupEmpty(): void {
+    tmpDir = path.join(os.tmpdir(), `openagent-provider-crud-${Date.now()}`)
+    const configDir = path.join(tmpDir, 'config')
+    fs.mkdirSync(configDir, { recursive: true })
+    fs.writeFileSync(
+      path.join(configDir, 'providers.json'),
+      JSON.stringify({ providers: [] }, null, 2),
+      'utf-8',
+    )
+    process.env.DATA_DIR = tmpDir
+  }
+
+  it('addProvider creates a provider with encrypted API key', () => {
+    setupEmpty()
+
+    const provider = addProvider({
+      name: 'My OpenAI',
+      providerType: 'openai',
+      apiKey: 'sk-test123',
+      defaultModel: 'gpt-4o',
+    })
+
+    expect(provider.id).toBeDefined()
+    expect(provider.name).toBe('My OpenAI')
+    expect(provider.type).toBe('openai-completions')
+    expect(provider.provider).toBe('openai')
+    expect(provider.baseUrl).toBe('https://api.openai.com/v1')
+    expect(provider.status).toBe('untested')
+
+    // API key should be encrypted in the stored file
+    const file = loadProviders()
+    expect(file.providers[0].apiKey).not.toBe('sk-test123')
+
+    // But loadProvidersDecrypted should decrypt it
+    const decrypted = loadProvidersDecrypted()
+    expect(decrypted.providers[0].apiKey).toBe('sk-test123')
+
+    // First provider should be auto-activated
+    expect(file.activeProvider).toBe(provider.id)
+  })
+
+  it('addProvider uses type preset base URL', () => {
+    setupEmpty()
+    const provider = addProvider({
+      name: 'Kimi',
+      providerType: 'kimi',
+      apiKey: 'sk-kimi',
+      defaultModel: 'moonshot-v1-8k',
+    })
+    expect(provider.baseUrl).toBe('https://api.moonshot.ai/v1')
+  })
+
+  it('addProvider rejects duplicate name', () => {
+    setupEmpty()
+    addProvider({ name: 'test', providerType: 'openai', apiKey: 'sk-1', defaultModel: 'gpt-4o' })
+    expect(() => addProvider({ name: 'test', providerType: 'openai', apiKey: 'sk-2', defaultModel: 'gpt-4o' }))
+      .toThrow('already exists')
+  })
+
+  it('addProvider rejects invalid provider type', () => {
+    setupEmpty()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(() => addProvider({ name: 'test', providerType: 'invalid' as any, apiKey: 'sk-1', defaultModel: 'gpt-4o' }))
+      .toThrow('Unknown provider type')
+  })
+
+  it('updateProvider updates fields', () => {
+    setupEmpty()
+    const provider = addProvider({ name: 'test', providerType: 'openai', apiKey: 'sk-1', defaultModel: 'gpt-4o' })
+
+    const updated = updateProvider(provider.id, { name: 'Updated Name', defaultModel: 'gpt-4o-mini' })
+    expect(updated.name).toBe('Updated Name')
+    expect(updated.defaultModel).toBe('gpt-4o-mini')
+    expect(updated.status).toBe('untested') // reset on update
+  })
+
+  it('updateProvider throws on not found', () => {
+    setupEmpty()
+    expect(() => updateProvider('nonexistent', { name: 'test' })).toThrow('not found')
+  })
+
+  it('deleteProvider removes provider', () => {
+    setupEmpty()
+    const p1 = addProvider({ name: 'first', providerType: 'openai', apiKey: 'sk-1', defaultModel: 'gpt-4o' })
+    const p2 = addProvider({ name: 'second', providerType: 'anthropic', apiKey: 'sk-2', defaultModel: 'claude-3-5-sonnet-20241022' })
+
+    // p1 is active (first added), delete p2
+    deleteProvider(p2.id)
+    const file = loadProviders()
+    expect(file.providers).toHaveLength(1)
+    expect(file.providers[0].id).toBe(p1.id)
+  })
+
+  it('deleteProvider cannot delete active provider', () => {
+    setupEmpty()
+    const p1 = addProvider({ name: 'first', providerType: 'openai', apiKey: 'sk-1', defaultModel: 'gpt-4o' })
+    expect(() => deleteProvider(p1.id)).toThrow('Cannot delete the active provider')
+  })
+
+  it('setActiveProvider changes active provider', () => {
+    setupEmpty()
+    const p1 = addProvider({ name: 'first', providerType: 'openai', apiKey: 'sk-1', defaultModel: 'gpt-4o' })
+    const p2 = addProvider({ name: 'second', providerType: 'anthropic', apiKey: 'sk-2', defaultModel: 'claude-3-5-sonnet-20241022' })
+
+    expect(loadProviders().activeProvider).toBe(p1.id)
+
+    setActiveProvider(p2.id)
+    expect(loadProviders().activeProvider).toBe(p2.id)
+  })
+
+  it('updateProviderStatus updates status', () => {
+    setupEmpty()
+    const provider = addProvider({ name: 'test', providerType: 'openai', apiKey: 'sk-1', defaultModel: 'gpt-4o' })
+
+    updateProviderStatus(provider.id, 'connected')
+    const file = loadProviders()
+    expect(file.providers[0].status).toBe('connected')
+  })
+
+  it('loadProvidersMasked returns masked keys and empty apiKey', () => {
+    setupEmpty()
+    addProvider({ name: 'test', providerType: 'openai', apiKey: 'sk-test1234567890', defaultModel: 'gpt-4o' })
+
+    const masked = loadProvidersMasked()
+    expect(masked.providers[0].apiKey).toBe('')
+    expect(masked.providers[0].apiKeyMasked).toContain('••••••••')
+    expect(masked.providers[0].apiKeyMasked).not.toContain('sk-test1234567890')
+  })
+
+  it('PROVIDER_TYPE_PRESETS has all required types', () => {
+    expect(PROVIDER_TYPE_PRESETS).toHaveProperty('openai')
+    expect(PROVIDER_TYPE_PRESETS).toHaveProperty('anthropic')
+    expect(PROVIDER_TYPE_PRESETS).toHaveProperty('ollama-local')
+    expect(PROVIDER_TYPE_PRESETS).toHaveProperty('ollama-cloud')
+    expect(PROVIDER_TYPE_PRESETS).toHaveProperty('kimi')
+    expect(PROVIDER_TYPE_PRESETS).toHaveProperty('zai')
   })
 })
