@@ -1,6 +1,8 @@
+import fs from 'node:fs'
+import path from 'node:path'
 import { Bot, GrammyError, HttpError } from 'grammy'
 import type { Context } from 'grammy'
-import type { AgentCore } from '@openagent/core'
+import type { AgentCore, Database } from '@openagent/core'
 import { loadConfig } from '@openagent/core'
 
 /**
@@ -17,8 +19,22 @@ export interface TelegramConfig {
 
 export interface TelegramBotOptions {
   agentCore: AgentCore
+  db?: Database
   config?: TelegramConfig
   onQueueDepthChanged?: (queueDepth: number) => void
+}
+
+export type TelegramUserStatus = 'pending' | 'approved' | 'rejected'
+
+export interface TelegramUserRow {
+  id: number
+  telegram_id: string
+  telegram_username: string | null
+  telegram_display_name: string | null
+  status: TelegramUserStatus
+  user_id: number | null
+  created_at: string
+  updated_at: string
 }
 
 interface TelegramSettings {
@@ -146,6 +162,7 @@ function loadTelegramRuntimeConfig(): TelegramConfig {
 export class TelegramBot {
   private bot: Bot
   private agentCore: AgentCore
+  private db: Database | null
   private config: TelegramConfig
   private running = false
   private chatStates = new Map<string, ChatState>()
@@ -153,6 +170,7 @@ export class TelegramBot {
 
   constructor(options: TelegramBotOptions) {
     this.agentCore = options.agentCore
+    this.db = options.db ?? null
     this.config = options.config ?? loadTelegramRuntimeConfig()
     this.onQueueDepthChanged = options.onQueueDepthChanged
 
@@ -216,6 +234,9 @@ export class TelegramBot {
   private setupHandlers(): void {
     // /start command - welcome message
     this.bot.command('start', async (ctx) => {
+      // Register the user but don't gate the welcome message
+      this.ensureTelegramUser(ctx)
+
       const welcomeText = [
         '👋 *Welcome to OpenAgent!*',
         '',
@@ -233,7 +254,9 @@ export class TelegramBot {
 
     // /new command - summarize + reset session
     this.bot.command('new', async (ctx) => {
-      const userId = getUserId(ctx)
+      if (!await this.checkAuthorized(ctx)) return
+
+      const userId = this.resolveUserId(ctx)
 
       try {
         const summary = await this.agentCore.handleNewCommand(userId)
@@ -264,6 +287,136 @@ export class TelegramBot {
   }
 
   /**
+   * Ensure a telegram user record exists in the database.
+   * Returns the row or null if no db is configured.
+   */
+  private ensureTelegramUser(ctx: Context): TelegramUserRow | null {
+    if (!this.db || !ctx.from) return null
+
+    const telegramId = String(ctx.from.id)
+    const username = ctx.from.username ?? null
+    const displayName = [ctx.from.first_name, ctx.from.last_name].filter(Boolean).join(' ') || null
+
+    const existing = this.db.prepare(
+      'SELECT * FROM telegram_users WHERE telegram_id = ?'
+    ).get(telegramId) as TelegramUserRow | undefined
+
+    if (existing) {
+      // Update username/display name if changed
+      if (existing.telegram_username !== username || existing.telegram_display_name !== displayName) {
+        this.db.prepare(
+          "UPDATE telegram_users SET telegram_username = ?, telegram_display_name = ?, updated_at = datetime('now') WHERE id = ?"
+        ).run(username, displayName, existing.id)
+      }
+      // Refresh avatar if we don't have one yet
+      if (!this.hasAvatarFile(telegramId)) {
+        this.fetchAndSaveAvatar(ctx.from.id).catch(() => {})
+      }
+      return existing
+    }
+
+    // Insert new pending user
+    const result = this.db.prepare(
+      'INSERT INTO telegram_users (telegram_id, telegram_username, telegram_display_name, status) VALUES (?, ?, ?, ?)'
+    ).run(telegramId, username, displayName, 'pending')
+
+    console.log(`[telegram] New user registered as pending: ${username ?? displayName ?? telegramId}`)
+
+    // Fetch avatar in the background (don't block registration)
+    this.fetchAndSaveAvatar(ctx.from.id).catch(() => {})
+
+    return this.db.prepare(
+      'SELECT * FROM telegram_users WHERE id = ?'
+    ).get(result.lastInsertRowid) as TelegramUserRow
+  }
+
+  /**
+   * Check if an avatar file exists for a given telegram user.
+   */
+  private hasAvatarFile(telegramId: string): boolean {
+    const avatarDir = path.join(process.env.DATA_DIR ?? '/data', 'avatars')
+    try {
+      const files = fs.readdirSync(avatarDir)
+      return files.some(f => f.startsWith(`telegram-${telegramId}.`))
+    } catch {
+      return false
+    }
+  }
+
+  /**
+   * Fetch a user's Telegram profile photo and save it locally.
+   */
+  private async fetchAndSaveAvatar(telegramId: number): Promise<void> {
+    try {
+      const photos = await this.bot.api.getUserProfilePhotos(telegramId, { limit: 1 })
+      if (!photos.total_count || !photos.photos[0]?.length) return
+
+      // Pick the smallest size that's at least 160px (good for avatars)
+      const sizes = photos.photos[0]
+      const photo = sizes.find(s => s.width >= 160) ?? sizes[sizes.length - 1]
+
+      const file = await this.bot.api.getFile(photo.file_id)
+      if (!file.file_path) return
+
+      const url = `https://api.telegram.org/file/bot${this.config.botToken}/${file.file_path}`
+      const response = await fetch(url)
+      if (!response.ok) return
+
+      const avatarDir = path.join(process.env.DATA_DIR ?? '/data', 'avatars')
+      fs.mkdirSync(avatarDir, { recursive: true })
+
+      const ext = file.file_path.split('.').pop() ?? 'jpg'
+      const avatarPath = path.join(avatarDir, `telegram-${telegramId}.${ext}`)
+      const buffer = Buffer.from(await response.arrayBuffer())
+      fs.writeFileSync(avatarPath, buffer)
+
+      console.log(`[telegram] Avatar saved for user ${telegramId}`)
+    } catch (err) {
+      console.warn(`[telegram] Could not fetch avatar for ${telegramId}:`, (err as Error).message)
+    }
+  }
+
+  /**
+   * Check if a telegram user is authorized. If not, sends a status message.
+   * Returns true if the user may proceed.
+   */
+  private async checkAuthorized(ctx: Context): Promise<boolean> {
+    if (!this.db) return true // No db = no access control
+
+    const user = this.ensureTelegramUser(ctx)
+    if (!user) return true
+
+    if (user.status === 'approved') return true
+
+    if (user.status === 'pending') {
+      await this.safeSendMessage(ctx, '⏳ Your access request has been sent to the administrator. Please wait for approval.')
+      return false
+    }
+
+    // rejected — silently ignore
+    return false
+  }
+
+  /**
+   * Resolve the user ID for session management.
+   * If the telegram user is linked to an OpenAgent user, use that user's ID.
+   */
+  private resolveUserId(ctx: Context): string {
+    if (!this.db || !ctx.from) return getUserId(ctx)
+
+    const telegramId = String(ctx.from.id)
+    const row = this.db.prepare(
+      'SELECT user_id FROM telegram_users WHERE telegram_id = ? AND status = ?'
+    ).get(telegramId, 'approved') as { user_id: number | null } | undefined
+
+    if (row?.user_id) {
+      return `user-${row.user_id}`
+    }
+
+    return getUserId(ctx)
+  }
+
+  /**
    * Handle an incoming text message
    */
   private async handleMessage(ctx: Context): Promise<void> {
@@ -279,6 +432,8 @@ export class TelegramBot {
     if (isHandledCommand(text)) {
       return
     }
+
+    if (!await this.checkAuthorized(ctx)) return
 
     this.bufferMessage(ctx, text)
   }
@@ -349,7 +504,7 @@ export class TelegramBot {
     if (!state) return
 
     const { ctx, text } = queuedMessage
-    const userId = getUserId(ctx)
+    const userId = this.resolveUserId(ctx)
     const messageForAgent = `${formatUserContext(ctx)}${text}`
 
     try {
@@ -543,6 +698,20 @@ export class TelegramBot {
   }
 
   /**
+   * Send a message directly to a Telegram chat by chat ID.
+   * Used for notifications (e.g. approval messages).
+   */
+  async sendDirectMessage(chatId: string | number, text: string): Promise<boolean> {
+    try {
+      await this.bot.api.sendMessage(chatId, text)
+      return true
+    } catch (err) {
+      console.error(`[telegram] Failed to send direct message to ${chatId}:`, err)
+      return false
+    }
+  }
+
+  /**
    * Get the underlying grammy Bot instance (for advanced usage)
    */
   getBot(): Bot {
@@ -554,7 +723,7 @@ export class TelegramBot {
  * Create a Telegram bot if configured, or return null for web-only mode.
  * Does not throw if Telegram is disabled or not configured.
  */
-export function createTelegramBot(agentCore: AgentCore): TelegramBot | null {
+export function createTelegramBot(agentCore: AgentCore, db?: Database): TelegramBot | null {
   try {
     const config = loadTelegramRuntimeConfig()
 
@@ -568,7 +737,7 @@ export function createTelegramBot(agentCore: AgentCore): TelegramBot | null {
       return null
     }
 
-    return new TelegramBot({ agentCore, config })
+    return new TelegramBot({ agentCore, db, config })
   } catch {
     console.log('ℹ️  Telegram config not found. Running in web-only mode.')
     return null
