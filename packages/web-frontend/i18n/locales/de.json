@@ -339,6 +339,8 @@
       "messagesMeta": "Alle seit Mitternacht erfassten Chat-Nachrichten",
       "sessions": "Sitzungen heute",
       "sessionsMeta": "Heute gestartete Gesprächssitzungen",
+      "costToday": "Gesch. Kosten heute",
+      "tokens": "Tokens",
       "queue": "Warteschlange",
       "queueMeta": "Aktuell laufende Arbeit des Agenten",
       "requests": "Modellanfragen",
