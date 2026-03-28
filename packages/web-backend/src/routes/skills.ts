@@ -237,11 +237,11 @@ export function createSkillsRouter(options: SkillsRouterOptions = {}): Router {
 
   /**
    * PATCH /api/skills/:owner/:name — Update skill settings
-   * Body: { "enabled": true/false } and/or { "envValues": { "KEY": "value" } }
+   * Body: { "enabled": true/false } and/or { "envValues": { "KEY": "value" } } and/or { "envKeys": ["KEY"] }
    */
   router.patch('/:owner/:name', (req: AuthenticatedRequest, res) => {
     const id = `${req.params.owner}/${req.params.name}`
-    const body = req.body as { enabled?: boolean; envValues?: Record<string, string> }
+    const body = req.body as { enabled?: boolean; envValues?: Record<string, string>; envKeys?: string[] }
 
     try {
       const existing = getSkill(id)
@@ -253,6 +253,7 @@ export function createSkillsRouter(options: SkillsRouterOptions = {}): Router {
       const updated = updateSkill(id, {
         enabled: body.enabled,
         envValues: body.envValues,
+        envKeys: body.envKeys,
       })
 
       // Refresh agent skills
