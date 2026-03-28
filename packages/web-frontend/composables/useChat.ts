@@ -4,10 +4,14 @@ export interface ChatMessage {
   content: string
   timestamp?: string
   streaming?: boolean
+  /** The source channel (for cross-channel messages) */
+  source?: 'web' | 'telegram'
+  /** Sender display name (for cross-channel messages) */
+  senderName?: string
 }
 
 interface WsMessage {
-  type: 'text' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system'
+  type: 'text' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message'
   text?: string
   toolName?: string
   toolCallId?: string
@@ -16,6 +20,10 @@ interface WsMessage {
   toolIsError?: boolean
   error?: string
   sessionId?: string
+  /** The source channel */
+  source?: string
+  /** Sender display name */
+  senderName?: string
 }
 
 type ConnectionStatus = 'connecting' | 'connected' | 'disconnected'
@@ -92,6 +100,19 @@ export function useChat() {
           }]
         }
         isStreaming.value = false
+        break
+
+      case 'external_user_message':
+        // A message from another channel (e.g. Telegram) for the same user
+        if (msg.text) {
+          messages.value = [...messages.value, {
+            role: 'user',
+            content: msg.text,
+            timestamp: new Date().toISOString(),
+            source: (msg.source as 'web' | 'telegram') ?? undefined,
+            senderName: msg.senderName,
+          }]
+        }
         break
 
       case 'text':
