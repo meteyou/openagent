@@ -130,7 +130,7 @@
           <DropdownMenu class="block w-full">
             <DropdownMenuTrigger>
               <div
-                class="flex w-full cursor-pointer items-center gap-2.5 px-4 py-3 hover:bg-sidebar-accent transition-colors"
+                class="flex w-full cursor-pointer items-center gap-2.5 px-4 py-[15px] hover:bg-sidebar-accent transition-colors"
                 :aria-label="$t('aria.userMenu')"
               >
                 <!-- Avatar -->
