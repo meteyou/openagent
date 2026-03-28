@@ -263,12 +263,10 @@
     "days": "days",
     "oClock": ":00",
     "tabs": {
-      "general": "General",
-      "generalDescription": "Session behavior and language preferences.",
       "agent": "Agent",
-      "agentDescription": "Fine-tune heartbeat timing and message batching for connected channels.",
+      "agentDescription": "Language preferences, heartbeat timing, and message batching.",
       "memory": "Memory",
-      "memoryDescription": "Automatic memory consolidation from daily entries into core memory.",
+      "memoryDescription": "Session behavior and automatic memory consolidation.",
       "telegram": "Telegram",
       "telegramDescription": "Configure the Telegram bot token and message batching."
     }

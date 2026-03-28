@@ -107,35 +107,18 @@
           <!-- Tab content -->
           <template v-else-if="form">
 
-            <!-- ═══ General ═══ -->
-            <div v-if="activeTab === 'general'">
+            <!-- ═══ Agent ═══ -->
+            <div v-if="activeTab === 'agent'">
               <div class="mb-8">
                 <h2 class="text-lg font-semibold tracking-tight text-foreground">
-                  {{ $t('settings.tabs.general') }}
+                  {{ $t('settings.tabs.agent') }}
                 </h2>
                 <p class="mt-1 text-sm text-muted-foreground">
-                  {{ $t('settings.tabs.generalDescription') }}
+                  {{ $t('settings.tabs.agentDescription') }}
                 </p>
               </div>
 
               <div class="flex flex-col gap-6">
-                <!-- Session timeout -->
-                <div class="flex flex-col gap-1.5">
-                  <Label for="session-timeout">{{ $t('settings.sessionTimeout') }}</Label>
-                  <div class="flex items-center gap-2">
-                    <Input
-                      id="session-timeout"
-                      v-model.number="form.sessionTimeoutMinutes"
-                      type="number"
-                      min="1"
-                      max="1440"
-                      class="w-28"
-                    />
-                    <span class="text-sm text-muted-foreground">{{ $t('settings.minutes') }}</span>
-                  </div>
-                  <p class="text-xs text-muted-foreground">{{ $t('settings.sessionTimeoutHint') }}</p>
-                </div>
-
                 <!-- Language -->
                 <div class="flex flex-col gap-1.5">
                   <Label for="language-select">{{ $t('settings.language') }}</Label>
@@ -155,21 +138,7 @@
                   </Select>
                   <p class="text-xs text-muted-foreground">{{ $t('settings.languageHint') }}</p>
                 </div>
-              </div>
-            </div>
 
-            <!-- ═══ Agent ═══ -->
-            <div v-else-if="activeTab === 'agent'">
-              <div class="mb-8">
-                <h2 class="text-lg font-semibold tracking-tight text-foreground">
-                  {{ $t('settings.tabs.agent') }}
-                </h2>
-                <p class="mt-1 text-sm text-muted-foreground">
-                  {{ $t('settings.tabs.agentDescription') }}
-                </p>
-              </div>
-
-              <div class="flex flex-col gap-6">
                 <!-- Heartbeat interval -->
                 <div class="flex flex-col gap-1.5">
                   <Label for="heartbeat-interval">{{ $t('settings.heartbeatInterval') }}</Label>
@@ -201,6 +170,25 @@
               </div>
 
               <div class="flex flex-col gap-6">
+                <!-- Session timeout -->
+                <div class="flex flex-col gap-1.5">
+                  <Label for="session-timeout">{{ $t('settings.sessionTimeout') }}</Label>
+                  <div class="flex items-center gap-2">
+                    <Input
+                      id="session-timeout"
+                      v-model.number="form.sessionTimeoutMinutes"
+                      type="number"
+                      min="1"
+                      max="1440"
+                      class="w-28"
+                    />
+                    <span class="text-sm text-muted-foreground">{{ $t('settings.minutes') }}</span>
+                  </div>
+                  <p class="text-xs text-muted-foreground">{{ $t('settings.sessionTimeoutHint') }}</p>
+                </div>
+
+                <Separator />
+
                 <!-- Enable toggle -->
                 <div class="flex items-center justify-between rounded-lg border border-border px-4 py-3">
                   <div class="flex flex-col gap-0.5 pr-4">
@@ -521,13 +509,13 @@ const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
 
-const VALID_TABS = ['general', 'agent', 'memory', 'telegram'] as const
+const VALID_TABS = ['agent', 'memory', 'telegram'] as const
 type TabId = (typeof VALID_TABS)[number]
 
 const activeTab = computed<TabId>({
   get() {
     const raw = route.query.tab as string
-    return VALID_TABS.includes(raw as TabId) ? (raw as TabId) : 'general'
+    return VALID_TABS.includes(raw as TabId) ? (raw as TabId) : 'agent'
   },
   set(value: TabId) {
     router.replace({ query: { tab: value } })
@@ -535,7 +523,6 @@ const activeTab = computed<TabId>({
 })
 
 const tabs = computed(() => [
-  { id: 'general' as TabId, icon: 'settings', label: t('settings.tabs.general') },
   { id: 'agent' as TabId, icon: 'bot', label: t('settings.tabs.agent') },
   { id: 'memory' as TabId, icon: 'brain', label: t('settings.tabs.memory') },
   { id: 'telegram' as TabId, icon: 'send', label: t('settings.tabs.telegram') },

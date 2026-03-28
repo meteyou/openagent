@@ -261,12 +261,10 @@
     "days": "Tage",
     "oClock": " Uhr",
     "tabs": {
-      "general": "Allgemein",
-      "generalDescription": "Sitzungsverhalten und Spracheinstellungen.",
       "agent": "Agent",
-      "agentDescription": "Feinabstimmung für Heartbeat-Timing und Nachrichten-Batching verbundener Kanäle.",
+      "agentDescription": "Spracheinstellungen, Heartbeat-Timing und Nachrichten-Batching.",
       "memory": "Gedächtnis",
-      "memoryDescription": "Automatische Konsolidierung täglicher Einträge in das Kerngedächtnis.",
+      "memoryDescription": "Sitzungsverhalten und automatische Gedächtniskonsolidierung.",
       "telegram": "Telegram",
       "telegramDescription": "Telegram-Bot-Token und Nachrichten-Batching konfigurieren."
     }
