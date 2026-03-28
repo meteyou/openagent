@@ -2,7 +2,7 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { initDatabase, addProvider, setActiveProvider, loadProviders, ProviderManager } from '@openagent/core'
+import { initDatabase, addProvider, setActiveProvider, ProviderManager } from '@openagent/core'
 import type { ProviderConfig } from '@openagent/core'
 import { HeartbeatService } from './heartbeat.js'
 
@@ -102,9 +102,30 @@ describe('HeartbeatService', () => {
     db.close()
   })
 
-  it('notifies only on down transitions and sends recovery only when healthy again', async () => {
+  it('sends healthyToDown notification and downToFallback with fallback provider name', async () => {
+    writeConfig('settings.json', {
+      heartbeat: {
+        intervalMinutes: 1,
+        fallbackTrigger: 'down',
+        failuresBeforeFallback: 1,
+        recoveryCheckIntervalMinutes: 1,
+        successesBeforeRecovery: 1,
+        notifications: {
+          healthyToDegraded: false,
+          degradedToHealthy: false,
+          degradedToDown: true,
+          healthyToDown: true,
+          downToFallback: true,
+          fallbackToHealthy: true,
+        },
+      },
+    })
+
     const db = initDatabase(':memory:')
     addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', defaultModel: 'gpt-4o-mini' })
+    const primary = makeProvider()
+    const fallback = makeProvider({ id: 'fb', name: 'FallbackModel', defaultModel: 'gpt-4o-mini' })
+    const pm = new ProviderManager(primary, fallback)
 
     const telegramBodies: Array<{ chat_id: number; text: string }> = []
     let providerAttempt = 0
@@ -114,7 +135,7 @@ describe('HeartbeatService', () => {
 
       if (url.includes('/chat/completions')) {
         providerAttempt += 1
-        if (providerAttempt <= 2) {
+        if (providerAttempt <= 1) {
           throw new Error('ECONNREFUSED')
         }
         return new Response(JSON.stringify({ ok: true }), { status: 200 })
@@ -128,25 +149,24 @@ describe('HeartbeatService', () => {
       throw new Error(`Unexpected fetch URL: ${url}`)
     })
 
-    const service = new HeartbeatService({ db, fetchImpl: fetchImpl as typeof fetch })
+    const service = new HeartbeatService({ db, providerManager: pm, fetchImpl: fetchImpl as typeof fetch })
 
+    // First check: provider is down → healthyToDown + downToFallback notifications
     const first = await service.runNow()
     expect(first.status).toBe('down')
-    expect(telegramBodies).toHaveLength(1)
-    expect(telegramBodies[0].text).toContain('provider is down')
-
-    const second = await service.runNow()
-    expect(second.status).toBe('down')
-    expect(telegramBodies).toHaveLength(1)
-
-    const third = await service.runNow()
-    expect(third.status).toBe('healthy')
     expect(telegramBodies).toHaveLength(2)
-    expect(telegramBodies[1].text).toContain('provider recovered')
+    expect(telegramBodies[0].text).toContain('provider is down')
+    expect(telegramBodies[1].text).toContain('switched to fallback')
+    expect(telegramBodies[1].text).toContain('FallbackModel')
+
+    // Second check (recovery): primary is healthy → fallbackToHealthy notification
+    const second = await service.runNow()
+    expect(second.status).toBe('healthy')
+    expect(telegramBodies).toHaveLength(3)
+    expect(telegramBodies[2].text).toContain('primary provider restored')
 
     const rows = db.prepare('SELECT status FROM health_checks ORDER BY id').all() as Array<{ status: string }>
-    expect(rows.map((row) => row.status)).toEqual(['down', 'down', 'healthy'])
-    expect(loadProviders().providers[0].status).toBe('connected')
+    expect(rows.map((row) => row.status)).toEqual(['down', 'healthy'])
 
     db.close()
   })
@@ -709,5 +729,428 @@ describe('HeartbeatService', () => {
     expect(snapshot.operatingMode).toBe('fallback')
 
     db.close()
+  })
+
+  describe('granular notification toggles', () => {
+    function createServiceWithToggles(
+      db: ReturnType<typeof initDatabase>,
+      notifications: Record<string, boolean>,
+      opts: {
+        providerManager?: ProviderManager
+        fetchBehavior: (url: string, attempt: number) => Response | Error
+      },
+    ) {
+      const telegramBodies: Array<{ chat_id: number; text: string }> = []
+      let attempt = 0
+
+      writeConfig('settings.json', {
+        heartbeat: {
+          intervalMinutes: 1,
+          fallbackTrigger: 'down',
+          failuresBeforeFallback: 1,
+          recoveryCheckIntervalMinutes: 1,
+          successesBeforeRecovery: 1,
+          notifications,
+        },
+      })
+
+      const fetchImpl = vi.fn(async (input: string | URL, init?: RequestInit) => {
+        const url = String(input)
+        if (url.includes('/chat/completions')) {
+          attempt++
+          const result = opts.fetchBehavior(url, attempt)
+          if (result instanceof Error) throw result
+          return result
+        }
+        if (url.includes('api.telegram.org')) {
+          telegramBodies.push(JSON.parse(String(init?.body)) as { chat_id: number; text: string })
+          return new Response(JSON.stringify({ ok: true }), { status: 200 })
+        }
+        throw new Error(`Unexpected fetch URL: ${url}`)
+      })
+
+      const service = new HeartbeatService({
+        db,
+        providerManager: opts.providerManager,
+        fetchImpl: fetchImpl as typeof fetch,
+      })
+
+      return { service, telegramBodies }
+    }
+
+    it('disabled healthyToDown does NOT send notification', async () => {
+      const db = initDatabase(':memory:')
+      addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', defaultModel: 'gpt-4o-mini' })
+
+      const { service, telegramBodies } = createServiceWithToggles(db, {
+        healthyToDown: false,
+        downToFallback: false,
+      }, {
+        fetchBehavior: () => { throw new Error('ECONNREFUSED') },
+      })
+
+      await service.runNow()
+      expect(telegramBodies).toHaveLength(0)
+
+      db.close()
+    })
+
+    it('enabled healthyToDown sends notification', async () => {
+      const db = initDatabase(':memory:')
+      addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', defaultModel: 'gpt-4o-mini' })
+
+      const { service, telegramBodies } = createServiceWithToggles(db, {
+        healthyToDown: true,
+      }, {
+        fetchBehavior: () => { throw new Error('ECONNREFUSED') },
+      })
+
+      await service.runNow()
+      expect(telegramBodies).toHaveLength(1)
+      expect(telegramBodies[0].text).toContain('provider is down')
+
+      db.close()
+    })
+
+    it('disabled degradedToDown does NOT send notification', async () => {
+      const db = initDatabase(':memory:')
+      addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', defaultModel: 'gpt-4o-mini', degradedThresholdMs: 1 })
+
+      const { service, telegramBodies } = createServiceWithToggles(db, {
+        healthyToDegraded: false,
+        degradedToDown: false,
+        healthyToDown: false,
+        downToFallback: false,
+      }, {
+        fetchBehavior: (_url, att) => {
+          if (att === 1) {
+            // First call: slow response → degraded
+            return new Response(JSON.stringify({ ok: true }), { status: 200 })
+          }
+          // Second call: down
+          throw new Error('ECONNREFUSED')
+        },
+      })
+
+      // First: degraded (slow response with 1ms threshold)
+      await service.runNow()
+      // Second: down
+      await service.runNow()
+      expect(telegramBodies).toHaveLength(0)
+
+      db.close()
+    })
+
+    it('enabled degradedToDown sends notification', async () => {
+      const db = initDatabase(':memory:')
+      addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', defaultModel: 'gpt-4o-mini', degradedThresholdMs: 1 })
+
+      const { service, telegramBodies } = createServiceWithToggles(db, {
+        healthyToDegraded: false,
+        degradedToDown: true,
+        downToFallback: false,
+      }, {
+        fetchBehavior: (_, att) => {
+          if (att === 1) {
+            return new Response(JSON.stringify({ ok: true }), { status: 200 })
+          }
+          throw new Error('ECONNREFUSED')
+        },
+      })
+
+      await service.runNow() // degraded
+      await service.runNow() // down
+      const downMessages = telegramBodies.filter(b => b.text.includes('provider is down'))
+      expect(downMessages.length).toBeGreaterThanOrEqual(1)
+
+      db.close()
+    })
+
+    it('disabled healthyToDegraded does NOT send notification', async () => {
+      const db = initDatabase(':memory:')
+      addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', defaultModel: 'gpt-4o-mini', degradedThresholdMs: 1 })
+
+      const { service, telegramBodies } = createServiceWithToggles(db, {
+        healthyToDegraded: false,
+      }, {
+        fetchBehavior: () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
+      })
+
+      await service.runNow()
+      expect(telegramBodies).toHaveLength(0)
+
+      db.close()
+    })
+
+    it('enabled healthyToDegraded sends notification', async () => {
+      const db = initDatabase(':memory:')
+      addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', defaultModel: 'gpt-4o-mini', degradedThresholdMs: 1 })
+
+      const telegramBodies: Array<{ chat_id: number; text: string }> = []
+
+      writeConfig('settings.json', {
+        heartbeat: {
+          intervalMinutes: 1,
+          fallbackTrigger: 'down',
+          failuresBeforeFallback: 1,
+          recoveryCheckIntervalMinutes: 1,
+          successesBeforeRecovery: 1,
+          notifications: { healthyToDegraded: true },
+        },
+      })
+
+      const fetchImpl = vi.fn(async (input: string | URL, init?: RequestInit) => {
+        const url = String(input)
+        if (url.includes('/chat/completions')) {
+          // Delay to ensure latency > 1ms (degraded threshold)
+          await new Promise(resolve => setTimeout(resolve, 20))
+          return new Response(JSON.stringify({ ok: true }), { status: 200 })
+        }
+        if (url.includes('api.telegram.org')) {
+          telegramBodies.push(JSON.parse(String(init?.body)) as { chat_id: number; text: string })
+          return new Response(JSON.stringify({ ok: true }), { status: 200 })
+        }
+        throw new Error(`Unexpected fetch URL: ${url}`)
+      })
+
+      const service = new HeartbeatService({ db, fetchImpl: fetchImpl as typeof fetch })
+      await service.runNow()
+      const degradedMessages = telegramBodies.filter(b => b.text.includes('degraded'))
+      expect(degradedMessages.length).toBeGreaterThanOrEqual(1)
+
+      db.close()
+    })
+
+    it('disabled degradedToHealthy does NOT send notification', async () => {
+      const db = initDatabase(':memory:')
+      const added = addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', defaultModel: 'gpt-4o-mini', degradedThresholdMs: 1 })
+
+      const { service, telegramBodies } = createServiceWithToggles(db, {
+        healthyToDegraded: false,
+        degradedToHealthy: false,
+      }, {
+        fetchBehavior: () => {
+          return new Response(JSON.stringify({ ok: true }), { status: 200 })
+        },
+      })
+
+      await service.runNow() // degraded (1ms threshold)
+      // Update the same provider's threshold so next check is healthy
+      const { loadProviders: lp } = await import('@openagent/core')
+      const providers = lp()
+      const configDir = path.join(tempDataDir, 'config')
+      const p = providers.providers.find(p => p.id === added.id)!
+      p.degradedThresholdMs = 999999
+      fs.writeFileSync(path.join(configDir, 'providers.json'), JSON.stringify(providers, null, 2) + '\n', 'utf-8')
+      await service.runNow() // healthy (same provider, no state reset)
+      expect(telegramBodies).toHaveLength(0)
+
+      db.close()
+    })
+
+    it('enabled degradedToHealthy sends notification', async () => {
+      const db = initDatabase(':memory:')
+      const added = addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', defaultModel: 'gpt-4o-mini', degradedThresholdMs: 1 })
+
+      const telegramBodies: Array<{ chat_id: number; text: string }> = []
+
+      writeConfig('settings.json', {
+        heartbeat: {
+          intervalMinutes: 1,
+          failuresBeforeFallback: 1,
+          recoveryCheckIntervalMinutes: 1,
+          successesBeforeRecovery: 1,
+          notifications: { healthyToDegraded: false, degradedToHealthy: true },
+        },
+      })
+
+      let attempt = 0
+      const fetchImpl = vi.fn(async (input: string | URL, init?: RequestInit) => {
+        const url = String(input)
+        if (url.includes('/chat/completions')) {
+          attempt++
+          if (attempt === 1) {
+            // Delay to ensure latency > 1ms (degraded threshold)
+            await new Promise(resolve => setTimeout(resolve, 20))
+          }
+          return new Response(JSON.stringify({ ok: true }), { status: 200 })
+        }
+        if (url.includes('api.telegram.org')) {
+          telegramBodies.push(JSON.parse(String(init?.body)) as { chat_id: number; text: string })
+          return new Response(JSON.stringify({ ok: true }), { status: 200 })
+        }
+        throw new Error(`Unexpected fetch URL: ${url}`)
+      })
+
+      const service = new HeartbeatService({ db, fetchImpl: fetchImpl as typeof fetch })
+      await service.runNow() // degraded (1ms threshold + 20ms delay)
+
+      // Update the same provider's threshold so next check is healthy
+      const { loadProviders: lp } = await import('@openagent/core')
+      const providers = lp()
+      const configDir = path.join(tempDataDir, 'config')
+      const p = providers.providers.find(pp => pp.id === added.id)!
+      p.degradedThresholdMs = 999999
+      fs.writeFileSync(path.join(configDir, 'providers.json'), JSON.stringify(providers, null, 2) + '\n', 'utf-8')
+      await service.runNow() // healthy (fast, high threshold)
+      const recoveryMessages = telegramBodies.filter(b => b.text.includes('recovered from degraded'))
+      expect(recoveryMessages.length).toBeGreaterThanOrEqual(1)
+
+      db.close()
+    })
+
+    it('disabled downToFallback does NOT send fallback notification', async () => {
+      const db = initDatabase(':memory:')
+      addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', defaultModel: 'gpt-4o-mini' })
+      const primary = makeProvider()
+      const fallback = makeProvider({ id: 'fb', name: 'Fallback' })
+      const pm = new ProviderManager(primary, fallback)
+
+      const { service, telegramBodies } = createServiceWithToggles(db, {
+        healthyToDown: true,
+        downToFallback: false,
+      }, {
+        providerManager: pm,
+        fetchBehavior: () => { throw new Error('ECONNREFUSED') },
+      })
+
+      await service.runNow()
+      expect(pm.getOperatingMode()).toBe('fallback')
+      // Should have healthyToDown but NOT downToFallback
+      expect(telegramBodies).toHaveLength(1)
+      expect(telegramBodies[0].text).toContain('provider is down')
+      expect(telegramBodies.find(b => b.text.includes('fallback'))).toBeUndefined()
+
+      db.close()
+    })
+
+    it('enabled downToFallback sends notification with fallback provider name', async () => {
+      const db = initDatabase(':memory:')
+      addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', defaultModel: 'gpt-4o-mini' })
+      const primary = makeProvider()
+      const fallback = makeProvider({ id: 'fb', name: 'MyFallback', defaultModel: 'gpt-3.5-turbo' })
+      const pm = new ProviderManager(primary, fallback)
+
+      const { service, telegramBodies } = createServiceWithToggles(db, {
+        healthyToDown: false,
+        downToFallback: true,
+      }, {
+        providerManager: pm,
+        fetchBehavior: () => { throw new Error('ECONNREFUSED') },
+      })
+
+      await service.runNow()
+      expect(pm.getOperatingMode()).toBe('fallback')
+      // Should have downToFallback only (healthyToDown disabled)
+      expect(telegramBodies).toHaveLength(1)
+      expect(telegramBodies[0].text).toContain('switched to fallback')
+      expect(telegramBodies[0].text).toContain('MyFallback')
+      expect(telegramBodies[0].text).toContain('gpt-3.5-turbo')
+
+      db.close()
+    })
+
+    it('disabled fallbackToHealthy does NOT send recovery notification', async () => {
+      const db = initDatabase(':memory:')
+      addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', defaultModel: 'gpt-4o-mini' })
+      const primary = makeProvider()
+      const fallback = makeProvider({ id: 'fb', name: 'Fallback' })
+      const pm = new ProviderManager(primary, fallback)
+
+      const { service, telegramBodies } = createServiceWithToggles(db, {
+        healthyToDown: false,
+        downToFallback: false,
+        fallbackToHealthy: false,
+      }, {
+        providerManager: pm,
+        fetchBehavior: (_url, att) => {
+          if (att <= 1) throw new Error('ECONNREFUSED')
+          return new Response(JSON.stringify({ ok: true }), { status: 200 })
+        },
+      })
+
+      await service.runNow() // down → fallback
+      await service.runNow() // healthy → recovery
+      expect(pm.getOperatingMode()).toBe('normal')
+      expect(telegramBodies).toHaveLength(0)
+
+      db.close()
+    })
+
+    it('enabled fallbackToHealthy sends notification confirming primary restored', async () => {
+      const db = initDatabase(':memory:')
+      addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', defaultModel: 'gpt-4o-mini' })
+      const primary = makeProvider()
+      const fallback = makeProvider({ id: 'fb', name: 'Fallback' })
+      const pm = new ProviderManager(primary, fallback)
+
+      const { service, telegramBodies } = createServiceWithToggles(db, {
+        healthyToDown: false,
+        downToFallback: false,
+        fallbackToHealthy: true,
+      }, {
+        providerManager: pm,
+        fetchBehavior: (_url, att) => {
+          if (att <= 1) throw new Error('ECONNREFUSED')
+          return new Response(JSON.stringify({ ok: true }), { status: 200 })
+        },
+      })
+
+      await service.runNow() // down → fallback
+      await service.runNow() // healthy → recovery
+      expect(pm.getOperatingMode()).toBe('normal')
+      expect(telegramBodies).toHaveLength(1)
+      expect(telegramBodies[0].text).toContain('primary provider restored')
+      expect(telegramBodies[0].text).toContain('Primary provider is back online')
+
+      db.close()
+    })
+
+    it('uses default toggles when notifications not configured', async () => {
+      writeConfig('settings.json', {
+        heartbeat: {
+          intervalMinutes: 1,
+          fallbackTrigger: 'down',
+          failuresBeforeFallback: 1,
+          recoveryCheckIntervalMinutes: 1,
+          successesBeforeRecovery: 1,
+        },
+      })
+
+      const db = initDatabase(':memory:')
+      addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', defaultModel: 'gpt-4o-mini' })
+      const primary = makeProvider()
+      const fallback = makeProvider({ id: 'fb', name: 'Fallback' })
+      const pm = new ProviderManager(primary, fallback)
+
+      const telegramBodies: Array<{ chat_id: number; text: string }> = []
+      let attempt = 0
+
+      const fetchImpl = vi.fn(async (input: string | URL, init?: RequestInit) => {
+        const url = String(input)
+        if (url.includes('/chat/completions')) {
+          attempt++
+          if (attempt <= 1) throw new Error('ECONNREFUSED')
+          return new Response(JSON.stringify({ ok: true }), { status: 200 })
+        }
+        if (url.includes('api.telegram.org')) {
+          telegramBodies.push(JSON.parse(String(init?.body)) as { chat_id: number; text: string })
+          return new Response(JSON.stringify({ ok: true }), { status: 200 })
+        }
+        throw new Error(`Unexpected fetch URL: ${url}`)
+      })
+
+      const service = new HeartbeatService({ db, providerManager: pm, fetchImpl: fetchImpl as typeof fetch })
+
+      // Down → should trigger healthyToDown (default: true) and downToFallback (default: true)
+      await service.runNow()
+      expect(telegramBodies).toHaveLength(2)
+
+      // Recovery → should trigger fallbackToHealthy (default: true)
+      await service.runNow()
+      expect(telegramBodies).toHaveLength(3)
+
+      db.close()
+    })
   })
 })
