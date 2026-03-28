@@ -410,6 +410,7 @@ describe('provider CRUD', () => {
     expect(PROVIDER_TYPE_PRESETS).toHaveProperty('anthropic')
     expect(PROVIDER_TYPE_PRESETS).toHaveProperty('ollama-local')
     expect(PROVIDER_TYPE_PRESETS).toHaveProperty('ollama-cloud')
+    expect(PROVIDER_TYPE_PRESETS).toHaveProperty('openrouter')
     expect(PROVIDER_TYPE_PRESETS).toHaveProperty('kimi')
     expect(PROVIDER_TYPE_PRESETS).toHaveProperty('zai')
   })
@@ -447,6 +448,11 @@ describe('getAvailableModels', () => {
 
   it('returns empty array for ollama-cloud (no pi-ai mapping)', () => {
     const models = getAvailableModels('ollama-cloud')
+    expect(models).toEqual([])
+  })
+
+  it('returns empty array for openrouter (no pi-ai mapping)', () => {
+    const models = getAvailableModels('openrouter')
     expect(models).toEqual([])
   })
 })

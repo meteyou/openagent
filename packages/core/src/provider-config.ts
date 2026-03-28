@@ -12,7 +12,7 @@ import { encrypt, decrypt, isEncrypted, maskApiKey } from './encryption.js'
  * Supported provider types with presets
  */
 export type ProviderType =
-  | 'openai' | 'anthropic' | 'ollama-local' | 'ollama-cloud' | 'kimi' | 'zai'
+  | 'openai' | 'anthropic' | 'ollama-local' | 'ollama-cloud' | 'openrouter' | 'kimi' | 'zai'
   | 'openai-codex' | 'github-copilot' | 'google-gemini-cli' | 'google-antigravity' | 'anthropic-oauth'
 
 export type AuthMethod = 'api-key' | 'oauth'
@@ -78,6 +78,17 @@ export const PROVIDER_TYPE_PRESETS: Record<ProviderType, ProviderTypePreset> = {
     baseUrl: '',
     requiresApiKey: true,
     urlEditable: true,
+    piAiProvider: null,
+    authMethod: 'api-key',
+  },
+  openrouter: {
+    type: 'openrouter',
+    label: 'OpenRouter',
+    apiType: 'openai-completions',
+    providerName: 'openrouter',
+    baseUrl: 'https://openrouter.ai/api/v1',
+    requiresApiKey: true,
+    urlEditable: false,
     piAiProvider: null,
     authMethod: 'api-key',
   },
