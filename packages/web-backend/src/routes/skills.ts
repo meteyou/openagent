@@ -1,0 +1,268 @@
+import { Router } from 'express'
+import fs from 'node:fs'
+import path from 'node:path'
+import {
+  loadSkills,
+  addSkill,
+  updateSkill,
+  deleteSkill as deleteSkillConfig,
+  getSkill,
+  installSkill,
+  loadConfig,
+  ensureConfigTemplates,
+  getConfigDir,
+  encrypt,
+  maskApiKey,
+} from '@openagent/core'
+import type { AgentCore, SkillConfig, BuiltinToolsConfig } from '@openagent/core'
+import { jwtMiddleware } from '../auth.js'
+import type { AuthenticatedRequest } from '../auth.js'
+
+export interface SkillsRouterOptions {
+  agentCore?: AgentCore | null
+}
+
+/**
+ * Settings file shape (only the parts we care about)
+ */
+interface SettingsWithBuiltinTools {
+  builtinTools?: BuiltinToolsConfig
+  braveSearchApiKey?: string
+  searxngUrl?: string
+  [key: string]: unknown
+}
+
+/**
+ * Strip envValues from a skill config for safe API response
+ */
+function sanitizeSkill(skill: SkillConfig): Omit<SkillConfig, 'envValues'> {
+  const { envValues: _envValues, ...rest } = skill
+  return rest
+}
+
+export function createSkillsRouter(options: SkillsRouterOptions = {}): Router {
+  const router = Router()
+  const agentCore = options.agentCore ?? null
+
+  // All routes require auth
+  router.use(jwtMiddleware)
+  router.use((req: AuthenticatedRequest, res, next) => {
+    if (req.user?.role !== 'admin') {
+      res.status(403).json({ error: 'Admin access required' })
+      return
+    }
+    next()
+  })
+
+  // ─── Installed Skills (static paths first) ──────────────────────────────────
+
+  /**
+   * GET /api/skills — List all installed skills (secrets masked)
+   */
+  router.get('/', (_req, res) => {
+    try {
+      const file = loadSkills()
+      const skills = file.skills.map(sanitizeSkill)
+      res.json({ skills })
+    } catch (err) {
+      res.status(500).json({ error: `Failed to load skills: ${(err as Error).message}` })
+    }
+  })
+
+  /**
+   * POST /api/skills/install — Install a skill from OpenClaw shorthand or GitHub URL
+   * Body: { "source": "owner/name" } or { "source": "https://github.com/..." }
+   */
+  router.post('/install', async (req: AuthenticatedRequest, res) => {
+    const { source } = req.body as { source?: string }
+
+    if (!source || typeof source !== 'string' || !source.trim()) {
+      res.status(400).json({ error: 'source is required (owner/name or GitHub URL)' })
+      return
+    }
+
+    try {
+      const result = await installSkill(source.trim())
+
+      // Register in skills.json
+      const skill = addSkill({
+        id: `${result.source.owner}/${result.source.name}`,
+        owner: result.source.owner,
+        name: result.source.name,
+        description: result.parsed.description,
+        source: result.source.type,
+        sourceUrl: result.source.sourceUrl,
+        path: result.installPath,
+        envKeys: result.parsed.envKeys,
+        emoji: result.parsed.emoji,
+      })
+
+      // Refresh agent skills
+      agentCore?.refreshSkills()
+
+      res.status(201).json({ skill: sanitizeSkill(skill) })
+    } catch (err) {
+      res.status(400).json({ error: `Failed to install skill: ${(err as Error).message}` })
+    }
+  })
+
+  // ─── Built-in Tools (must be before /:owner/:name to avoid conflicts) ──────
+
+  /**
+   * GET /api/skills/builtin — Get built-in tools config
+   */
+  router.get('/builtin', (_req, res) => {
+    try {
+      ensureConfigTemplates()
+      const settings = loadConfig<SettingsWithBuiltinTools>('settings.json')
+
+      const builtinTools = settings.builtinTools ?? {
+        webSearch: { enabled: true, provider: 'duckduckgo' },
+        webFetch: { enabled: true },
+      }
+
+      // Mask braveSearchApiKey if present
+      const maskedApiKey = settings.braveSearchApiKey
+        ? maskApiKey(settings.braveSearchApiKey)
+        : ''
+
+      res.json({
+        builtinTools,
+        braveSearchApiKey: maskedApiKey,
+        searxngUrl: settings.searxngUrl ?? '',
+      })
+    } catch (err) {
+      res.status(500).json({ error: `Failed to load built-in tools config: ${(err as Error).message}` })
+    }
+  })
+
+  /**
+   * PATCH /api/skills/builtin — Update built-in tools config
+   * Body: partial builtinTools object + optional braveSearchApiKey + searxngUrl
+   */
+  router.patch('/builtin', (req: AuthenticatedRequest, res) => {
+    const body = req.body as {
+      builtinTools?: Partial<BuiltinToolsConfig>
+      braveSearchApiKey?: string
+      searxngUrl?: string
+    }
+
+    try {
+      ensureConfigTemplates()
+      const configDir = getConfigDir()
+      const settingsPath = path.join(configDir, 'settings.json')
+      const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as SettingsWithBuiltinTools
+
+      // Merge builtinTools
+      if (body.builtinTools) {
+        const existing = settings.builtinTools ?? {
+          webSearch: { enabled: true, provider: 'duckduckgo' },
+          webFetch: { enabled: true },
+        }
+
+        if (body.builtinTools.webSearch) {
+          existing.webSearch = { ...existing.webSearch, ...body.builtinTools.webSearch }
+        }
+        if (body.builtinTools.webFetch) {
+          existing.webFetch = { ...existing.webFetch, ...body.builtinTools.webFetch }
+        }
+
+        settings.builtinTools = existing
+      }
+
+      // Encrypt and store braveSearchApiKey if provided
+      if (body.braveSearchApiKey !== undefined) {
+        settings.braveSearchApiKey = body.braveSearchApiKey
+          ? encrypt(body.braveSearchApiKey)
+          : ''
+      }
+
+      // Store searxngUrl
+      if (body.searxngUrl !== undefined) {
+        settings.searxngUrl = body.searxngUrl
+      }
+
+      fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf-8')
+
+      // Refresh agent tools (skills + built-in tools)
+      agentCore?.refreshSkills()
+
+      // Mask API key in response
+      const maskedApiKey = settings.braveSearchApiKey
+        ? maskApiKey(settings.braveSearchApiKey)
+        : ''
+
+      res.json({
+        message: 'Built-in tools config updated',
+        builtinTools: settings.builtinTools,
+        braveSearchApiKey: maskedApiKey,
+        searxngUrl: settings.searxngUrl ?? '',
+      })
+    } catch (err) {
+      res.status(500).json({ error: `Failed to update built-in tools config: ${(err as Error).message}` })
+    }
+  })
+
+  // ─── Parameterized Skill Routes (after static paths) ────────────────────────
+
+  /**
+   * DELETE /api/skills/:owner/:name — Delete an installed skill
+   */
+  router.delete('/:owner/:name', (req: AuthenticatedRequest, res) => {
+    const id = `${req.params.owner}/${req.params.name}`
+
+    try {
+      const skill = getSkill(id)
+      if (!skill) {
+        res.status(404).json({ error: `Skill not found: ${id}` })
+        return
+      }
+
+      // Remove skill directory from disk
+      if (skill.path && fs.existsSync(skill.path)) {
+        fs.rmSync(skill.path, { recursive: true, force: true })
+      }
+
+      // Remove from skills.json
+      deleteSkillConfig(id)
+
+      // Refresh agent skills
+      agentCore?.refreshSkills()
+
+      res.json({ message: 'Skill deleted', id })
+    } catch (err) {
+      res.status(500).json({ error: `Failed to delete skill: ${(err as Error).message}` })
+    }
+  })
+
+  /**
+   * PATCH /api/skills/:owner/:name — Update skill settings
+   * Body: { "enabled": true/false } and/or { "envValues": { "KEY": "value" } }
+   */
+  router.patch('/:owner/:name', (req: AuthenticatedRequest, res) => {
+    const id = `${req.params.owner}/${req.params.name}`
+    const body = req.body as { enabled?: boolean; envValues?: Record<string, string> }
+
+    try {
+      const existing = getSkill(id)
+      if (!existing) {
+        res.status(404).json({ error: `Skill not found: ${id}` })
+        return
+      }
+
+      const updated = updateSkill(id, {
+        enabled: body.enabled,
+        envValues: body.envValues,
+      })
+
+      // Refresh agent skills
+      agentCore?.refreshSkills()
+
+      res.json({ skill: sanitizeSkill(updated) })
+    } catch (err) {
+      res.status(500).json({ error: `Failed to update skill: ${(err as Error).message}` })
+    }
+  })
+
+  return router
+}

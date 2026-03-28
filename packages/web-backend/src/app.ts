@@ -13,6 +13,7 @@ import { createSettingsRouter } from './routes/settings.js'
 import { createUsersRouter } from './routes/users.js'
 import { createTelegramUsersRouter } from './routes/telegram-users.js'
 import type { TelegramBot } from '@openagent/telegram'
+import { createSkillsRouter } from './routes/skills.js'
 import { createStatsRouter } from './routes/stats.js'
 import { createHealthRouter } from './routes/health.js'
 import { ensureAdminUser } from './auth.js'
@@ -88,6 +89,9 @@ export function createApp(options?: AppOptions): express.Express {
     app.use('/api/telegram-users', createTelegramUsersRouter({
       db: options.db,
       telegramBot: options.telegramBot ?? null,
+    }))
+    app.use('/api/skills', createSkillsRouter({
+      agentCore: options.agentCore ?? null,
     }))
     app.use('/api/stats', createStatsRouter(options.db))
 
