@@ -9,11 +9,17 @@
  */
 
 export type GlobalStatus = 'offline' | 'degraded' | 'healthy'
+type OperatingMode = 'normal' | 'fallback'
 
 interface HealthSnapshot {
+  operatingMode?: OperatingMode
   provider: {
     name: string
     status: string
+  } | null
+  fallbackProvider?: {
+    name: string
+    model: string
   } | null
 }
 
@@ -25,6 +31,8 @@ export function useConnectionStatus() {
 
   const status = useState<GlobalStatus>('global_connection_status', () => 'offline')
   const providerName = useState<string | null>('global_provider_name', () => null)
+  const operatingMode = useState<OperatingMode>('global_operating_mode', () => 'normal')
+  const fallbackProviderName = useState<string | null>('global_fallback_provider_name', () => null)
 
   let timer: ReturnType<typeof setInterval> | null = null
   let polling = false
@@ -33,11 +41,16 @@ export function useConnectionStatus() {
     if (!isAuthenticated.value) {
       status.value = 'offline'
       providerName.value = null
+      operatingMode.value = 'normal'
+      fallbackProviderName.value = null
       return
     }
 
     try {
       const data = await apiFetch<HealthSnapshot>('/api/health')
+
+      operatingMode.value = data.operatingMode ?? 'normal'
+      fallbackProviderName.value = data.fallbackProvider?.name ?? null
 
       if (!data.provider) {
         // Backend reachable but no provider configured
@@ -62,6 +75,8 @@ export function useConnectionStatus() {
     } catch {
       status.value = 'offline'
       providerName.value = null
+      operatingMode.value = 'normal'
+      fallbackProviderName.value = null
     }
   }
 
@@ -83,6 +98,8 @@ export function useConnectionStatus() {
   return {
     status: readonly(status),
     providerName: readonly(providerName),
+    operatingMode: readonly(operatingMode),
+    fallbackProviderName: readonly(fallbackProviderName),
     start,
     stop,
     poll,

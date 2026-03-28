@@ -49,6 +49,7 @@ export interface AvailableModel {
 interface ProvidersResponse {
   providers: Provider[]
   activeProvider: string | null
+  fallbackProvider: string | null
   presets: Record<string, ProviderTypePreset>
 }
 
@@ -67,6 +68,7 @@ export function useProviders() {
 
   const providers = useState<Provider[]>('providers_list', () => [])
   const activeProviderId = useState<string | null>('active_provider', () => null)
+  const fallbackProviderId = useState<string | null>('fallback_provider', () => null)
   const presets = useState<Record<string, ProviderTypePreset>>('provider_presets', () => ({}))
   const loading = useState<boolean>('providers_loading', () => false)
   const error = useState<string | null>('providers_error', () => null)
@@ -79,6 +81,7 @@ export function useProviders() {
       const data = await apiFetch<ProvidersResponse>('/api/providers')
       providers.value = data.providers
       activeProviderId.value = data.activeProvider
+      fallbackProviderId.value = data.fallbackProvider
       presets.value = data.presets
     } catch (err) {
       error.value = (err as Error).message
@@ -201,9 +204,25 @@ export function useProviders() {
     })
   }
 
+  async function setFallbackProvider(providerId: string | null): Promise<boolean> {
+    error.value = null
+    try {
+      await apiFetch('/api/providers/fallback', {
+        method: 'PUT',
+        body: JSON.stringify({ providerId }),
+      })
+      fallbackProviderId.value = providerId
+      return true
+    } catch (err) {
+      error.value = (err as Error).message
+      return false
+    }
+  }
+
   return {
     providers,
     activeProviderId,
+    fallbackProviderId,
     presets,
     loading,
     error,
@@ -215,6 +234,7 @@ export function useProviders() {
     deleteProvider,
     testProvider,
     activateProvider,
+    setFallbackProvider,
     startOAuthLogin,
     pollOAuthStatus,
     submitOAuthCode,

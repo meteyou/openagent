@@ -6,14 +6,30 @@
  */
 
 // ── Shared types ────────────────────────────────────────────────
+export type OperatingMode = 'normal' | 'fallback'
+
 export interface HealthSnapshot {
   agent: { status: 'running' | 'stopped' }
+  operatingMode?: OperatingMode
   provider: {
     id: string
     name: string
     type: string
     model: string
     status: ProviderStatus
+  } | null
+  primaryProvider?: {
+    id: string
+    name: string
+    type: string
+    model: string
+    lastHealthStatus: ProviderStatus | null
+  } | null
+  fallbackProvider?: {
+    id: string
+    name: string
+    type: string
+    model: string
   } | null
   lastCheck: {
     checkedAt: string
@@ -61,7 +77,10 @@ export function useDashboard() {
 
   const health = ref<HealthSnapshot>({
     agent: { status: 'stopped' },
+    operatingMode: 'normal',
     provider: null,
+    primaryProvider: null,
+    fallbackProvider: null,
     lastCheck: null,
     queueDepth: 0,
     activity: { messagesToday: 0, sessionsToday: 0 },
@@ -84,6 +103,9 @@ export function useDashboard() {
   const providerModel = computed(() => health.value.provider?.model ?? null)
   const providerStatus = computed((): ProviderStatus => health.value.provider?.status ?? 'unconfigured')
   const agentStatus = computed(() => health.value.agent.status)
+  const operatingMode = computed((): OperatingMode => health.value.operatingMode ?? 'normal')
+  const primaryProvider = computed(() => health.value.primaryProvider ?? null)
+  const fallbackProviderInfo = computed(() => health.value.fallbackProvider ?? null)
 
   const lastCheckTime = computed(() => health.value.lastCheck?.checkedAt ?? null)
   const lastCheckLatency = computed(() => health.value.lastCheck?.latencyMs ?? null)
@@ -128,6 +150,9 @@ export function useDashboard() {
     providerModel,
     providerStatus,
     agentStatus,
+    operatingMode,
+    primaryProvider,
+    fallbackProviderInfo,
     lastCheckTime,
     lastCheckLatency,
     lastCheckError,
