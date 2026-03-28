@@ -116,11 +116,12 @@ export function parseDuckDuckGoLiteHtml(html: string, count: number): WebSearchR
   const results: WebSearchResult[] = []
 
   // Match result links: <a rel="nofollow" href="..." class="result-link">Title</a>
-  const linkPattern = /<a[^>]+rel="nofollow"[^>]+href="([^"]*)"[^>]*class="result-link"[^>]*>([\s\S]*?)<\/a>/gi
+  // Note: DuckDuckGo Lite uses single quotes for class attributes on organic results
+  const linkPattern = /<a[^>]+rel="nofollow"[^>]+href="([^"]*)"[^>]*class=["']result-link["'][^>]*>([\s\S]*?)<\/a>/gi
   // Also try alternative pattern where class comes before rel
-  const linkPattern2 = /<a[^>]+class="result-link"[^>]+href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi
+  const linkPattern2 = /<a[^>]+class=["']result-link["'][^>]+href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi
 
-  const snippetPattern = /<td[^>]*class="result-snippet"[^>]*>([\s\S]*?)<\/td>/gi
+  const snippetPattern = /<td[^>]*class=["']result-snippet["'][^>]*>([\s\S]*?)<\/td>/gi
 
   // Collect all links
   const links: { url: string; title: string }[] = []

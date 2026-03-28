@@ -174,6 +174,41 @@ describe('parseDuckDuckGoLiteHtml', () => {
     expect(results).toHaveLength(1)
     expect(results[0].snippet).toBe('')
   })
+
+  it('parses results with single-quoted class attributes (real DDG Lite format)', () => {
+    const html = `
+      <table>
+        <tr>
+          <td>
+            <a rel="nofollow" href="https://example.com/page1" class='result-link'>Single Quote Page</a>
+          </td>
+        </tr>
+        <tr>
+          <td class='result-snippet'>Single quote snippet.</td>
+        </tr>
+      </table>
+    `
+    const results = parseDuckDuckGoLiteHtml(html, 10)
+    expect(results).toHaveLength(1)
+    expect(results[0]).toEqual({
+      title: 'Single Quote Page',
+      url: 'https://example.com/page1',
+      snippet: 'Single quote snippet.',
+    })
+  })
+
+  it('parses mixed single and double quoted class attributes', () => {
+    const html = `
+      <a rel="nofollow" href="https://example.com/dq" class="result-link">Double Quoted</a>
+      <td class="result-snippet">DQ snippet</td>
+      <a rel="nofollow" href="https://example.com/sq" class='result-link'>Single Quoted</a>
+      <td class='result-snippet'>SQ snippet</td>
+    `
+    const results = parseDuckDuckGoLiteHtml(html, 10)
+    expect(results).toHaveLength(2)
+    expect(results[0].title).toBe('Double Quoted')
+    expect(results[1].title).toBe('Single Quoted')
+  })
 })
 
 // ─── searchDuckDuckGo ────────────────────────────────────────────────────────
