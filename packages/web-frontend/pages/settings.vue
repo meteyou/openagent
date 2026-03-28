@@ -139,22 +139,6 @@
                   <p class="text-xs text-muted-foreground">{{ $t('settings.languageHint') }}</p>
                 </div>
 
-                <!-- Heartbeat interval -->
-                <div class="flex flex-col gap-1.5">
-                  <Label for="heartbeat-interval">{{ $t('settings.heartbeatInterval') }}</Label>
-                  <div class="flex items-center gap-2">
-                    <Input
-                      id="heartbeat-interval"
-                      v-model.number="form.heartbeatIntervalMinutes"
-                      type="number"
-                      min="1"
-                      max="60"
-                      class="w-24"
-                    />
-                    <span class="text-sm text-muted-foreground">{{ $t('settings.minutes') }}</span>
-                  </div>
-                  <p class="text-xs text-muted-foreground">{{ $t('settings.heartbeatHint') }}</p>
-                </div>
               </div>
             </div>
 
@@ -280,6 +264,121 @@
                     </Button>
                   </div>
                 </template>
+              </div>
+            </div>
+
+            <!-- ═══ Heartbeat ═══ -->
+            <div v-else-if="activeTab === 'heartbeat'">
+              <div class="mb-8">
+                <h2 class="text-lg font-semibold tracking-tight text-foreground">
+                  {{ $t('settings.tabs.heartbeat') }}
+                </h2>
+                <p class="mt-1 text-sm text-muted-foreground">
+                  {{ $t('settings.tabs.heartbeatDescription') }}
+                </p>
+              </div>
+
+              <div class="flex flex-col gap-6">
+                <!-- Heartbeat interval -->
+                <div class="flex flex-col gap-1.5">
+                  <Label for="heartbeat-interval">{{ $t('settings.heartbeatInterval') }}</Label>
+                  <div class="flex items-center gap-2">
+                    <Input
+                      id="heartbeat-interval"
+                      v-model.number="form.heartbeatIntervalMinutes"
+                      type="number"
+                      min="1"
+                      max="60"
+                      class="w-24"
+                    />
+                    <span class="text-sm text-muted-foreground">{{ $t('settings.minutes') }}</span>
+                  </div>
+                  <p class="text-xs text-muted-foreground">{{ $t('settings.heartbeatHint') }}</p>
+                </div>
+
+                <!-- Fallback trigger -->
+                <div class="flex flex-col gap-1.5">
+                  <Label for="fallback-trigger">{{ $t('settings.heartbeatFallbackTrigger') }}</Label>
+                  <Select id="fallback-trigger" v-model="form.heartbeat.fallbackTrigger" class="w-64">
+                    <option value="down">{{ $t('settings.heartbeatFallbackTriggerDown') }}</option>
+                    <option value="degraded">{{ $t('settings.heartbeatFallbackTriggerDegraded') }}</option>
+                  </Select>
+                  <p class="text-xs text-muted-foreground">{{ $t('settings.heartbeatFallbackTriggerHint') }}</p>
+                </div>
+
+                <div class="grid grid-cols-1 gap-6 sm:grid-cols-3">
+                  <!-- Failures before fallback -->
+                  <div class="flex flex-col gap-1.5">
+                    <Label for="failures-before-fallback">{{ $t('settings.heartbeatFailuresBeforeFallback') }}</Label>
+                    <Input
+                      id="failures-before-fallback"
+                      v-model.number="form.heartbeat.failuresBeforeFallback"
+                      type="number"
+                      min="1"
+                      class="w-24"
+                    />
+                    <p class="text-xs text-muted-foreground">{{ $t('settings.heartbeatFailuresBeforeFallbackHint') }}</p>
+                  </div>
+
+                  <!-- Recovery check interval -->
+                  <div class="flex flex-col gap-1.5">
+                    <Label for="recovery-check-interval">{{ $t('settings.heartbeatRecoveryCheckInterval') }}</Label>
+                    <div class="flex items-center gap-2">
+                      <Input
+                        id="recovery-check-interval"
+                        v-model.number="form.heartbeat.recoveryCheckIntervalMinutes"
+                        type="number"
+                        min="1"
+                        class="w-24"
+                      />
+                      <span class="text-sm text-muted-foreground">{{ $t('settings.minutes') }}</span>
+                    </div>
+                    <p class="text-xs text-muted-foreground">{{ $t('settings.heartbeatRecoveryCheckIntervalHint') }}</p>
+                  </div>
+
+                  <!-- Successes before recovery -->
+                  <div class="flex flex-col gap-1.5">
+                    <Label for="successes-before-recovery">{{ $t('settings.heartbeatSuccessesBeforeRecovery') }}</Label>
+                    <Input
+                      id="successes-before-recovery"
+                      v-model.number="form.heartbeat.successesBeforeRecovery"
+                      type="number"
+                      min="1"
+                      class="w-24"
+                    />
+                    <p class="text-xs text-muted-foreground">{{ $t('settings.heartbeatSuccessesBeforeRecoveryHint') }}</p>
+                  </div>
+                </div>
+
+                <Separator />
+
+                <!-- Notification toggles -->
+                <div>
+                  <h3 class="text-base font-semibold tracking-tight text-foreground">
+                    {{ $t('settings.heartbeatNotifications') }}
+                  </h3>
+                  <p class="mt-1 text-sm text-muted-foreground">
+                    {{ $t('settings.heartbeatNotificationsDescription') }}
+                  </p>
+                </div>
+
+                <div class="flex flex-col gap-3">
+                  <div
+                    v-for="toggle in notificationToggles"
+                    :key="toggle.key"
+                    class="flex items-center justify-between rounded-lg border border-border px-4 py-3"
+                  >
+                    <div class="flex flex-col gap-0.5 pr-4">
+                      <Label :for="`notify-${toggle.key}`" class="cursor-pointer">
+                        {{ toggle.label }}
+                      </Label>
+                    </div>
+                    <Switch
+                      :id="`notify-${toggle.key}`"
+                      v-model="form.heartbeat.notifications[toggle.key]"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -497,7 +596,7 @@
 </template>
 
 <script setup lang="ts">
-import type { MemoryConsolidationSettings } from '~/composables/useSettings'
+import type { MemoryConsolidationSettings, HeartbeatNotificationToggles, HeartbeatSettings } from '~/composables/useSettings'
 import type { TelegramUser } from '~/composables/useTelegramUsers'
 
 /* ── Auth ── */
@@ -509,7 +608,7 @@ const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
 
-const VALID_TABS = ['agent', 'memory', 'telegram'] as const
+const VALID_TABS = ['agent', 'memory', 'heartbeat', 'telegram'] as const
 type TabId = (typeof VALID_TABS)[number]
 
 const activeTab = computed<TabId>({
@@ -525,6 +624,7 @@ const activeTab = computed<TabId>({
 const tabs = computed(() => [
   { id: 'agent' as TabId, icon: 'bot', label: t('settings.tabs.agent') },
   { id: 'memory' as TabId, icon: 'brain', label: t('settings.tabs.memory') },
+  { id: 'heartbeat' as TabId, icon: 'activity', label: t('settings.tabs.heartbeat') },
   { id: 'telegram' as TabId, icon: 'send', label: t('settings.tabs.telegram') },
 ])
 
@@ -631,6 +731,7 @@ interface SettingsForm {
   batchingDelayMs: number
   telegramEnabled: boolean
   telegramBotToken: string
+  heartbeat: HeartbeatSettings
   memoryConsolidation: MemoryConsolidationSettings
 }
 
@@ -646,11 +747,28 @@ function hydrateForm() {
     batchingDelayMs: s.batchingDelayMs,
     telegramEnabled: s.telegramEnabled,
     telegramBotToken: s.telegramBotToken,
+    heartbeat: {
+      fallbackTrigger: s.heartbeat.fallbackTrigger,
+      failuresBeforeFallback: s.heartbeat.failuresBeforeFallback,
+      recoveryCheckIntervalMinutes: s.heartbeat.recoveryCheckIntervalMinutes,
+      successesBeforeRecovery: s.heartbeat.successesBeforeRecovery,
+      notifications: { ...s.heartbeat.notifications },
+    },
     memoryConsolidation: { ...s.memoryConsolidation },
   }
 }
 
 watch(settings, hydrateForm)
+
+/* ── Notification toggles ── */
+const notificationToggles = computed(() => [
+  { key: 'healthyToDegraded' as keyof HeartbeatNotificationToggles, label: t('settings.heartbeatNotifyHealthyToDegraded') },
+  { key: 'degradedToHealthy' as keyof HeartbeatNotificationToggles, label: t('settings.heartbeatNotifyDegradedToHealthy') },
+  { key: 'degradedToDown' as keyof HeartbeatNotificationToggles, label: t('settings.heartbeatNotifyDegradedToDown') },
+  { key: 'healthyToDown' as keyof HeartbeatNotificationToggles, label: t('settings.heartbeatNotifyHealthyToDown') },
+  { key: 'downToFallback' as keyof HeartbeatNotificationToggles, label: t('settings.heartbeatNotifyDownToFallback') },
+  { key: 'fallbackToHealthy' as keyof HeartbeatNotificationToggles, label: t('settings.heartbeatNotifyFallbackToHealthy') },
+])
 
 /* ── Save ── */
 async function handleSave() {
