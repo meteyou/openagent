@@ -87,6 +87,40 @@
             </CardHeader>
             <CardContent class="pt-0">
               <dl class="space-y-2.5">
+                <!-- Operating mode -->
+                <div class="flex items-center justify-between gap-2 text-sm">
+                  <dt class="text-muted-foreground">{{ $t('dashboard.operatingMode') }}</dt>
+                  <dd>
+                    <Badge :variant="operatingModeBadgeVariant">
+                      {{ operatingModeLabel }}
+                    </Badge>
+                  </dd>
+                </div>
+
+                <!-- Fallback info (only in fallback mode) -->
+                <template v-if="isInFallbackMode">
+                  <div v-if="fallbackProviderInfo" class="flex items-center justify-between gap-2 text-sm">
+                    <dt class="text-muted-foreground">{{ $t('dashboard.fallbackProvider') }}</dt>
+                    <dd class="font-semibold text-foreground">
+                      {{ fallbackProviderInfo.name }}
+                      <span class="text-xs text-muted-foreground">({{ fallbackProviderInfo.model }})</span>
+                    </dd>
+                  </div>
+                  <div v-if="primaryProvider" class="flex items-center justify-between gap-2 text-sm">
+                    <dt class="text-muted-foreground">{{ $t('dashboard.primaryProviderStatus') }}</dt>
+                    <dd class="flex items-center gap-1.5 font-semibold text-foreground">
+                      <Badge v-if="primaryProvider.lastHealthStatus" :variant="statusBadgeVariant(primaryProvider.lastHealthStatus)">
+                        {{ statusLabel(primaryProvider.lastHealthStatus) }}
+                      </Badge>
+                      <span v-else class="text-xs text-muted-foreground">—</span>
+                    </dd>
+                  </div>
+                  <div class="flex items-center justify-between gap-2 text-sm">
+                    <dt class="text-muted-foreground">{{ $t('dashboard.recoveryStatus') }}</dt>
+                    <dd class="text-xs font-medium text-warning">{{ $t('dashboard.recoveryChecksRunning') }}</dd>
+                  </div>
+                </template>
+
                 <div v-if="providerTypeLabel" class="flex items-center justify-between gap-2 text-sm">
                   <dt class="text-muted-foreground">{{ $t('dashboard.providerType') }}</dt>
                   <dd class="font-semibold text-foreground">{{ providerTypeLabel }}</dd>
@@ -196,12 +230,25 @@ const {
   providerModel,
   providerStatus,
   agentStatus,
+  operatingMode,
+  primaryProvider,
+  fallbackProviderInfo,
   lastCheckTime,
   lastCheckLatency,
   lastCheckError,
   usageToday,
   load,
 } = useDashboard()
+
+const isInFallbackMode = computed(() => operatingMode.value === 'fallback')
+
+const operatingModeLabel = computed(() =>
+  isInFallbackMode.value ? t('dashboard.operatingModes.fallback') : t('dashboard.operatingModes.normal'),
+)
+
+const operatingModeBadgeVariant = computed((): 'success' | 'warning' =>
+  isInFallbackMode.value ? 'warning' : 'success',
+)
 
 // ── Derived display values ──────────────────────────────────────
 const statCards = computed(() => [
