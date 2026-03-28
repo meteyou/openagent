@@ -77,6 +77,29 @@ export type {
   HealthCheckHistoryResult,
   ActivitySummary,
 } from './provider-health.js'
+export {
+  parseSkillMd,
+  extractFrontmatter,
+  isValidSkillName,
+} from './skill-parser.js'
+export type { ParsedSkill } from './skill-parser.js'
+export {
+  parseSkillSource,
+  downloadSkillDirectory,
+  installSkill,
+} from './skill-installer.js'
+export type { SkillSource, SkillInstallResult, FetchFn } from './skill-installer.js'
+export {
+  loadSkills,
+  saveSkills,
+  addSkill,
+  updateSkill,
+  deleteSkill,
+  getSkill,
+  getSkillDecrypted,
+  loadSkillsDecrypted,
+} from './skill-config.js'
+export type { SkillConfig, SkillsFile } from './skill-config.js'
 export { AgentCore } from './agent.js'
 export type { ResponseChunk, AgentCoreOptions } from './agent.js'
 export { ProviderManager } from './provider-manager.js'
