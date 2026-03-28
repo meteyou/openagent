@@ -127,7 +127,7 @@ describe('SessionManager', () => {
       expect(onSessionEnd).toHaveBeenCalledWith(expect.objectContaining({
         id: session.id,
         userId: 'user1',
-      }))
+      }), null)
 
       // Session should be gone
       expect(manager.hasActiveSession('user1')).toBe(false)

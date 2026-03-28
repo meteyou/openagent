@@ -424,8 +424,7 @@ describe('WebSocket chat', () => {
 
     ws.send(JSON.stringify({ type: 'command', content: '/new' }))
     const msg = await waitForMessage()
-    expect(msg.type).toBe('system')
-    expect(msg.text).toContain('Session reset')
+    expect(msg.type).toBe('session_end')
     expect(msg.sessionId).toBeDefined()
     expect(msg.sessionId).not.toBe(oldSessionId)
     ws.close()
