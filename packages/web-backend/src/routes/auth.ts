@@ -83,6 +83,32 @@ export function createAuthRouter(db: Database): Router {
   })
 
   /**
+   * GET /api/auth/me
+   * Returns: { user: { userId, username, role } }
+   * Validates the current access token and confirms the user still exists.
+   */
+  router.get('/me', jwtMiddleware, (req: AuthenticatedRequest, res) => {
+    if (!req.user) {
+      res.status(401).json({ error: 'Not authenticated' })
+      return
+    }
+
+    // Verify user still exists in the database
+    const user = db.prepare('SELECT id, username, role FROM users WHERE id = ?').get(req.user.userId) as
+      | { id: number; username: string; role: string }
+      | undefined
+
+    if (!user) {
+      res.status(401).json({ error: 'User no longer exists' })
+      return
+    }
+
+    res.json({
+      user: { id: user.id, username: user.username, role: user.role },
+    })
+  })
+
+  /**
    * POST /api/auth/logout
    * (Stateless JWT — client just discards token; endpoint exists for API completeness)
    */
