@@ -25,22 +25,28 @@ function handleChange(event: Event) {
 </script>
 
 <template>
-  <select
-    :id="id"
-    :name="name"
-    :disabled="disabled"
-    :required="required"
-    :value="modelValue"
-    :class="cn(
-      'flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background',
-      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-      'disabled:cursor-not-allowed disabled:opacity-50',
-      'transition-colors appearance-none',
-      props.class
-    )"
-    v-bind="$attrs"
-    @change="handleChange"
-  >
-    <slot />
-  </select>
+  <div class="relative w-full" :class="props.class">
+    <select
+      :id="id"
+      :name="name"
+      :disabled="disabled"
+      :required="required"
+      :value="modelValue"
+      :class="cn(
+        'flex h-10 w-full rounded-md border border-input bg-background pl-3 pr-9 py-2 text-sm ring-offset-background',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+        'disabled:cursor-not-allowed disabled:opacity-50',
+        'transition-colors appearance-none cursor-pointer',
+      )"
+      v-bind="$attrs"
+      @change="handleChange"
+    >
+      <slot />
+    </select>
+    <AppIcon
+      name="chevronDown"
+      size="sm"
+      class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+    />
+  </div>
 </template>
