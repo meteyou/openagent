@@ -9,7 +9,7 @@ export function createMemoryTools(memoryDir?: string): AgentTool[] {
   const readCoreMemoryTool: AgentTool = {
     name: 'read_core_memory',
     label: 'Read Core Memory',
-    description: 'Read the MEMORY.md core memory file. This contains learned lessons, important notes, and technical instructions that persist across sessions.',
+    description: 'Read the MEMORY.md core memory file. This contains long-term knowledge: user preferences, important links/repos, learned lessons, technical instructions, and anything the user wants remembered permanently across sessions.',
     parameters: Type.Object({}),
     execute: async () => {
       try {
@@ -30,7 +30,7 @@ export function createMemoryTools(memoryDir?: string): AgentTool[] {
   const writeCoreMemoryTool: AgentTool = {
     name: 'write_core_memory',
     label: 'Write Core Memory',
-    description: 'Overwrite the MEMORY.md core memory file. Use this to persist important lessons, rules, or technical notes across sessions. Be careful: this replaces the entire file.',
+    description: 'Overwrite the MEMORY.md core memory file. Use this when the user asks you to remember/save something permanently (e.g. links, repos, preferences, names, rules, lessons). Read the file first, then write back the updated version. Be careful: this replaces the entire file.',
     parameters: Type.Object({
       content: Type.String({ description: 'The full new content for the MEMORY.md file' }),
     }),
@@ -54,7 +54,7 @@ export function createMemoryTools(memoryDir?: string): AgentTool[] {
   const readDailyMemoryTool: AgentTool = {
     name: 'read_daily_memory',
     label: 'Read Daily Memory',
-    description: 'Read the daily memory file for a specific date (defaults to today). Contains session summaries and notes for that day.',
+    description: 'Read the daily memory file for a specific date (defaults to today). Contains automatic session summaries and logs for that day. This is NOT for user-requested memories — those go in core memory.',
     parameters: Type.Object({
       date: Type.Optional(Type.String({ description: 'Date in YYYY-MM-DD format (defaults to today)' })),
     }),
@@ -79,16 +79,14 @@ export function createMemoryTools(memoryDir?: string): AgentTool[] {
   const appendDailyMemoryTool: AgentTool = {
     name: 'append_daily_memory',
     label: 'Append to Daily Memory',
-    description: 'Append content to today\'s daily memory file. Use this to record important events, discoveries, or notes during the session.',
+    description: 'Append a brief log entry to today\'s daily memory file. Use ONLY for automatic session logging (e.g. summarizing what was done today). Do NOT use this when the user asks you to "remember" or "save" something — use write_core_memory for that instead. The date is always today (server-side).',
     parameters: Type.Object({
       content: Type.String({ description: 'Content to append to today\'s daily memory file' }),
-      date: Type.Optional(Type.String({ description: 'Date in YYYY-MM-DD format (defaults to today)' })),
     }),
     execute: async (_toolCallId, params) => {
-      const { content, date: dateStr } = params as { content: string; date?: string }
+      const { content } = params as { content: string }
       try {
-        const date = dateStr ? new Date(dateStr + 'T12:00:00Z') : undefined
-        appendToDailyFile(content, date, memoryDir)
+        appendToDailyFile(content, undefined, memoryDir)
         return {
           content: [{ type: 'text' as const, text: `Successfully appended ${content.length} bytes to daily memory` }],
           details: { success: true, size: content.length },
