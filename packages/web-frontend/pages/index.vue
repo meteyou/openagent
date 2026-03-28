@@ -202,7 +202,13 @@
               <p v-if="msg.source === 'telegram'" class="mb-1 text-xs font-medium text-[#2AABEE]">
                 via Telegram{{ msg.senderName ? ` (${msg.senderName})` : '' }}
               </p>
-              <p class="whitespace-pre-wrap break-words">{{ msg.content }}</p>
+              <!-- Markdown rendered content for assistant, plain text for user/system -->
+              <div
+                v-if="msg.role === 'assistant'"
+                class="prose-chat break-words"
+                v-html="renderMarkdown(msg.content ?? '')"
+              />
+              <p v-else class="whitespace-pre-wrap break-words">{{ msg.content }}</p>
 
               <!-- Typing indicator (animated dots when streaming) -->
               <div v-if="msg.streaming" class="mt-1.5 flex items-center gap-1" :aria-label="$t('chat.typing')">
@@ -261,6 +267,7 @@ const { t } = useI18n()
 const { apiFetch } = useApi()
 const { user } = useAuth()
 const { userAvatarUrl, avatarFailed, userInitial, onAvatarError } = useUserAvatar()
+const { renderMarkdown } = useMarkdown()
 
 // Track which tool calls are expanded
 const expandedTools = ref<Set<string>>(new Set())
