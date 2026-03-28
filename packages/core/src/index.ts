@@ -16,6 +16,7 @@ export {
   readRecentDailyFiles,
   assembleSystemPrompt,
 } from './memory.js'
+export type { SkillPromptEntry } from './memory.js'
 export { createMemoryTools } from './memory-tools.js'
 export { consolidateMemory, readDailyFilesForConsolidation, buildConsolidationPrompt } from './memory-consolidation.js'
 export type { MemoryConsolidationOptions, ConsolidationResult } from './memory-consolidation.js'

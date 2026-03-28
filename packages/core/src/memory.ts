@@ -181,12 +181,22 @@ export function readRecentDailyFiles(days: number = 3, memoryDir?: string): stri
 /**
  * Assemble the full system prompt from all memory tiers
  */
+/**
+ * Minimal skill info for system prompt injection (progressive disclosure)
+ */
+export interface SkillPromptEntry {
+  name: string
+  description: string
+  location: string
+}
+
 export function assembleSystemPrompt(options?: {
   memoryDir?: string
   baseInstructions?: string
   recentDays?: number
   language?: string
   channel?: string
+  skills?: SkillPromptEntry[]
 }): string {
   const memoryDir = options?.memoryDir
   const recentDays = options?.recentDays ?? 3
@@ -225,7 +235,20 @@ export function assembleSystemPrompt(options?: {
     }
   }
 
-  // 6. Channel context
+  // 6. Available skills (progressive disclosure)
+  if (options?.skills && options.skills.length > 0) {
+    const skillEntries = options.skills.map(s =>
+      `  <skill>\n    <name>${s.name}</name>\n    <description>${s.description}</description>\n    <location>${s.location}</location>\n  </skill>`
+    ).join('\n')
+    sections.push(`<available_skills>
+The following skills provide specialized capabilities you can load on demand.
+When a user's request matches a skill's description, use the read_file tool to read <location>/SKILL.md to load the full instructions.
+
+${skillEntries}
+</available_skills>`)
+  }
+
+  // 7. Channel context
   if (options?.channel === 'telegram') {
     sections.push(`<channel_context>
 You are communicating with the user through Telegram. You ARE the Telegram bot — messages the user sends arrive directly to you, and your responses are sent back to the user automatically. Do not tell the user to use the Telegram Bot API, curl commands, or any external tools to communicate. Just respond naturally to their messages.
