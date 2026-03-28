@@ -135,15 +135,15 @@
               >
                 <!-- Avatar -->
                 <img
-                  v-if="userAvatarUrl"
+                  v-if="userAvatarUrl && !avatarFailed"
                   :src="userAvatarUrl"
                   :alt="user?.username"
                   class="h-9 w-9 shrink-0 rounded-full object-cover ring-1 ring-primary/25"
-                  @error="avatarFailed = true"
+                  @error="onAvatarError"
                 >
                 <span
-                  v-if="!userAvatarUrl || avatarFailed"
-                  :class="[userAvatarUrl && !avatarFailed ? 'hidden' : '', 'flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-sm font-semibold text-primary ring-1 ring-primary/25']"
+                  v-else
+                  class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-sm font-semibold text-primary ring-1 ring-primary/25"
                 >
                   {{ userInitial }}
                 </span>
@@ -253,18 +253,7 @@ const sidebarOpen = ref(false)
 const isMobile = useMediaQuery('(max-width: 767px)')
 
 const isAdmin = computed(() => user.value?.role === 'admin')
-const userInitial = computed(() => user.value?.username?.charAt(0).toUpperCase() ?? '?')
-
-const avatarFailed = ref(false)
-const { getAccessToken } = useAuth()
-const config = useRuntimeConfig()
-const userAvatarUrl = computed(() => {
-  if (!user.value?.id) return null
-  const token = getAccessToken()
-  if (!token) return null
-  avatarFailed.value = false
-  return `${config.public.apiBase}/api/telegram-users/avatar-by-user-id/${user.value.id}?token=${token}`
-})
+const { userAvatarUrl, avatarFailed, userInitial, onAvatarError } = useUserAvatar()
 
 const statusDotClass = computed(() => {
   switch (connectionStatus.value) {
