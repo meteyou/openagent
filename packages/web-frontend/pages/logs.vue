@@ -147,9 +147,9 @@
               <h4 class="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 {{ $t('logs.input') }}
               </h4>
-              <pre
-                class="max-h-[200px] overflow-y-auto rounded-md border border-border bg-muted/50 p-3 font-mono text-xs leading-relaxed text-foreground whitespace-pre-wrap break-all"
-              >{{ expandedDetail.input || '—' }}</pre>
+              <div class="max-h-[200px] overflow-y-auto rounded-md border border-border bg-muted/50 p-3 text-xs leading-relaxed">
+                <ToolDataDisplay :data="parseLogData(expandedDetail.input)" />
+              </div>
             </div>
 
             <!-- Output -->
@@ -157,9 +157,9 @@
               <h4 class="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 {{ $t('logs.output') }}
               </h4>
-              <pre
-                class="max-h-[300px] overflow-y-auto rounded-md border border-border bg-muted/50 p-3 font-mono text-xs leading-relaxed text-foreground whitespace-pre-wrap break-all"
-              >{{ expandedDetail.output || '—' }}</pre>
+              <div class="max-h-[300px] overflow-y-auto rounded-md border border-border bg-muted/50 p-3 text-xs leading-relaxed">
+                <ToolDataDisplay :data="parseLogData(expandedDetail.output)" :is-error="expandedDetail.status === 'error'" />
+              </div>
             </div>
 
             <!-- Meta row -->
@@ -319,6 +319,15 @@ function toolBadgeClass(name: string): string {
   if (lower.includes('llm') || lower.includes('chat') || lower.includes('generate'))
     return 'border-transparent bg-purple-500/15 text-purple-500'
   return 'border-transparent bg-primary/15 text-primary'
+}
+
+function parseLogData(data: string | null | undefined): unknown {
+  if (!data) return null
+  try {
+    return JSON.parse(data)
+  } catch {
+    return data
+  }
 }
 
 function toolIcon(name: string): 'activity' | 'file' | 'brain' | 'wrench' {
