@@ -314,6 +314,7 @@ interface UsageStatsResponse {
 
 const { t, locale } = useI18n()
 const { apiFetch } = useApi()
+const { formatNumber, formatCurrency } = useFormat()
 const { user } = useAuth()
 const isAdmin = computed(() => user.value?.role === 'admin')
 
@@ -489,18 +490,6 @@ function resetFilters() {
   loadStats()
 }
 
-function formatNumber(value: number): string {
-  return new Intl.NumberFormat(locale.value).format(value)
-}
-
-function formatCurrency(value: number): string {
-  return new Intl.NumberFormat(locale.value, {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value)
-}
 
 function formatShortDate(value: string): string {
   return new Intl.DateTimeFormat(locale.value, {
