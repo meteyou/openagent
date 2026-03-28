@@ -1,4 +1,4 @@
-import type { Database, ProviderConfig, ProviderHealthCheckResult, ProviderHealthStatus } from '@openagent/core'
+import type { Database, ProviderConfig, ProviderHealthCheckResult, ProviderHealthStatus, OperatingMode } from '@openagent/core'
 import {
   getActiveProvider,
   performProviderHealthCheck,
@@ -6,6 +6,7 @@ import {
   updateProviderStatus,
   ensureConfigTemplates,
   loadConfig,
+  ProviderManager,
 } from '@openagent/core'
 
 interface TelegramConfig {
@@ -14,9 +15,26 @@ interface TelegramConfig {
   adminUserIds: number[]
 }
 
+interface HeartbeatSettings {
+  intervalMinutes: number
+  fallbackTrigger: 'down' | 'degraded'
+  failuresBeforeFallback: number
+  recoveryCheckIntervalMinutes: number
+  successesBeforeRecovery: number
+  notifications?: {
+    healthyToDegraded?: boolean
+    degradedToHealthy?: boolean
+    degradedToDown?: boolean
+    healthyToDown?: boolean
+    downToFallback?: boolean
+    fallbackToHealthy?: boolean
+  }
+}
+
 export interface HeartbeatSnapshot {
   agentStatus: 'running' | 'stopped'
   intervalMinutes: number
+  operatingMode: OperatingMode
   activeProvider: {
     id: string
     name: string
@@ -24,37 +42,54 @@ export interface HeartbeatSnapshot {
     model: string
     status: ProviderHealthStatus
   } | null
+  primaryProvider: {
+    id: string
+    name: string
+    type: string
+    model: string
+    lastHealthStatus: ProviderHealthStatus | null
+  } | null
+  fallbackProvider: {
+    id: string
+    name: string
+    type: string
+    model: string
+  } | null
   lastCheck: ProviderHealthCheckResult | null
 }
 
 export interface HeartbeatServiceOptions {
   db: Database
+  providerManager?: ProviderManager | null
   fetchImpl?: typeof fetch
   now?: () => Date
 }
 
 export class HeartbeatService {
   private db: Database
+  private providerManager: ProviderManager | null
   private fetchImpl: typeof fetch
   private now: () => Date
   private timer: ReturnType<typeof setTimeout> | null = null
   private running = false
-  private intervalMinutes = 5
+  private settings: HeartbeatSettings
   private lastCheck: ProviderHealthCheckResult | null = null
   private activeProviderId: string | null = null
   private checkInFlight: Promise<ProviderHealthCheckResult> | null = null
+  private primaryLastHealthStatus: ProviderHealthStatus | null = null
 
   constructor(options: HeartbeatServiceOptions) {
     this.db = options.db
+    this.providerManager = options.providerManager ?? null
     this.fetchImpl = options.fetchImpl ?? fetch
     this.now = options.now ?? (() => new Date())
-    this.intervalMinutes = this.loadHeartbeatIntervalMinutes()
+    this.settings = this.loadHeartbeatSettings()
   }
 
   start(): void {
     if (this.running) return
     this.running = true
-    this.intervalMinutes = this.loadHeartbeatIntervalMinutes()
+    this.settings = this.loadHeartbeatSettings()
     this.scheduleNext(0)
   }
 
@@ -70,9 +105,13 @@ export class HeartbeatService {
     if (options.resetState) {
       this.lastCheck = null
       this.activeProviderId = null
+      this.primaryLastHealthStatus = null
+      if (this.providerManager) {
+        this.providerManager.reset()
+      }
     }
 
-    this.intervalMinutes = this.loadHeartbeatIntervalMinutes()
+    this.settings = this.loadHeartbeatSettings()
 
     if (this.timer) {
       clearTimeout(this.timer)
@@ -92,7 +131,8 @@ export class HeartbeatService {
     this.checkInFlight = this.executeCheck().finally(() => {
       this.checkInFlight = null
       if (this.running) {
-        this.scheduleNext(this.intervalMinutes * 60 * 1000)
+        const intervalMs = this.getCurrentIntervalMs()
+        this.scheduleNext(intervalMs)
       }
     })
 
@@ -100,10 +140,38 @@ export class HeartbeatService {
   }
 
   getSnapshot(): HeartbeatSnapshot {
+    const mode = this.providerManager?.getOperatingMode() ?? 'normal'
     const provider = getActiveProvider()
+
+    // Build primary provider info
+    let primaryProvider: HeartbeatSnapshot['primaryProvider'] = null
+    const primary = this.providerManager?.getPrimaryProvider()
+    if (primary) {
+      primaryProvider = {
+        id: primary.id,
+        name: primary.name,
+        type: primary.providerType,
+        model: primary.defaultModel,
+        lastHealthStatus: this.primaryLastHealthStatus,
+      }
+    }
+
+    // Build fallback provider info
+    let fallbackProvider: HeartbeatSnapshot['fallbackProvider'] = null
+    const fallback = this.providerManager?.getFallbackProvider()
+    if (fallback) {
+      fallbackProvider = {
+        id: fallback.id,
+        name: fallback.name,
+        type: fallback.providerType,
+        model: fallback.defaultModel,
+      }
+    }
+
     return {
       agentStatus: this.running ? 'running' : 'stopped',
-      intervalMinutes: this.intervalMinutes,
+      intervalMinutes: this.settings.intervalMinutes,
+      operatingMode: mode,
       activeProvider: provider
         ? {
             id: provider.id,
@@ -115,8 +183,18 @@ export class HeartbeatService {
               : 'unconfigured',
           }
         : null,
+      primaryProvider,
+      fallbackProvider,
       lastCheck: this.lastCheck,
     }
+  }
+
+  private getCurrentIntervalMs(): number {
+    const mode = this.providerManager?.getOperatingMode() ?? 'normal'
+    if (mode === 'fallback') {
+      return this.settings.recoveryCheckIntervalMinutes * 60 * 1000
+    }
+    return this.settings.intervalMinutes * 60 * 1000
   }
 
   private scheduleNext(delayMs: number): void {
@@ -136,6 +214,18 @@ export class HeartbeatService {
   }
 
   private async executeCheck(): Promise<ProviderHealthCheckResult> {
+    const mode = this.providerManager?.getOperatingMode() ?? 'normal'
+
+    // In fallback mode, check the PRIMARY provider for recovery
+    if (mode === 'fallback' && this.providerManager) {
+      return this.executeRecoveryCheck()
+    }
+
+    // Normal mode: check active provider
+    return this.executeNormalCheck()
+  }
+
+  private async executeNormalCheck(): Promise<ProviderHealthCheckResult> {
     const provider = getActiveProvider()
 
     if (provider?.id !== this.activeProviderId) {
@@ -162,10 +252,32 @@ export class HeartbeatService {
       updateProviderStatus(provider.id, result.status === 'down' ? 'error' : 'connected')
     }
 
-    const shouldNotifyDown = result.status === 'down' && previousStatus !== 'down'
-    const shouldNotifyRecovery = previousStatus === 'down' && result.status === 'healthy'
+    // Track primary health status in normal mode
+    if (provider) {
+      this.primaryLastHealthStatus = result.status
+    }
 
     this.lastCheck = result
+
+    // Count failures and trigger fallback if threshold reached
+    if (this.providerManager && provider) {
+      const isFailure = this.isFailureStatus(result.status)
+      if (isFailure) {
+        this.providerManager.incrementFailures()
+        if (this.providerManager.getConsecutiveFailures() >= this.settings.failuresBeforeFallback) {
+          this.providerManager.swapToFallback()
+          // Reset counters after mode change
+          this.providerManager.resetCounters()
+        }
+      } else {
+        // Reset failure counter on success
+        this.providerManager.resetCounters()
+      }
+    }
+
+    // Send notifications based on status transition
+    const shouldNotifyDown = result.status === 'down' && previousStatus !== 'down'
+    const shouldNotifyRecovery = previousStatus === 'down' && result.status === 'healthy'
 
     if (shouldNotifyDown) {
       await this.sendTelegramAlert('down', provider, result)
@@ -176,15 +288,115 @@ export class HeartbeatService {
     return result
   }
 
-  private loadHeartbeatIntervalMinutes(): number {
+  private async executeRecoveryCheck(): Promise<ProviderHealthCheckResult> {
+    const primary = this.providerManager!.getPrimaryProvider()
+
+    const previousStatus = this.lastCheck?.status ?? null
+    const result = await performProviderHealthCheck(primary, {
+      fetchImpl: this.fetchImpl,
+    })
+
+    result.checkedAt = this.now().toISOString()
+
+    logHealthCheck(this.db, {
+      timestamp: result.checkedAt,
+      provider: result.providerName,
+      status: result.status,
+      latencyMs: result.latencyMs,
+      errorMessage: result.errorMessage,
+    })
+
+    if (primary) {
+      updateProviderStatus(primary.id, result.status === 'down' ? 'error' : 'connected')
+    }
+
+    // Track primary health status
+    this.primaryLastHealthStatus = result.status
+
+    this.lastCheck = result
+
+    // Count consecutive successes for recovery
+    if (result.status === 'healthy') {
+      this.providerManager!.incrementSuccesses()
+      if (this.providerManager!.getConsecutiveSuccesses() >= this.settings.successesBeforeRecovery) {
+        this.providerManager!.swapToPrimary()
+        // Reset counters after mode change
+        this.providerManager!.resetCounters()
+      }
+    } else {
+      // Reset success counter on any non-healthy check
+      this.providerManager!.resetCounters()
+    }
+
+    // Notifications for recovery checks
+    const shouldNotifyDown = result.status === 'down' && previousStatus !== 'down'
+    const shouldNotifyRecovery = previousStatus === 'down' && result.status === 'healthy'
+
+    if (shouldNotifyDown) {
+      await this.sendTelegramAlert('down', primary, result)
+    } else if (shouldNotifyRecovery) {
+      await this.sendTelegramAlert('recovery', primary, result)
+    }
+
+    return result
+  }
+
+  private isFailureStatus(status: ProviderHealthStatus): boolean {
+    if (status === 'down') return true
+    if (this.settings.fallbackTrigger === 'degraded' && status === 'degraded') return true
+    return false
+  }
+
+  private loadHeartbeatSettings(): HeartbeatSettings {
     try {
       ensureConfigTemplates()
-      const settings = loadConfig<{ heartbeatIntervalMinutes?: number }>('settings.json')
-      const value = settings.heartbeatIntervalMinutes ?? 5
-      return Number.isFinite(value) && value >= 1 ? value : 5
+      const settings = loadConfig<{
+        heartbeat?: Partial<HeartbeatSettings>
+        heartbeatIntervalMinutes?: number
+      }>('settings.json')
+
+      const heartbeat = settings.heartbeat
+
+      if (heartbeat) {
+        const intervalMinutes = heartbeat.intervalMinutes ?? 5
+        return {
+          intervalMinutes: Number.isFinite(intervalMinutes) && intervalMinutes >= 1 ? intervalMinutes : 5,
+          fallbackTrigger: heartbeat.fallbackTrigger === 'degraded' ? 'degraded' : 'down',
+          failuresBeforeFallback: this.safePositiveInt(heartbeat.failuresBeforeFallback, 1),
+          recoveryCheckIntervalMinutes: this.safePositiveNumber(heartbeat.recoveryCheckIntervalMinutes, 1),
+          successesBeforeRecovery: this.safePositiveInt(heartbeat.successesBeforeRecovery, 3),
+          notifications: heartbeat.notifications,
+        }
+      }
+
+      // Legacy fallback: read top-level heartbeatIntervalMinutes
+      const legacyInterval = settings.heartbeatIntervalMinutes ?? 5
+      return {
+        intervalMinutes: Number.isFinite(legacyInterval) && legacyInterval >= 1 ? legacyInterval : 5,
+        fallbackTrigger: 'down',
+        failuresBeforeFallback: 1,
+        recoveryCheckIntervalMinutes: 1,
+        successesBeforeRecovery: 3,
+      }
     } catch {
-      return 5
+      return {
+        intervalMinutes: 5,
+        fallbackTrigger: 'down',
+        failuresBeforeFallback: 1,
+        recoveryCheckIntervalMinutes: 1,
+        successesBeforeRecovery: 3,
+      }
     }
+  }
+
+  private safePositiveInt(value: number | undefined, defaultValue: number): number {
+    if (value === undefined) return defaultValue
+    return Number.isFinite(value) && Number.isInteger(value) && value >= 1 ? value : defaultValue
+  }
+
+  private safePositiveNumber(value: number | undefined, defaultValue: number): number {
+    if (value === undefined) return defaultValue
+    return Number.isFinite(value) && value >= 0.1 ? value : defaultValue
   }
 
   private loadTelegramConfig(): TelegramConfig | null {
