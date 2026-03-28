@@ -3,7 +3,7 @@ import { createApp } from './app.js'
 import { initDatabase } from '@openagent/core'
 import { ensureConfigTemplates } from '@openagent/core'
 import { ensureMemoryStructure } from '@openagent/core'
-import { AgentCore, getActiveProvider, buildModel, getApiKeyForProvider, loadConfig } from '@openagent/core'
+import { AgentCore, getActiveProvider, getFallbackProvider, buildModel, getApiKeyForProvider, loadConfig, ProviderManager } from '@openagent/core'
 import { setupWebSocketChat } from './ws-chat.js'
 import { setupWebSocketLogs } from './ws-logs.js'
 import { HeartbeatService } from './heartbeat.js'
@@ -40,20 +40,58 @@ try {
 
 // Initialize Agent Core with the active provider
 let agentCore: AgentCore | null = null
+let providerManager: ProviderManager | null = null
 const provider = getActiveProvider()
 if (provider) {
   try {
     const model = buildModel(provider)
     const apiKey = await getApiKeyForProvider(provider)
+
+    // Create ProviderManager with primary and optional fallback
+    const fallbackProvider = getFallbackProvider()
+    providerManager = new ProviderManager(provider, fallbackProvider)
+
     agentCore = new AgentCore({
       model,
       apiKey,
       db,
       yoloMode: true,
       providerConfig: provider,
+      providerManager,
       sessionTimeoutMinutes,
     })
+
+    // Wire ProviderManager events to AgentCore.swapProvider()
+    providerManager.on('mode:fallback', async () => {
+      if (!agentCore || !providerManager) return
+      const effectiveProvider = providerManager.getEffectiveProvider()
+      if (!effectiveProvider) return
+      try {
+        const key = await getApiKeyForProvider(effectiveProvider)
+        agentCore.swapProvider(effectiveProvider, key)
+        console.log(`[openagent] Swapped to fallback provider: ${effectiveProvider.name} (${effectiveProvider.defaultModel})`)
+      } catch (err) {
+        console.error('[openagent] Failed to swap to fallback provider:', err)
+      }
+    })
+
+    providerManager.on('mode:normal', async () => {
+      if (!agentCore || !providerManager) return
+      const effectiveProvider = providerManager.getEffectiveProvider()
+      if (!effectiveProvider) return
+      try {
+        const key = await getApiKeyForProvider(effectiveProvider)
+        agentCore.swapProvider(effectiveProvider, key)
+        console.log(`[openagent] Swapped back to primary provider: ${effectiveProvider.name} (${effectiveProvider.defaultModel})`)
+      } catch (err) {
+        console.error('[openagent] Failed to swap to primary provider:', err)
+      }
+    })
+
     console.log(`[openagent] Agent core initialized with provider: ${provider.name} (${provider.defaultModel})`)
+    if (fallbackProvider) {
+      console.log(`[openagent] Fallback provider configured: ${fallbackProvider.name} (${fallbackProvider.defaultModel})`)
+    }
   } catch (err) {
     console.error('[openagent] Failed to initialize agent core:', err)
   }
