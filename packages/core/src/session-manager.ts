@@ -1,5 +1,6 @@
 import type { Database } from './database.js'
 import { appendToDailyFile } from './memory.js'
+import { logToolCall } from './token-logger.js'
 
 export interface SessionInfo {
   id: string
@@ -72,6 +73,16 @@ export class SessionManager {
         `INSERT INTO sessions (id, user_id, source, started_at, message_count, summary_written)
          VALUES (?, ?, ?, datetime(? / 1000, 'unixepoch'), 0, 0)`
       ).run(session.id, null, source, session.startedAt)
+
+      // Log session start to tool_calls for activity log visibility
+      logToolCall(this.db, {
+        sessionId: session.id,
+        toolName: 'session_start',
+        input: JSON.stringify({ userId, source }),
+        output: JSON.stringify({ sessionId: session.id }),
+        durationMs: 0,
+        status: 'success',
+      })
     }
 
     // Update activity and reset timer
@@ -121,13 +132,13 @@ export class SessionManager {
       return null
     }
 
-    return this.endSession(userId)
+    return this.endSession(userId, 'manual')
   }
 
   /**
    * End a session: summarize and dispose
    */
-  private async endSession(userId: string): Promise<string | null> {
+  private async endSession(userId: string, reason: 'timeout' | 'manual' = 'timeout'): Promise<string | null> {
     const session = this.sessions.get(userId)
     if (!session) {
       console.log(`[session] endSession called for user ${userId} but no active session found`)
@@ -164,6 +175,25 @@ export class SessionManager {
     this.db.prepare(
       `UPDATE sessions SET ended_at = datetime('now'), message_count = ?, summary_written = ? WHERE id = ?`
     ).run(session.messageCount, session.summaryWritten ? 1 : 0, session.id)
+
+    // Log session end to tool_calls for activity log visibility
+    const durationMs = Date.now() - session.startedAt
+    logToolCall(this.db, {
+      sessionId: session.id,
+      toolName: reason === 'timeout' ? 'session_timeout' : 'session_end',
+      input: JSON.stringify({
+        userId,
+        reason,
+        messageCount: session.messageCount,
+        durationMinutes: Math.round(durationMs / 60000),
+      }),
+      output: JSON.stringify({
+        summaryWritten: session.summaryWritten,
+        summary: summary ?? null,
+      }),
+      durationMs,
+      status: 'success',
+    })
 
     // Notify listener
     if (this.onSessionEnd) {
