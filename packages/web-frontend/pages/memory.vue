@@ -32,11 +32,20 @@
 
     <!-- Tabs -->
     <Tabs v-model="activeTab" class="flex flex-1 flex-col overflow-hidden min-h-0">
-      <TabsList class="mb-4 shrink-0 self-start">
-        <TabsTrigger value="soul" @click="switchTab('soul')">{{ $t('memory.soulTab') }}</TabsTrigger>
-        <TabsTrigger value="core" @click="switchTab('core')">{{ $t('memory.coreMemoryTab') }}</TabsTrigger>
-        <TabsTrigger value="daily" @click="switchTab('daily')">{{ $t('memory.dailyTab') }}</TabsTrigger>
-      </TabsList>
+      <div class="mb-4 flex shrink-0 flex-wrap items-center gap-3">
+        <TabsList class="self-start">
+          <TabsTrigger value="soul" @click="switchTab('soul')">{{ $t('memory.soulTab') }}</TabsTrigger>
+          <TabsTrigger value="core" @click="switchTab('core')">{{ $t('memory.coreMemoryTab') }}</TabsTrigger>
+          <TabsTrigger value="daily" @click="switchTab('daily')">{{ $t('memory.dailyTab') }}</TabsTrigger>
+        </TabsList>
+
+        <DateRangePicker
+          v-if="activeTab === 'daily'"
+          v-model:date-from="dailyDateFrom"
+          v-model:date-to="dailyDateTo"
+          @change="onDailyRangeChange"
+        />
+      </div>
 
       <!-- Soul tab -->
       <TabsContent value="soul" class="flex flex-1 flex-col overflow-hidden min-h-0 mt-0">
@@ -72,24 +81,12 @@
       <TabsContent value="daily" class="flex flex-1 flex-col overflow-hidden min-h-0 mt-0">
         <!-- Daily list view (table) -->
         <div v-if="!selectedDaily" class="flex flex-1 flex-col overflow-hidden min-h-0">
-          <!-- Daily toolbar -->
-          <div class="mb-4 flex shrink-0 flex-wrap items-start justify-between gap-4 rounded-xl border border-border bg-card p-4">
-            <div>
-              <h2 class="text-sm font-semibold text-foreground">{{ $t('memory.dailyBrowserTitle') }}</h2>
-              <p class="mt-1 text-xs text-muted-foreground">{{ $t('memory.dailyBrowserDescription') }}</p>
-            </div>
-            <div class="flex flex-wrap items-center gap-2">
-              <Input v-model="dailyDateInput" type="date" class="w-auto" />
-              <Button variant="outline" @click="openDailyDate">{{ $t('memory.openDate') }}</Button>
-            </div>
-          </div>
-
           <div v-if="loading" class="flex items-center justify-center py-16 text-sm text-muted-foreground">
             {{ $t('memory.loading') }}
           </div>
-          <div v-else-if="dailyFiles.length === 0" class="flex flex-col items-center justify-center gap-3 py-16 text-center text-muted-foreground">
+          <div v-else-if="filteredDailyFiles.length === 0" class="flex flex-col items-center justify-center gap-3 py-16 text-center text-muted-foreground">
             <AppIcon name="calendar" size="xl" class="h-10 w-10 opacity-40" />
-            <p class="text-sm">{{ $t('memory.noDailyFiles') }}</p>
+            <p class="text-sm">{{ $t('memory.noDailyFilesInRange') }}</p>
           </div>
 
           <!-- Table + Pagination -->
@@ -122,7 +119,7 @@
             <!-- Pagination -->
             <div v-if="totalPages > 1" class="flex shrink-0 items-center justify-between pt-3">
               <span class="text-xs text-muted-foreground">
-                {{ $t('memory.dailyPagination', { from: paginationFrom, to: paginationTo, total: dailyFiles.length }) }}
+                {{ $t('memory.dailyPagination', { from: paginationFrom, to: paginationTo, total: filteredDailyFiles.length }) }}
               </span>
               <div class="flex items-center gap-1">
                 <Button
@@ -154,9 +151,8 @@
         <!-- Daily editor view -->
         <div v-else class="flex flex-1 flex-col overflow-hidden min-h-0">
           <div class="mb-3 flex shrink-0 flex-wrap items-center gap-3">
-            <Button variant="outline" size="sm" @click="closeDailyFile">
-              <AppIcon name="arrowLeft" class="mr-1 h-4 w-4" />
-              {{ $t('memory.backToList') }}
+            <Button variant="outline" size="icon" class="h-8 w-8" :aria-label="$t('memory.backToList')" @click="closeDailyFile">
+              <AppIcon name="arrowLeft" class="h-4 w-4" />
             </Button>
             <div>
               <span class="block text-base font-bold text-foreground">{{ selectedDaily }}</span>
@@ -208,25 +204,41 @@ const coreMemoryContent = ref('')
 const dailyContent = ref('')
 const dailyFiles = ref<{ filename: string; date: string; size: number; modifiedAt: string }[]>([])
 const selectedDaily = ref<string | null>(null)
-const dailyDateInput = ref(new Date().toISOString().slice(0, 10))
+
+// Date range filter — default to last 7 days
+const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+const today = new Date()
+const sevenDaysAgo = new Date(today)
+sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6)
+const dailyDateFrom = ref(fmt(sevenDaysAgo))
+const dailyDateTo = ref(fmt(today))
 
 // Pagination
 const PAGE_SIZE = 10
 const currentPage = ref(1)
 
-const totalPages = computed(() => Math.max(1, Math.ceil(dailyFiles.value.length / PAGE_SIZE)))
+const filteredDailyFiles = computed(() => {
+  if (!dailyDateFrom.value && !dailyDateTo.value) return dailyFiles.value
+  return dailyFiles.value.filter((f) => {
+    if (dailyDateFrom.value && f.date < dailyDateFrom.value) return false
+    if (dailyDateTo.value && f.date > dailyDateTo.value) return false
+    return true
+  })
+})
+
+const totalPages = computed(() => Math.max(1, Math.ceil(filteredDailyFiles.value.length / PAGE_SIZE)))
 
 const paginatedDailyFiles = computed(() => {
   const start = (currentPage.value - 1) * PAGE_SIZE
-  return dailyFiles.value.slice(start, start + PAGE_SIZE)
+  return filteredDailyFiles.value.slice(start, start + PAGE_SIZE)
 })
 
 const paginationFrom = computed(() => {
-  if (dailyFiles.value.length === 0) return 0
+  if (filteredDailyFiles.value.length === 0) return 0
   return (currentPage.value - 1) * PAGE_SIZE + 1
 })
 
-const paginationTo = computed(() => Math.min(currentPage.value * PAGE_SIZE, dailyFiles.value.length))
+const paginationTo = computed(() => Math.min(currentPage.value * PAGE_SIZE, filteredDailyFiles.value.length))
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -259,6 +271,10 @@ async function refreshDailyFiles() {
   dailyFiles.value = await loadDailyFiles()
 }
 
+function onDailyRangeChange() {
+  currentPage.value = 1
+}
+
 async function handleSaveSoul() {
   await saveSoul(soulContent.value)
   autoHideSuccess()
@@ -273,9 +289,9 @@ async function handleSaveDaily() {
   if (!selectedDaily.value) return
   const saved = await saveDailyFile(selectedDaily.value, dailyContent.value)
   if (saved) {
+    const currentDate = selectedDaily.value
     await refreshDailyFiles()
-    selectedDaily.value = dailyDateInput.value
-    dailyContent.value = await loadDailyFile(dailyDateInput.value)
+    selectedDaily.value = currentDate
   }
   autoHideSuccess()
 }
@@ -283,19 +299,7 @@ async function handleSaveDaily() {
 async function openDailyFile(date: string) {
   clearMessages()
   selectedDaily.value = date
-  dailyDateInput.value = date
-  const content = await loadDailyFile(date)
-  if (error.value?.includes('not found')) {
-    clearMessages()
-    dailyContent.value = `# Daily Memory — ${date}\n\n`
-    return
-  }
-  dailyContent.value = content || `# Daily Memory — ${date}\n\n`
-}
-
-async function openDailyDate() {
-  if (!dailyDateInput.value) return
-  await openDailyFile(dailyDateInput.value)
+  dailyContent.value = await loadDailyFile(date)
 }
 
 function closeDailyFile() {

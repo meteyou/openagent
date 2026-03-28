@@ -163,6 +163,8 @@
     "save": "Save changes",
     "saveSuccess": "Memory updated successfully.",
     "noDailyFiles": "No daily files yet. Pick a date to create one.",
+    "noDailyFilesInRange": "No daily files in the selected range.",
+    "createEntry": "New entry",
     "backToList": "Back to daily files",
     "dailyBrowserTitle": "Daily memory browser",
     "dailyBrowserDescription": "Jump to any day, review existing notes, or create a new memory entry for the selected date.",

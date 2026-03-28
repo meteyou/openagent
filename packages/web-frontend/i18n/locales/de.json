@@ -166,6 +166,8 @@
     "save": "Änderungen speichern",
     "saveSuccess": "Gedächtnis erfolgreich gespeichert.",
     "noDailyFiles": "Noch keine Tagesdateien. Wählen Sie ein Datum, um eine zu erstellen.",
+    "noDailyFilesInRange": "Keine Tagesdateien im gewählten Zeitraum.",
+    "createEntry": "Neuer Eintrag",
     "backToList": "Zurück zur Liste",
     "dailyBrowserTitle": "Tagesgedächtnis durchsuchen",
     "dailyBrowserDescription": "Springen Sie zu einem beliebigen Datum, prüfen Sie bestehende Notizen oder erstellen Sie einen neuen Eintrag.",
