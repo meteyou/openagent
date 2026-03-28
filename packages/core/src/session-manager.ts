@@ -129,7 +129,12 @@ export class SessionManager {
    */
   private async endSession(userId: string): Promise<string | null> {
     const session = this.sessions.get(userId)
-    if (!session) return null
+    if (!session) {
+      console.log(`[session] endSession called for user ${userId} but no active session found`)
+      return null
+    }
+
+    console.log(`[session] Ending session ${session.id} for user ${userId} (${session.messageCount} messages)`)
 
     // Clear the timeout timer
     this.clearTimer(userId)
@@ -146,10 +151,13 @@ export class SessionManager {
           const formattedSummary = `\n## Session Summary (${timestamp})\n\n${summary}\n`
           appendToDailyFile(formattedSummary, undefined, this.memoryDir)
           session.summaryWritten = true
+          console.log(`[session] Summary written to daily log for session ${session.id}`)
         }
       } catch (err) {
-        console.error('Failed to generate session summary:', err)
+        console.error('[session] Failed to generate session summary:', err)
       }
+    } else {
+      console.log(`[session] Skipping summary: messageCount=${session.messageCount}, onSummarize=${!!this.onSummarize}`)
     }
 
     // Update SQLite with end time and summary flag
@@ -176,9 +184,13 @@ export class SessionManager {
 
     if (this.timeoutMs <= 0) return
 
+    const timeoutMinutes = Math.round(this.timeoutMs / 60000)
+    console.log(`[session] Timer set for user ${userId}: ${timeoutMinutes}min (${this.timeoutMs}ms)`)
+
     const timer = setTimeout(() => {
+      console.log(`[session] Timeout fired for user ${userId} — ending session`)
       this.endSession(userId).catch(err => {
-        console.error(`Session timeout error for user ${userId}:`, err)
+        console.error(`[session] Timeout error for user ${userId}:`, err)
       })
     }, this.timeoutMs)
 
