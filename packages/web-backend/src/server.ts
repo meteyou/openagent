@@ -3,7 +3,7 @@ import { createApp } from './app.js'
 import { initDatabase } from '@openagent/core'
 import { ensureConfigTemplates } from '@openagent/core'
 import { ensureMemoryStructure } from '@openagent/core'
-import { AgentCore, getActiveProvider, buildModel, getApiKeyForProvider } from '@openagent/core'
+import { AgentCore, getActiveProvider, buildModel, getApiKeyForProvider, loadConfig } from '@openagent/core'
 import { setupWebSocketChat } from './ws-chat.js'
 import { setupWebSocketLogs } from './ws-logs.js'
 import { HeartbeatService } from './heartbeat.js'
@@ -29,6 +29,15 @@ const runtimeMetrics = new RuntimeMetrics()
 const heartbeatService = new HeartbeatService({ db })
 heartbeatService.start()
 
+// Load session timeout from settings
+let sessionTimeoutMinutes = 15
+try {
+  const settings = loadConfig<{ sessionTimeoutMinutes?: number }>('settings.json')
+  if (settings.sessionTimeoutMinutes && settings.sessionTimeoutMinutes > 0) {
+    sessionTimeoutMinutes = settings.sessionTimeoutMinutes
+  }
+} catch { /* use default */ }
+
 // Initialize Agent Core with the active provider
 let agentCore: AgentCore | null = null
 const provider = getActiveProvider()
@@ -42,6 +51,7 @@ if (provider) {
       db,
       yoloMode: true,
       providerConfig: provider,
+      sessionTimeoutMinutes,
     })
     console.log(`[openagent] Agent core initialized with provider: ${provider.name} (${provider.defaultModel})`)
   } catch (err) {
