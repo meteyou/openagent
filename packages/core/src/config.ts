@@ -9,7 +9,21 @@ const TEMPLATES: Record<string, object> = {
   'settings.json': {
     sessionTimeoutMinutes: 15,
     language: 'en',
-    heartbeatIntervalMinutes: 5,
+    heartbeat: {
+      intervalMinutes: 5,
+      fallbackTrigger: 'down',
+      failuresBeforeFallback: 1,
+      recoveryCheckIntervalMinutes: 1,
+      successesBeforeRecovery: 3,
+      notifications: {
+        healthyToDegraded: false,
+        degradedToHealthy: false,
+        degradedToDown: true,
+        healthyToDown: true,
+        downToFallback: true,
+        fallbackToHealthy: true,
+      },
+    },
     batchingDelayMs: 2500,
     yoloMode: true,
     tokenPriceTable: {

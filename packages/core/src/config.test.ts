@@ -38,6 +38,24 @@ describe('config', () => {
     expect(settings.yoloMode).toBe(true)
     expect(settings.tokenPriceTable['gpt-4o'].input).toBe(2.5)
     expect(settings.tokenPriceTable['gpt-4o'].output).toBe(10)
+
+    // heartbeat namespace
+    expect(settings.heartbeat).toBeDefined()
+    expect(settings.heartbeat.intervalMinutes).toBe(5)
+    expect(settings.heartbeat.fallbackTrigger).toBe('down')
+    expect(settings.heartbeat.failuresBeforeFallback).toBe(1)
+    expect(settings.heartbeat.recoveryCheckIntervalMinutes).toBe(1)
+    expect(settings.heartbeat.successesBeforeRecovery).toBe(3)
+    expect(settings.heartbeat.notifications).toBeDefined()
+    expect(settings.heartbeat.notifications.healthyToDown).toBe(true)
+    expect(settings.heartbeat.notifications.downToFallback).toBe(true)
+    expect(settings.heartbeat.notifications.fallbackToHealthy).toBe(true)
+    expect(settings.heartbeat.notifications.healthyToDegraded).toBe(false)
+    expect(settings.heartbeat.notifications.degradedToHealthy).toBe(false)
+    expect(settings.heartbeat.notifications.degradedToDown).toBe(true)
+
+    // top-level heartbeatIntervalMinutes should NOT exist
+    expect(settings.heartbeatIntervalMinutes).toBeUndefined()
   })
 
   it('does not overwrite existing config files', () => {
