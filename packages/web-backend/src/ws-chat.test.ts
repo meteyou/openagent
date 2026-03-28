@@ -68,7 +68,7 @@ describe('setupWebSocketChat kill switch', () => {
 
     const app = createApp({ db })
     const server = http.createServer(app)
-    const wss = setupWebSocketChat(server, db, agentCore)
+    const { wss } = setupWebSocketChat(server, db, agentCore)
 
     await new Promise<void>((resolve) => server.listen(0, resolve))
     const port = (server.address() as { port: number }).port
@@ -113,7 +113,7 @@ describe('setupWebSocketChat kill switch', () => {
 
     const app = createApp({ db })
     const server = http.createServer(app)
-    const wss = setupWebSocketChat(server, db, agentCore)
+    const { wss } = setupWebSocketChat(server, db, agentCore)
 
     await new Promise<void>((resolve) => server.listen(0, resolve))
     const port = (server.address() as { port: number }).port

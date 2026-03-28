@@ -16,7 +16,7 @@ import type { HeartbeatService, HeartbeatSnapshot } from './heartbeat.js'
 
 let db: Database
 let server: http.Server
-let wss: import('ws').WebSocketServer
+let wss: import('./ws-chat.js').WebSocketChatResult
 let logsWss: import('ws').WebSocketServer
 let broadcastLog: (record: import('@openagent/core').ToolCallRecord) => void
 let port: number
@@ -61,13 +61,13 @@ beforeAll(async () => {
 
 afterAll(async () => {
   // Close all WebSocket connections first
-  for (const client of wss.clients) {
+  for (const client of wss.wss.clients) {
     client.terminate()
   }
   for (const client of logsWss.clients) {
     client.terminate()
   }
-  wss.close()
+  wss.wss.close()
   logsWss.close()
   await new Promise<void>((resolve, reject) =>
     server.close((err) => (err ? reject(err) : resolve()))
