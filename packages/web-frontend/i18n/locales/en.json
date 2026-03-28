@@ -227,7 +227,17 @@
     "consolidationResultNoChange": "No changes needed",
     "consolidationNeverRun": "Never",
     "days": "days",
-    "oClock": ":00"
+    "oClock": ":00",
+    "tabs": {
+      "general": "General",
+      "generalDescription": "Session behavior and language preferences.",
+      "agent": "Agent",
+      "agentDescription": "Fine-tune heartbeat timing and message batching for connected channels.",
+      "memory": "Memory",
+      "memoryDescription": "Automatic memory consolidation from daily entries into core memory.",
+      "telegram": "Telegram",
+      "telegramDescription": "Configure the Telegram bot token and message batching."
+    }
   },
   "users": {
     "kicker": "Access control",
