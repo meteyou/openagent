@@ -6,10 +6,29 @@ import type { AgentCore } from '@openagent/core'
 import { jwtMiddleware } from '../auth.js'
 import type { AuthenticatedRequest } from '../auth.js'
 
+export interface HeartbeatNotificationToggles {
+  healthyToDegraded: boolean
+  degradedToHealthy: boolean
+  degradedToDown: boolean
+  healthyToDown: boolean
+  downToFallback: boolean
+  fallbackToHealthy: boolean
+}
+
+export interface HeartbeatData {
+  intervalMinutes?: number
+  fallbackTrigger?: 'down' | 'degraded'
+  failuresBeforeFallback?: number
+  recoveryCheckIntervalMinutes?: number
+  successesBeforeRecovery?: number
+  notifications?: Partial<HeartbeatNotificationToggles>
+}
+
 export interface SettingsData {
   sessionTimeoutMinutes: number
   language: string
   heartbeatIntervalMinutes: number
+  heartbeat?: HeartbeatData
   batchingDelayMs?: number
   yoloMode: boolean
 }
@@ -57,6 +76,15 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
 
       const consolidation = (settings as unknown as Record<string, unknown>).memoryConsolidation as Partial<MemoryConsolidationSettingsData> | undefined
 
+      const defaultNotifications: HeartbeatNotificationToggles = {
+        healthyToDegraded: false,
+        degradedToHealthy: false,
+        degradedToDown: true,
+        healthyToDown: true,
+        downToFallback: true,
+        fallbackToHealthy: true,
+      }
+
       res.json({
         sessionTimeoutMinutes: settings.sessionTimeoutMinutes ?? 15,
         language: settings.language ?? 'match',
@@ -65,6 +93,9 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
         batchingDelayMs: settings.batchingDelayMs ?? telegram.batchingDelayMs ?? 2500,
         telegramEnabled: telegram.enabled ?? false,
         telegramBotToken: telegram.botToken ?? '',
+        heartbeat: {
+          notifications: { ...defaultNotifications, ...settings.heartbeat?.notifications },
+        },
         memoryConsolidation: {
           enabled: consolidation?.enabled ?? false,
           runAtHour: consolidation?.runAtHour ?? 3,
@@ -86,6 +117,7 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
       batchingDelayMs: number
       telegramEnabled: boolean
       telegramBotToken: string
+      heartbeat: { notifications?: Partial<HeartbeatNotificationToggles> }
       memoryConsolidation: Partial<MemoryConsolidationSettingsData>
     }>
 
@@ -136,8 +168,24 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
         settings.batchingDelayMs = body.batchingDelayMs
       }
 
-      // Handle memory consolidation settings
+      // Handle heartbeat notification settings
       const settingsRaw = settings as unknown as Record<string, unknown>
+      let heartbeatChanged = false
+      if (body.heartbeat?.notifications !== undefined) {
+        const existingHeartbeat = (settingsRaw.heartbeat ?? {}) as Record<string, unknown>
+        const existingNotifications = (existingHeartbeat.notifications ?? {}) as Record<string, unknown>
+        const incoming = body.heartbeat.notifications
+        for (const key of ['healthyToDegraded', 'degradedToHealthy', 'degradedToDown', 'healthyToDown', 'downToFallback', 'fallbackToHealthy'] as const) {
+          if (incoming[key] !== undefined) {
+            existingNotifications[key] = !!incoming[key]
+          }
+        }
+        existingHeartbeat.notifications = existingNotifications
+        settingsRaw.heartbeat = existingHeartbeat
+        heartbeatChanged = true
+      }
+
+      // Handle memory consolidation settings
       let consolidationChanged = false
       if (body.memoryConsolidation !== undefined) {
         const mc = body.memoryConsolidation
@@ -198,7 +246,7 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
         }
       }
 
-      if ((settings.heartbeatIntervalMinutes ?? 5) !== previousHeartbeatInterval) {
+      if ((settings.heartbeatIntervalMinutes ?? 5) !== previousHeartbeatInterval || heartbeatChanged) {
         options.onHeartbeatSettingsChanged?.()
       }
 
@@ -207,6 +255,17 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
       }
 
       const consolidationOut = (settingsRaw.memoryConsolidation ?? {}) as Record<string, unknown>
+
+      const defaultNotifications: HeartbeatNotificationToggles = {
+        healthyToDegraded: false,
+        degradedToHealthy: false,
+        degradedToDown: true,
+        healthyToDown: true,
+        downToFallback: true,
+        fallbackToHealthy: true,
+      }
+      const heartbeatOut = (settingsRaw.heartbeat ?? {}) as Record<string, unknown>
+      const notificationsOut = (heartbeatOut.notifications ?? {}) as Record<string, unknown>
 
       res.json({
         message: 'Settings updated',
@@ -217,6 +276,9 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
         batchingDelayMs: settings.batchingDelayMs ?? previousBatchingDelayMs,
         telegramEnabled: telegram.enabled,
         telegramBotToken: telegram.botToken,
+        heartbeat: {
+          notifications: { ...defaultNotifications, ...notificationsOut },
+        },
         memoryConsolidation: {
           enabled: consolidationOut.enabled ?? false,
           runAtHour: consolidationOut.runAtHour ?? 3,
