@@ -11,7 +11,9 @@ import { estimateCost, getApiKeyForProvider, buildModel } from './provider-confi
 import type { ProviderConfig } from './provider-config.js'
 import type { ProviderManager } from './provider-manager.js'
 import { assembleSystemPrompt, ensureMemoryStructure } from './memory.js'
+import type { SkillPromptEntry } from './memory.js'
 import { loadConfig, ensureConfigTemplates } from './config.js'
+import { loadSkills, getSkillDecrypted } from './skill-config.js'
 import { createMemoryTools } from './memory-tools.js'
 import { createBuiltinWebTools } from './web-tools.js'
 import type { BuiltinToolsConfig } from './web-tools.js'
@@ -117,7 +119,50 @@ function createYoloTools(): AgentTool[] {
       const { path: filePath } = params as { path: string }
       try {
         const resolved = resolveWorkspacePath(filePath)
-        const content = fs.readFileSync(resolved, 'utf-8')
+        let content = fs.readFileSync(resolved, 'utf-8')
+
+        // Detect SKILL.md loads under /data/skills/
+        const skillMdMatch = resolved.match(/\/data\/skills\/(.+)\/SKILL\.md$/)
+        if (skillMdMatch) {
+          const skillDir = nodePath.dirname(resolved)
+
+          // Replace {baseDir} with actual skill directory
+          content = content.replaceAll('{baseDir}', skillDir)
+
+          // Look up skill in skills.json and inject env vars
+          const injectedVars: string[] = []
+          try {
+            const skillsFile = loadSkills()
+            const matchedSkill = skillsFile.skills.find(s => resolved.startsWith(s.path))
+            if (matchedSkill) {
+              const decrypted = getSkillDecrypted(matchedSkill.id)
+              if (decrypted?.envValues) {
+                for (const [key, value] of Object.entries(decrypted.envValues)) {
+                  if (value) {
+                    process.env[key] = value
+                    injectedVars.push(key)
+                  }
+                }
+              }
+            }
+          } catch {
+            // Skills config not available, continue without env injection
+          }
+
+          const skillName = skillMdMatch[1] // e.g. "zats/perplexity"
+          const header = `Skill directory: ${skillDir}\n\n`
+          return {
+            content: [{ type: 'text' as const, text: header + content }],
+            details: {
+              path: resolved,
+              size: content.length,
+              skillLoad: true,
+              skillName,
+              envVarsInjected: injectedVars,
+            },
+          }
+        }
+
         return {
           content: [{ type: 'text' as const, text: content }],
           details: { path: resolved, size: content.length },
@@ -193,6 +238,24 @@ function createYoloTools(): AgentTool[] {
 }
 
 /**
+ * Load active skill entries for system prompt injection
+ */
+function getActiveSkillEntries(): SkillPromptEntry[] {
+  try {
+    const skillsFile = loadSkills()
+    return skillsFile.skills
+      .filter(s => s.enabled)
+      .map(s => ({
+        name: s.name,
+        description: s.description,
+        location: s.path,
+      }))
+  } catch {
+    return []
+  }
+}
+
+/**
  * Agent Core - manages the message lifecycle using pi-mono SDK
  */
 export class AgentCore {
@@ -234,11 +297,15 @@ export class AgentCore {
       // Config not available yet, use default
     }
 
+    // Load active skills for system prompt
+    const activeSkills = getActiveSkillEntries()
+
     // Build system prompt from memory
     const systemPrompt = options.systemPrompt ?? assembleSystemPrompt({
       memoryDir: options.memoryDir,
       baseInstructions: options.baseInstructions,
       language,
+      skills: activeSkills,
     })
 
     const tools: AgentTool[] = [
@@ -644,13 +711,24 @@ export class AgentCore {
       // Config not available
     }
 
+    const activeSkills = getActiveSkillEntries()
+
     const prompt = assembleSystemPrompt({
       memoryDir: this.memoryDir,
       baseInstructions: this.baseInstructions,
       language,
       channel,
+      skills: activeSkills,
     })
     this.agent.setSystemPrompt(prompt)
+  }
+
+  /**
+   * Refresh skills: reload skills.json and rebuild system prompt with current active skills.
+   * Call this after skill install/delete/toggle.
+   */
+  refreshSkills(): void {
+    this.refreshSystemPrompt()
   }
 
   /**
