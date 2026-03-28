@@ -339,19 +339,62 @@ function parseInputParams(input: string | null | undefined): Record<string, stri
   if (!input) return {}
   try {
     const parsed = JSON.parse(input)
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
-    const keys = Object.keys(parsed)
-    if (keys.length === 0) return {}
-    const result: Record<string, string> = {}
-    for (const key of keys) {
-      const val = parsed[key]
-      const str = val === null ? 'null' : typeof val === 'object' ? JSON.stringify(val) : String(val)
-      result[key] = str.length > 80 ? `${str.length} chars` : str
-    }
-    return result
+    return flattenParams(parsed)
   } catch {
-    return {}
+    // Input may be truncated by API — try to extract key-value pairs via regex
+    return extractParamsFromTruncated(input)
   }
+}
+
+function flattenParams(parsed: unknown): Record<string, string> {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+  const keys = Object.keys(parsed as Record<string, unknown>)
+  if (keys.length === 0) return {}
+  const result: Record<string, string> = {}
+  for (const key of keys) {
+    const val = (parsed as Record<string, unknown>)[key]
+    const str = val === null ? 'null' : typeof val === 'object' ? JSON.stringify(val) : String(val)
+    result[key] = str.length > 80 ? `${str.length} chars` : str
+  }
+  return result
+}
+
+function extractParamsFromTruncated(input: string): Record<string, string> {
+  // Match JSON-like key-value pairs from a truncated JSON string
+  const result: Record<string, string> = {}
+  const keyRegex = /"([^"]+)"\s*:\s*/g
+  let match
+  while ((match = keyRegex.exec(input)) !== null) {
+    const key = match[1]
+    const afterColon = input.slice(match.index + match[0].length)
+    // Try to determine the value
+    if (afterColon.startsWith('"')) {
+      // String value — may be truncated
+      const endQuote = findUnescapedQuote(afterColon, 1)
+      if (endQuote === -1) {
+        // Truncated string value
+        result[key] = 'truncated'
+      } else {
+        const val = afterColon.slice(1, endQuote)
+        result[key] = val.length > 80 ? `${val.length} chars` : val
+      }
+    } else {
+      // Non-string value (number, bool, null, object, array)
+      const valMatch = afterColon.match(/^(true|false|null|-?\d+\.?\d*)/)
+      if (valMatch) {
+        result[key] = valMatch[1]
+      }
+    }
+  }
+  return result
+}
+
+function findUnescapedQuote(str: string, start: number): number {
+  for (let i = start; i < str.length; i++) {
+    if (str[i] === '\\') { i++; continue }
+    if (str[i] === '"') return i
+  }
+  return -1
 }
 
 function hasInputData(input: string | null | undefined): boolean {
