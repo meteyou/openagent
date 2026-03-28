@@ -29,7 +29,10 @@ const restartHeartbeat = vi.fn()
 const heartbeatSnapshot: HeartbeatSnapshot = {
   agentStatus: 'running',
   intervalMinutes: 5,
+  operatingMode: 'normal',
   activeProvider: null,
+  primaryProvider: null,
+  fallbackProvider: null,
   lastCheck: null,
 }
 
