@@ -79,6 +79,9 @@
           <!-- Session divider -->
           <template v-if="msg.role === 'divider'">
             <div class="w-full max-w-none px-2">
+              <p v-if="msg.content" class="mx-auto mb-2 max-w-md text-center text-xs leading-relaxed text-muted-foreground/70">
+                {{ msg.content }}
+              </p>
               <div class="relative flex items-center py-2">
                 <div class="grow border-t border-border" />
                 <div class="mx-4 flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
@@ -87,9 +90,6 @@
                 </div>
                 <div class="grow border-t border-border" />
               </div>
-              <p v-if="msg.content" class="mx-auto max-w-md text-center text-xs leading-relaxed text-muted-foreground/70">
-                {{ msg.content }}
-              </p>
             </div>
           </template>
 
