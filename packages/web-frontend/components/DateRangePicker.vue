@@ -99,7 +99,7 @@ function setPreset(preset: string) {
       <!-- Presets -->
       <div class="flex flex-wrap gap-1.5">
         <Button
-          v-for="preset in ['today', 'yesterday', 'last7', 'last30']"
+          v-for="preset in ['last7', 'last30']"
           :key="preset"
           variant="outline"
           size="sm"
