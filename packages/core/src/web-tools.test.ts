@@ -3,10 +3,16 @@ import {
   extractTextFromHtml,
   parseDuckDuckGoLiteHtml,
   searchDuckDuckGo,
+  searchBrave,
+  searchSearXNG,
+  resolveSearchProvider,
+  encryptBraveApiKey,
+  decryptBraveApiKey,
   createWebSearchTool,
   createWebFetchTool,
   createBuiltinWebTools,
 } from './web-tools.js'
+import { encrypt } from './encryption.js'
 
 // ─── extractTextFromHtml ─────────────────────────────────────────────────────
 
@@ -211,6 +217,275 @@ describe('searchDuckDuckGo', () => {
 
     const results = await searchDuckDuckGo('asdfghjkl', 5, mockFetch)
     expect(results).toHaveLength(0)
+  })
+})
+
+// ─── searchBrave ─────────────────────────────────────────────────────────────
+
+describe('searchBrave', () => {
+  it('calls Brave API with correct parameters and headers', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        web: {
+          results: [
+            { title: 'Brave Result 1', url: 'https://example.com/1', description: 'First brave result' },
+            { title: 'Brave Result 2', url: 'https://example.com/2', description: 'Second brave result' },
+          ],
+        },
+      }),
+    })
+
+    const results = await searchBrave('test query', 'my-api-key', 5, mockFetch)
+
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+    const [url, options] = mockFetch.mock.calls[0]
+    expect(url).toContain('https://api.search.brave.com/res/v1/web/search')
+    expect(url).toContain('q=test+query')
+    expect(url).toContain('count=5')
+    expect(options.headers['X-Subscription-Token']).toBe('my-api-key')
+    expect(options.method).toBe('GET')
+
+    expect(results).toHaveLength(2)
+    expect(results[0]).toEqual({
+      title: 'Brave Result 1',
+      url: 'https://example.com/1',
+      snippet: 'First brave result',
+    })
+  })
+
+  it('throws on non-OK response', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+    })
+
+    await expect(searchBrave('test', 'bad-key', 5, mockFetch)).rejects.toThrow('HTTP 401')
+  })
+
+  it('returns empty array when no web results', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ web: { results: [] } }),
+    })
+
+    const results = await searchBrave('test', 'key', 5, mockFetch)
+    expect(results).toHaveLength(0)
+  })
+
+  it('handles missing web field in response', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({}),
+    })
+
+    const results = await searchBrave('test', 'key', 5, mockFetch)
+    expect(results).toHaveLength(0)
+  })
+
+  it('respects count limit', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        web: {
+          results: [
+            { title: 'R1', url: 'https://1.com', description: 'S1' },
+            { title: 'R2', url: 'https://2.com', description: 'S2' },
+            { title: 'R3', url: 'https://3.com', description: 'S3' },
+          ],
+        },
+      }),
+    })
+
+    const results = await searchBrave('test', 'key', 2, mockFetch)
+    expect(results).toHaveLength(2)
+  })
+
+  it('handles missing fields in results gracefully', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        web: { results: [{ title: 'Only Title' }] },
+      }),
+    })
+
+    const results = await searchBrave('test', 'key', 5, mockFetch)
+    expect(results).toHaveLength(1)
+    expect(results[0]).toEqual({ title: 'Only Title', url: '', snippet: '' })
+  })
+})
+
+// ─── searchSearXNG ───────────────────────────────────────────────────────────
+
+describe('searchSearXNG', () => {
+  it('calls SearXNG with correct URL and parameters', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        results: [
+          { title: 'SearX Result', url: 'https://example.com', content: 'SearX snippet' },
+        ],
+      }),
+    })
+
+    const results = await searchSearXNG('test query', 'https://searx.example.com', 5, mockFetch)
+
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+    const [url] = mockFetch.mock.calls[0]
+    expect(url).toContain('https://searx.example.com/search')
+    expect(url).toContain('q=test+query')
+    expect(url).toContain('format=json')
+
+    expect(results).toHaveLength(1)
+    expect(results[0]).toEqual({
+      title: 'SearX Result',
+      url: 'https://example.com',
+      snippet: 'SearX snippet',
+    })
+  })
+
+  it('strips trailing slash from URL', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ results: [] }),
+    })
+
+    await searchSearXNG('test', 'https://searx.example.com/', 5, mockFetch)
+
+    const [url] = mockFetch.mock.calls[0]
+    expect(url).toContain('https://searx.example.com/search')
+    expect(url).not.toContain('//search')
+  })
+
+  it('throws on non-OK response', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 502,
+    })
+
+    await expect(searchSearXNG('test', 'https://searx.example.com', 5, mockFetch)).rejects.toThrow('HTTP 502')
+  })
+
+  it('returns empty array when no results', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ results: [] }),
+    })
+
+    const results = await searchSearXNG('test', 'https://searx.example.com', 5, mockFetch)
+    expect(results).toHaveLength(0)
+  })
+
+  it('handles missing results field', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({}),
+    })
+
+    const results = await searchSearXNG('test', 'https://searx.example.com', 5, mockFetch)
+    expect(results).toHaveLength(0)
+  })
+
+  it('respects count limit', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        results: [
+          { title: 'R1', url: 'https://1.com', content: 'S1' },
+          { title: 'R2', url: 'https://2.com', content: 'S2' },
+          { title: 'R3', url: 'https://3.com', content: 'S3' },
+        ],
+      }),
+    })
+
+    const results = await searchSearXNG('test', 'https://searx.example.com', 2, mockFetch)
+    expect(results).toHaveLength(2)
+  })
+
+  it('handles missing fields in results gracefully', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        results: [{ title: 'Only Title' }],
+      }),
+    })
+
+    const results = await searchSearXNG('test', 'https://searx.example.com', 5, mockFetch)
+    expect(results).toHaveLength(1)
+    expect(results[0]).toEqual({ title: 'Only Title', url: '', snippet: '' })
+  })
+})
+
+// ─── resolveSearchProvider ──────────────────────────────────────────────────
+
+describe('resolveSearchProvider', () => {
+  it('defaults to duckduckgo with no config', () => {
+    const resolved = resolveSearchProvider()
+    expect(resolved.provider).toBe('duckduckgo')
+    expect(resolved.warning).toBeUndefined()
+  })
+
+  it('returns duckduckgo when explicitly requested', () => {
+    const resolved = resolveSearchProvider({ provider: 'duckduckgo' })
+    expect(resolved.provider).toBe('duckduckgo')
+    expect(resolved.warning).toBeUndefined()
+  })
+
+  it('returns brave when configured with API key', () => {
+    const resolved = resolveSearchProvider({ provider: 'brave', braveSearchApiKey: 'test-key' })
+    expect(resolved.provider).toBe('brave')
+    expect(resolved.warning).toBeUndefined()
+  })
+
+  it('falls back to duckduckgo when brave has no API key', () => {
+    const resolved = resolveSearchProvider({ provider: 'brave' })
+    expect(resolved.provider).toBe('duckduckgo')
+    expect(resolved.warning).toContain('Brave Search')
+    expect(resolved.warning).toContain('Falling back to DuckDuckGo')
+  })
+
+  it('falls back to duckduckgo when brave has empty API key', () => {
+    const resolved = resolveSearchProvider({ provider: 'brave', braveSearchApiKey: '' })
+    expect(resolved.provider).toBe('duckduckgo')
+    expect(resolved.warning).toContain('Falling back to DuckDuckGo')
+  })
+
+  it('returns searxng when configured with URL', () => {
+    const resolved = resolveSearchProvider({ provider: 'searxng', searxngUrl: 'https://searx.example.com' })
+    expect(resolved.provider).toBe('searxng')
+    expect(resolved.warning).toBeUndefined()
+  })
+
+  it('falls back to duckduckgo when searxng has no URL', () => {
+    const resolved = resolveSearchProvider({ provider: 'searxng' })
+    expect(resolved.provider).toBe('duckduckgo')
+    expect(resolved.warning).toContain('SearXNG')
+    expect(resolved.warning).toContain('Falling back to DuckDuckGo')
+  })
+
+  it('falls back to duckduckgo when searxng has empty URL', () => {
+    const resolved = resolveSearchProvider({ provider: 'searxng', searxngUrl: '' })
+    expect(resolved.provider).toBe('duckduckgo')
+    expect(resolved.warning).toContain('Falling back to DuckDuckGo')
+  })
+
+  it('decrypts encrypted brave API key', () => {
+    const encryptedKey = encrypt('my-secret-key')
+    const resolved = resolveSearchProvider({ provider: 'brave', braveSearchApiKey: encryptedKey })
+    expect(resolved.provider).toBe('brave')
+    expect(resolved.warning).toBeUndefined()
+  })
+})
+
+// ─── encryptBraveApiKey / decryptBraveApiKey ───────────────────────────────
+
+describe('encryptBraveApiKey / decryptBraveApiKey', () => {
+  it('encrypts and decrypts API key round-trip', () => {
+    const apiKey = 'BSAtest123456789'
+    const encrypted = encryptBraveApiKey(apiKey)
+    expect(encrypted).not.toBe(apiKey)
+    const decrypted = decryptBraveApiKey(encrypted)
+    expect(decrypted).toBe(apiKey)
   })
 })
 
@@ -475,5 +750,34 @@ describe('createBuiltinWebTools', () => {
   it('handles empty config object', () => {
     const tools = createBuiltinWebTools({})
     expect(tools).toHaveLength(2) // Both default to enabled
+  })
+
+  it('passes braveSearchApiKey and searxngUrl to search tool', () => {
+    const tools = createBuiltinWebTools({
+      webSearch: { enabled: true, provider: 'brave' },
+      braveSearchApiKey: 'test-key',
+    })
+    expect(tools).toHaveLength(2)
+    expect(tools[0].name).toBe('web_search')
+  })
+
+  it('passes searxng config to search tool', () => {
+    const tools = createBuiltinWebTools({
+      webSearch: { enabled: true, provider: 'searxng' },
+      searxngUrl: 'https://searx.example.com',
+    })
+    expect(tools).toHaveLength(2)
+    expect(tools[0].name).toBe('web_search')
+  })
+
+  it('falls back to duckduckgo when brave configured without API key', () => {
+    // Should not throw, should fall back gracefully
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const tools = createBuiltinWebTools({
+      webSearch: { enabled: true, provider: 'brave' },
+    })
+    expect(tools).toHaveLength(2)
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Falling back to DuckDuckGo'))
+    warnSpy.mockRestore()
   })
 })
