@@ -75,7 +75,11 @@ export function createAuthRouter(db: Database): Router {
     const newAccessToken = generateAccessToken(newPayload)
     const newRefreshToken = generateRefreshToken(newPayload)
 
-    res.json({ accessToken: newAccessToken, refreshToken: newRefreshToken })
+    res.json({
+      accessToken: newAccessToken,
+      refreshToken: newRefreshToken,
+      user: { id: user.id, username: user.username, role: user.role },
+    })
   })
 
   /**
