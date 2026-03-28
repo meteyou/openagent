@@ -43,8 +43,12 @@ COPY . .
 # Build all packages
 RUN npm run build
 
+# Configure npm global prefix to persist packages in /data volume
+ENV NPM_CONFIG_PREFIX=/data/npm-global
+ENV PATH="/data/npm-global/bin:${PATH}"
+
 # Create data directories
-RUN mkdir -p /data/db /data/config /data/memory/daily /data/skills /workspace
+RUN mkdir -p /data/db /data/config /data/memory/daily /data/skills /data/npm-global /workspace
 
 # Copy entrypoint
 COPY entrypoint.sh /entrypoint.sh
