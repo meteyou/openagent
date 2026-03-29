@@ -77,7 +77,19 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
       const telegram = loadConfig<TelegramData>('telegram.json')
 
       const consolidation = (settings as unknown as Record<string, unknown>).memoryConsolidation as Partial<MemoryConsolidationSettingsData> | undefined
-      const tasks = (settings as unknown as Record<string, unknown>).tasks as { defaultProvider?: string; maxDurationMinutes?: number; telegramDelivery?: string } | undefined
+      const tasks = (settings as unknown as Record<string, unknown>).tasks as {
+        defaultProvider?: string
+        maxDurationMinutes?: number
+        telegramDelivery?: string
+        loopDetection?: {
+          enabled?: boolean
+          method?: string
+          maxConsecutiveFailures?: number
+          smartProvider?: string
+          smartCheckInterval?: number
+        }
+        statusUpdateIntervalMinutes?: number
+      } | undefined
 
       const defaultNotifications: HeartbeatNotificationToggles = {
         healthyToDegraded: false,
@@ -114,6 +126,14 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
           defaultProvider: tasks?.defaultProvider ?? '',
           maxDurationMinutes: tasks?.maxDurationMinutes ?? 60,
           telegramDelivery: tasks?.telegramDelivery ?? 'auto',
+          loopDetection: {
+            enabled: tasks?.loopDetection?.enabled ?? true,
+            method: tasks?.loopDetection?.method ?? 'systematic',
+            maxConsecutiveFailures: tasks?.loopDetection?.maxConsecutiveFailures ?? 3,
+            smartProvider: tasks?.loopDetection?.smartProvider ?? '',
+            smartCheckInterval: tasks?.loopDetection?.smartCheckInterval ?? 5,
+          },
+          statusUpdateIntervalMinutes: tasks?.statusUpdateIntervalMinutes ?? 10,
         },
       })
     } catch (err) {
@@ -139,7 +159,19 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
         notifications?: Partial<HeartbeatNotificationToggles>
       }
       memoryConsolidation: Partial<MemoryConsolidationSettingsData>
-      tasks: Partial<{ defaultProvider: string; maxDurationMinutes: number; telegramDelivery: string }>
+      tasks: Partial<{
+        defaultProvider: string
+        maxDurationMinutes: number
+        telegramDelivery: string
+        loopDetection: Partial<{
+          enabled: boolean
+          method: string
+          maxConsecutiveFailures: number
+          smartProvider: string
+          smartCheckInterval: number
+        }>
+        statusUpdateIntervalMinutes: number
+      }>
     }>
 
     try {
@@ -312,6 +344,53 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
           existingTasks.telegramDelivery = body.tasks.telegramDelivery
         }
 
+        // Loop detection settings
+        if (body.tasks.loopDetection !== undefined) {
+          const existingLd = (existingTasks.loopDetection ?? {}) as Record<string, unknown>
+          const ld = body.tasks.loopDetection
+
+          if (ld.enabled !== undefined) existingLd.enabled = !!ld.enabled
+          if (ld.method !== undefined) {
+            if (!['systematic', 'smart', 'auto'].includes(ld.method)) {
+              res.status(400).json({ error: 'tasks.loopDetection.method must be "systematic", "smart", or "auto"' })
+              return
+            }
+            existingLd.method = ld.method
+          }
+          if (ld.maxConsecutiveFailures !== undefined) {
+            if (typeof ld.maxConsecutiveFailures !== 'number' || !Number.isFinite(ld.maxConsecutiveFailures) || ld.maxConsecutiveFailures < 1) {
+              res.status(400).json({ error: 'tasks.loopDetection.maxConsecutiveFailures must be a positive number' })
+              return
+            }
+            existingLd.maxConsecutiveFailures = ld.maxConsecutiveFailures
+          }
+          if (ld.smartProvider !== undefined) {
+            if (typeof ld.smartProvider !== 'string') {
+              res.status(400).json({ error: 'tasks.loopDetection.smartProvider must be a string' })
+              return
+            }
+            existingLd.smartProvider = ld.smartProvider
+          }
+          if (ld.smartCheckInterval !== undefined) {
+            if (typeof ld.smartCheckInterval !== 'number' || !Number.isFinite(ld.smartCheckInterval) || ld.smartCheckInterval < 1) {
+              res.status(400).json({ error: 'tasks.loopDetection.smartCheckInterval must be a positive number' })
+              return
+            }
+            existingLd.smartCheckInterval = ld.smartCheckInterval
+          }
+
+          existingTasks.loopDetection = existingLd
+        }
+
+        // Status update interval
+        if (body.tasks.statusUpdateIntervalMinutes !== undefined) {
+          if (typeof body.tasks.statusUpdateIntervalMinutes !== 'number' || !Number.isFinite(body.tasks.statusUpdateIntervalMinutes) || body.tasks.statusUpdateIntervalMinutes < 1) {
+            res.status(400).json({ error: 'tasks.statusUpdateIntervalMinutes must be a positive number' })
+            return
+          }
+          existingTasks.statusUpdateIntervalMinutes = body.tasks.statusUpdateIntervalMinutes
+        }
+
         settingsRaw.tasks = existingTasks
       }
 
@@ -396,6 +475,14 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
           defaultProvider: tasksOut.defaultProvider ?? '',
           maxDurationMinutes: tasksOut.maxDurationMinutes ?? 60,
           telegramDelivery: tasksOut.telegramDelivery ?? 'auto',
+          loopDetection: {
+            enabled: (tasksOut.loopDetection as Record<string, unknown>)?.enabled ?? true,
+            method: (tasksOut.loopDetection as Record<string, unknown>)?.method ?? 'systematic',
+            maxConsecutiveFailures: (tasksOut.loopDetection as Record<string, unknown>)?.maxConsecutiveFailures ?? 3,
+            smartProvider: (tasksOut.loopDetection as Record<string, unknown>)?.smartProvider ?? '',
+            smartCheckInterval: (tasksOut.loopDetection as Record<string, unknown>)?.smartCheckInterval ?? 5,
+          },
+          statusUpdateIntervalMinutes: tasksOut.statusUpdateIntervalMinutes ?? 10,
         },
       })
     } catch (err) {

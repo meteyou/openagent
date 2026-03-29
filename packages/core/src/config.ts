@@ -49,6 +49,14 @@ const TEMPLATES: Record<string, object> = {
       defaultProvider: '',
       maxDurationMinutes: 60,
       telegramDelivery: 'auto',
+      loopDetection: {
+        enabled: true,
+        method: 'systematic',
+        maxConsecutiveFailures: 3,
+        smartProvider: '',
+        smartCheckInterval: 5,
+      },
+      statusUpdateIntervalMinutes: 10,
     },
   },
   'skills.json': {
