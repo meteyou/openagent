@@ -155,6 +155,10 @@
     "resume": "Resume",
     "searchPlaceholder": "Search tool calls...",
     "allTools": "All tools",
+    "allSources": "All sources",
+    "sourceMainAgent": "Main Agent",
+    "sourceTasks": "Tasks",
+    "sourceTask": "Task",
     "dateFrom": "From date",
     "dateTo": "To date",
     "loading": "Loading...",
@@ -309,8 +313,19 @@
       "telegram": "Telegram",
       "telegramDescription": "Configure the Telegram bot token and message batching.",
       "tasks": "Tasks",
-      "tasksDescription": "Loop detection and periodic status updates for background tasks."
+      "tasksDescription": "Default provider, max duration, loop detection, and delivery settings for background tasks."
     },
+    "tasksGeneral": "General",
+    "tasksGeneralHint": "Default behavior for all background tasks and cronjobs.",
+    "tasksDefaultProvider": "Default provider",
+    "tasksDefaultProviderActive": "Active provider (default)",
+    "tasksDefaultProviderHint": "Choose a specific provider/model for tasks, or use the currently active provider.",
+    "tasksMaxDuration": "Max duration",
+    "tasksMaxDurationHint": "Maximum runtime for a single task. Tasks exceeding this limit are automatically killed.",
+    "tasksTelegramDelivery": "Telegram delivery",
+    "tasksTelegramDeliveryAuto": "Auto (suppress when web chat active)",
+    "tasksTelegramDeliveryAlways": "Always send",
+    "tasksTelegramDeliveryHint": "Control when task results are sent via Telegram. Auto suppresses notifications when you have the web chat open.",
     "tasksLoopDetection": "Loop Detection",
     "tasksLoopDetectionHint": "Detect when a background task agent is stuck repeating the same failing action.",
     "tasksLoopDetectionEnabled": "Enable loop detection",
@@ -426,6 +441,11 @@
       "requests": "Model requests",
       "providersMeta": "configured providers"
     },
+    "activeTasks": {
+      "title": "Active Tasks",
+      "running": "running",
+      "scheduled": "{count} scheduled tasks enabled"
+    },
     "actions": {
       "memory": "Edit SOUL.md, AGENTS.md, and daily memory files.",
       "settings": "Change runtime behavior and Telegram configuration.",
@@ -511,6 +531,12 @@
       "prompt": "Prompt (input)",
       "completion": "Completion (output)",
       "empty": "No daily usage to chart for the current filters."
+    },
+    "sourceChart": {
+      "title": "Main Agent vs. Task Agent",
+      "description": "Token usage split between main agent and background task agents per day.",
+      "mainAgent": "Main Agent",
+      "taskAgent": "Task Agent"
     },
     "table": {
       "title": "Provider & model breakdown",
