@@ -148,6 +148,79 @@ describe('Cronjobs REST API', () => {
       expect(res.status).toBe(404)
     })
 
+    it('saves and returns override fields', async () => {
+      const res = await apiFetch(`/api/cronjobs/${createdId}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          toolsOverride: JSON.stringify(['shell', 'write_file']),
+          skillsOverride: JSON.stringify(['brave-search']),
+          systemPromptOverride: 'Custom system prompt for this cronjob.',
+        }),
+      })
+
+      expect(res.status).toBe(200)
+      const body = await res.json() as { cronjob: { toolsOverride: string; skillsOverride: string; systemPromptOverride: string } }
+      expect(body.cronjob.toolsOverride).toBe(JSON.stringify(['shell', 'write_file']))
+      expect(body.cronjob.skillsOverride).toBe(JSON.stringify(['brave-search']))
+      expect(body.cronjob.systemPromptOverride).toBe('Custom system prompt for this cronjob.')
+    })
+
+    it('clears override fields when set to null', async () => {
+      const res = await apiFetch(`/api/cronjobs/${createdId}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          toolsOverride: null,
+          skillsOverride: null,
+          systemPromptOverride: null,
+        }),
+      })
+
+      expect(res.status).toBe(200)
+      const body = await res.json() as { cronjob: { toolsOverride: string | null; skillsOverride: string | null; systemPromptOverride: string | null } }
+      expect(body.cronjob.toolsOverride).toBeNull()
+      expect(body.cronjob.skillsOverride).toBeNull()
+      expect(body.cronjob.systemPromptOverride).toBeNull()
+    })
+
+    it('validates toolsOverride JSON format', async () => {
+      const res = await apiFetch(`/api/cronjobs/${createdId}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          toolsOverride: 'not-json',
+        }),
+      })
+
+      expect(res.status).toBe(400)
+      const body = await res.json() as { error: string }
+      expect(body.error).toContain('toolsOverride')
+    })
+
+    it('validates toolsOverride must be array of strings', async () => {
+      const res = await apiFetch(`/api/cronjobs/${createdId}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          toolsOverride: JSON.stringify([1, 2, 3]),
+        }),
+      })
+
+      expect(res.status).toBe(400)
+      const body = await res.json() as { error: string }
+      expect(body.error).toContain('array of strings')
+    })
+
+    it('validates skillsOverride JSON format', async () => {
+      const res = await apiFetch(`/api/cronjobs/${createdId}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          skillsOverride: '{bad}',
+        }),
+      })
+
+      expect(res.status).toBe(400)
+      const body = await res.json() as { error: string }
+      expect(body.error).toContain('skillsOverride')
+    })
+
     it('toggles enabled status', async () => {
       const res = await apiFetch(`/api/cronjobs/${createdId}`, {
         method: 'PUT',
