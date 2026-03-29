@@ -621,6 +621,57 @@
               </div>
 
               <div class="flex flex-col gap-8">
+                <!-- General Task Settings -->
+                <div>
+                  <h3 class="text-base font-semibold tracking-tight text-foreground">
+                    {{ $t('settings.tasksGeneral') }}
+                  </h3>
+                  <p class="mt-1 text-sm text-muted-foreground">
+                    {{ $t('settings.tasksGeneralHint') }}
+                  </p>
+                </div>
+
+                <!-- Default provider -->
+                <div class="flex flex-col gap-2">
+                  <Label for="tasks-default-provider">{{ $t('settings.tasksDefaultProvider') }}</Label>
+                  <Select id="tasks-default-provider" v-model="form.tasks.defaultProvider">
+                    <option value="">{{ $t('settings.tasksDefaultProviderActive') }}</option>
+                    <option v-for="p in providers" :key="p.id" :value="p.id">
+                      {{ p.name }} ({{ p.defaultModel }})
+                    </option>
+                  </Select>
+                  <p class="text-xs text-muted-foreground">{{ $t('settings.tasksDefaultProviderHint') }}</p>
+                </div>
+
+                <!-- Max duration -->
+                <div class="flex flex-col gap-2">
+                  <Label for="tasks-max-duration">{{ $t('settings.tasksMaxDuration') }}</Label>
+                  <div class="flex items-center gap-2">
+                    <Input
+                      id="tasks-max-duration"
+                      v-model.number="form.tasks.maxDurationMinutes"
+                      type="number"
+                      min="1"
+                      max="1440"
+                      class="w-full"
+                    />
+                    <span class="text-sm text-muted-foreground">{{ $t('settings.minutes') }}</span>
+                  </div>
+                  <p class="text-xs text-muted-foreground">{{ $t('settings.tasksMaxDurationHint') }}</p>
+                </div>
+
+                <!-- Telegram delivery mode -->
+                <div class="flex flex-col gap-2">
+                  <Label for="tasks-telegram-delivery">{{ $t('settings.tasksTelegramDelivery') }}</Label>
+                  <Select id="tasks-telegram-delivery" v-model="form.tasks.telegramDelivery">
+                    <option value="auto">{{ $t('settings.tasksTelegramDeliveryAuto') }}</option>
+                    <option value="always">{{ $t('settings.tasksTelegramDeliveryAlways') }}</option>
+                  </Select>
+                  <p class="text-xs text-muted-foreground">{{ $t('settings.tasksTelegramDeliveryHint') }}</p>
+                </div>
+
+                <Separator />
+
                 <!-- Loop Detection Section -->
                 <div>
                   <h3 class="text-base font-semibold tracking-tight text-foreground">
