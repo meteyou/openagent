@@ -30,6 +30,9 @@ export interface CronjobFormData {
   schedule: string
   provider?: string
   enabled?: boolean
+  toolsOverride?: string | null
+  skillsOverride?: string | null
+  systemPromptOverride?: string | null
 }
 
 export function useCronjobs() {

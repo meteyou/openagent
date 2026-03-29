@@ -621,7 +621,22 @@
       "schedule": "Schedule (Cron Expression)",
       "scheduleHelp": "Format: minute hour day-of-month month day-of-week. Examples: \"0 9 * * *\" (daily at 9:00), \"*/15 * * * *\" (every 15 min), \"30 14 * * 1-5\" (weekdays at 14:30)",
       "provider": "Provider",
-      "defaultProvider": "Default provider"
+      "defaultProvider": "Default provider",
+      "advanced": "Advanced Configuration",
+      "customized": "customized",
+      "toolOverrides": "Tool Overrides",
+      "toolOverridesHelp": "Toggle individual tools on or off for this cronjob. Disabled tools will not be available to the task agent.",
+      "skillOverrides": "Skill Overrides",
+      "skillOverridesHelp": "Toggle individual skills on or off for this cronjob. Disabled skills will be excluded from the task agent.",
+      "noSkills": "No skills available.",
+      "systemPromptOverride": "System Prompt Override",
+      "systemPromptOverrideHelp": "When set, this completely replaces the default task agent system prompt.",
+      "systemPromptPlaceholder": "You are a background task agent. Your task: ...\n\nLeave empty to use the default system prompt."
+    },
+    "badges": {
+      "customTools": "custom tools",
+      "customSkills": "custom skills",
+      "customPrompt": "custom prompt"
     }
   },
   "taskViewer": {

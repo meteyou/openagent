@@ -619,7 +619,22 @@
       "schedule": "Zeitplan (Cron-Ausdruck)",
       "scheduleHelp": "Format: Minute Stunde Tag-im-Monat Monat Wochentag. Beispiele: \"0 9 * * *\" (täglich um 9:00), \"*/15 * * * *\" (alle 15 Min), \"30 14 * * 1-5\" (wochentags um 14:30)",
       "provider": "Anbieter",
-      "defaultProvider": "Standardanbieter"
+      "defaultProvider": "Standardanbieter",
+      "advanced": "Erweiterte Konfiguration",
+      "customized": "angepasst",
+      "toolOverrides": "Tool-Überschreibungen",
+      "toolOverridesHelp": "Aktivieren oder deaktivieren Sie einzelne Tools für diesen Cronjob. Deaktivierte Tools stehen dem Task-Agenten nicht zur Verfügung.",
+      "skillOverrides": "Skill-Überschreibungen",
+      "skillOverridesHelp": "Aktivieren oder deaktivieren Sie einzelne Skills für diesen Cronjob. Deaktivierte Skills werden vom Task-Agenten ausgeschlossen.",
+      "noSkills": "Keine Skills verfügbar.",
+      "systemPromptOverride": "System-Prompt-Überschreibung",
+      "systemPromptOverrideHelp": "Wenn gesetzt, ersetzt dies den Standard-System-Prompt des Task-Agenten vollständig.",
+      "systemPromptPlaceholder": "Du bist ein Hintergrund-Task-Agent. Deine Aufgabe: ...\n\nLeer lassen, um den Standard-System-Prompt zu verwenden."
+    },
+    "badges": {
+      "customTools": "eigene Tools",
+      "customSkills": "eigene Skills",
+      "customPrompt": "eigener Prompt"
     }
   },
   "taskViewer": {

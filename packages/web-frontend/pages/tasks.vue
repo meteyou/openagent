@@ -314,8 +314,19 @@
                   class="cursor-pointer"
                   @click="openEditCronjob(cj)"
                 >
-                  <TableCell class="max-w-[200px] truncate font-medium">
-                    {{ cj.name }}
+                  <TableCell class="max-w-[200px] font-medium">
+                    <div class="flex items-center gap-1.5">
+                      <span class="truncate">{{ cj.name }}</span>
+                      <Badge v-if="cj.toolsOverride" variant="outline" class="text-xs shrink-0">
+                        {{ $t('cronjobs.badges.customTools') }}
+                      </Badge>
+                      <Badge v-if="cj.skillsOverride" variant="outline" class="text-xs shrink-0">
+                        {{ $t('cronjobs.badges.customSkills') }}
+                      </Badge>
+                      <Badge v-if="cj.systemPromptOverride" variant="outline" class="text-xs shrink-0">
+                        {{ $t('cronjobs.badges.customPrompt') }}
+                      </Badge>
+                    </div>
                   </TableCell>
                   <TableCell>
                     <div class="flex flex-col">
@@ -568,7 +579,7 @@ function openEditCronjob(cj: Cronjob) {
   cronjobDialog.open = true
 }
 
-async function handleCronjobSubmit(form: { name: string; prompt: string; schedule: string; provider?: string }) {
+async function handleCronjobSubmit(form: { name: string; prompt: string; schedule: string; provider?: string; toolsOverride?: string | null; skillsOverride?: string | null; systemPromptOverride?: string | null }) {
   cronjobDialog.loading = true
 
   if (cronjobDialog.mode === 'create') {
