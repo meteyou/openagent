@@ -70,15 +70,17 @@
           <div v-else class="flex-1 space-y-3 overflow-y-auto min-h-0">
             <Card v-for="skill in skills" :key="skill.id" class="transition-colors">
               <div class="flex items-center gap-4 p-4">
-                <!-- Emoji -->
+                <!-- Icon / Emoji -->
                 <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted text-lg">
-                  {{ skill.emoji || '🧩' }}
+                  <span v-if="skill.emoji">{{ skill.emoji }}</span>
+                  <AppIcon v-else-if="skill.id.startsWith('uploaded/')" name="upload" class="h-5 w-5 text-muted-foreground" />
+                  <AppIcon v-else name="puzzle" class="h-5 w-5 text-muted-foreground" />
                 </div>
 
                 <!-- Info -->
                 <div class="min-w-0 flex-1">
                   <div class="flex items-center gap-2">
-                    <span class="font-semibold text-foreground truncate">{{ skill.id }}</span>
+                    <span class="font-semibold text-foreground truncate">{{ skill.id.startsWith('uploaded/') ? skill.id.slice('uploaded/'.length) : skill.id }}</span>
                   </div>
                   <p v-if="skill.description" class="mt-0.5 text-sm text-muted-foreground line-clamp-1">
                     {{ skill.description }}
