@@ -184,6 +184,26 @@ export function initDatabase(dbPath?: string): Database {
     CREATE INDEX IF NOT EXISTS idx_tasks_session_id ON tasks(session_id);
   `)
 
+  // Create scheduled_tasks table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS scheduled_tasks (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      prompt TEXT NOT NULL,
+      schedule TEXT NOT NULL,
+      provider TEXT,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      tools_override TEXT,
+      skills_override TEXT,
+      system_prompt_override TEXT,
+      last_run_at TEXT,
+      last_run_task_id TEXT,
+      last_run_status TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `)
+
   // Migration: add 'paused' to tasks status CHECK constraint
   // Test by inserting a paused row — if CHECK fails, recreate the table
   try {
