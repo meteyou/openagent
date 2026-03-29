@@ -9,6 +9,13 @@
     <p class="max-w-xs text-sm">{{ $t('admin.description') }}</p>
   </div>
 
+  <!-- Task Viewer (detail mode) -->
+  <TaskViewer
+    v-else-if="selectedTaskId"
+    :task-id="selectedTaskId"
+    @back="closeViewer"
+  />
+
   <div v-else class="flex h-full flex-col overflow-hidden">
     <PageHeader :title="$t('tasks.title')" :subtitle="$t('tasks.subtitle')" />
 
@@ -138,7 +145,12 @@
                 </TableRow>
               </TableHeader>
               <TableBody>
-                <TableRow v-for="task in sortedTasks" :key="task.id">
+                <TableRow
+                  v-for="task in sortedTasks"
+                  :key="task.id"
+                  class="cursor-pointer"
+                  @click="openViewer(task.id)"
+                >
                   <TableCell class="max-w-[240px] truncate font-medium">
                     {{ task.name }}
                   </TableCell>
@@ -409,6 +421,19 @@ const { user } = useAuth()
 const isAdmin = computed(() => user.value?.role === 'admin')
 
 const activeTab = ref('tasks')
+
+// Task viewer state
+const selectedTaskId = ref<string | null>(null)
+
+function openViewer(taskId: string) {
+  selectedTaskId.value = taskId
+}
+
+function closeViewer() {
+  selectedTaskId.value = null
+  // Refresh tasks list when returning
+  loadTasks(pagination.value.page)
+}
 
 // === Tasks ===
 const {

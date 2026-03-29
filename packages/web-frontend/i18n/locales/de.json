@@ -621,5 +621,15 @@
       "provider": "Anbieter",
       "defaultProvider": "Standardanbieter"
     }
+  },
+  "taskViewer": {
+    "back": "Zurück zu Tasks",
+    "live": "Live",
+    "loading": "Lade Task-Events...",
+    "noEvents": "Noch keine Events aufgezeichnet. Der Task wird möglicherweise noch gestartet.",
+    "error": "Fehler",
+    "arguments": "Argumente",
+    "result": "Ergebnis",
+    "agentResponse": "Agent-Antwort"
   }
 }

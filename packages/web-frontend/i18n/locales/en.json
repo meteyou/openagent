@@ -623,5 +623,15 @@
       "provider": "Provider",
       "defaultProvider": "Default provider"
     }
+  },
+  "taskViewer": {
+    "back": "Back to tasks",
+    "live": "Live",
+    "loading": "Loading task events...",
+    "noEvents": "No events recorded yet. The task may still be starting.",
+    "error": "Error",
+    "arguments": "Arguments",
+    "result": "Result",
+    "agentResponse": "Agent response"
   }
 }
