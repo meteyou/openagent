@@ -273,6 +273,7 @@
     "telegramUsersAssignUser": "Assign user",
     "telegramUsersUnassigned": "Not assigned",
     "telegramUsersNoUsername": "No username",
+    "telegramUsersRefresh": "Refresh Telegram users",
     "consolidationSection": "Memory consolidation",
     "consolidationSectionDescription": "Automatically review daily memory entries and promote lasting insights into core memory (MEMORY.md).",
     "consolidationEnabled": "Enable automatic consolidation",

@@ -453,13 +453,28 @@
                 <!-- Telegram users section -->
                 <Separator />
 
-                <div>
-                  <h3 class="text-base font-semibold tracking-tight text-foreground">
-                    {{ $t('settings.telegramUsers') }}
-                  </h3>
-                  <p class="mt-1 text-sm text-muted-foreground">
-                    {{ $t('settings.telegramUsersDescription') }}
-                  </p>
+                <div class="flex items-start justify-between gap-4">
+                  <div>
+                    <h3 class="text-base font-semibold tracking-tight text-foreground">
+                      {{ $t('settings.telegramUsers') }}
+                    </h3>
+                    <p class="mt-1 text-sm text-muted-foreground">
+                      {{ $t('settings.telegramUsersDescription') }}
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="icon-sm"
+                    :disabled="telegramUsersLoading"
+                    :aria-label="$t('settings.telegramUsersRefresh')"
+                    @click="fetchTelegramUsers"
+                  >
+                    <AppIcon
+                      name="refresh"
+                      class="h-4 w-4"
+                      :class="telegramUsersLoading ? 'animate-spin' : ''"
+                    />
+                  </Button>
                 </div>
 
                 <!-- Loading -->

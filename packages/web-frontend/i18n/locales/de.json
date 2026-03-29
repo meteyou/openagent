@@ -271,6 +271,7 @@
     "telegramUsersAssignUser": "Benutzer zuweisen",
     "telegramUsersUnassigned": "Nicht zugewiesen",
     "telegramUsersNoUsername": "Kein Benutzername",
+    "telegramUsersRefresh": "Telegram-Benutzer aktualisieren",
     "consolidationSection": "Memory-Konsolidierung",
     "consolidationSectionDescription": "Überprüft automatisch tägliche Einträge und übernimmt dauerhafte Erkenntnisse in das Kerngedächtnis (MEMORY.md).",
     "consolidationEnabled": "Automatische Konsolidierung aktivieren",
