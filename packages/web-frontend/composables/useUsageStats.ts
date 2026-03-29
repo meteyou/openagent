@@ -78,6 +78,23 @@ export function useUsageStats() {
     availableModels: [],
   })
 
+  // Main agent vs. task agent daily breakdown
+  const dailyMainAgent = ref<UsageStatsResponse>({
+    groupBy: ['day'],
+    rows: [],
+    totals: emptyTotals(),
+    availableProviders: [],
+    availableModels: [],
+  })
+
+  const dailyTaskAgent = ref<UsageStatsResponse>({
+    groupBy: ['day'],
+    rows: [],
+    totals: emptyTotals(),
+    availableProviders: [],
+    availableModels: [],
+  })
+
   const availableProviders = ref<string[]>([])
   const availableModels = ref<string[]>([])
 
@@ -101,13 +118,14 @@ export function useUsageStats() {
     filters.model = ''
   }
 
-  function buildQuery(groupBy: string[]): string {
+  function buildQuery(groupBy: string[], sessionType?: string): string {
     const params = new URLSearchParams()
     params.set('group_by', groupBy.join(','))
     if (filters.dateFrom) params.set('date_from', filters.dateFrom)
     if (filters.dateTo) params.set('date_to', filters.dateTo)
     if (filters.provider) params.set('provider', filters.provider)
     if (filters.model) params.set('model', filters.model)
+    if (sessionType) params.set('session_type', sessionType)
     return params.toString()
   }
 
@@ -117,15 +135,19 @@ export function useUsageStats() {
     error.value = null
 
     try {
-      const [summaryData, dailyData, breakdownData] = await Promise.all([
+      const [summaryData, dailyData, breakdownData, mainAgentData, taskAgentData] = await Promise.all([
         apiFetch<UsageSummaryResponse>('/api/stats/summary'),
         apiFetch<UsageStatsResponse>(`/api/stats/usage?${buildQuery(['day'])}`),
         apiFetch<UsageStatsResponse>(`/api/stats/usage?${buildQuery(['provider', 'model'])}`),
+        apiFetch<UsageStatsResponse>(`/api/stats/usage?${buildQuery(['day'], 'main')}`),
+        apiFetch<UsageStatsResponse>(`/api/stats/usage?${buildQuery(['day'], 'task')}`),
       ])
 
       allTimeTokens.value = summaryData.allTime.totalTokens
       daily.value = dailyData
       breakdown.value = breakdownData
+      dailyMainAgent.value = mainAgentData
+      dailyTaskAgent.value = taskAgentData
       availableProviders.value = dailyData.availableProviders
       availableModels.value = dailyData.availableModels
     } catch (err) {
@@ -148,6 +170,8 @@ export function useUsageStats() {
     error,
     filters,
     daily,
+    dailyMainAgent,
+    dailyTaskAgent,
     breakdown,
     availableProviders,
     availableModels,

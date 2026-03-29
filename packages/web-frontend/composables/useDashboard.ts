@@ -97,6 +97,10 @@ export function useDashboard() {
     estimatedCost: 0,
   })
 
+  // Task counts for dashboard card
+  const activeTaskCount = ref(0)
+  const scheduledTaskCount = ref(0)
+
   // ── Derived state ─────────────────────────────────────────────
   const providerName = computed(() => health.value.provider?.name ?? null)
   const providerType = computed(() => health.value.provider?.type ?? null)
@@ -117,17 +121,21 @@ export function useDashboard() {
     error.value = null
 
     try {
-      const [healthData, historyData, providersData, summaryData] = await Promise.all([
+      const [healthData, historyData, providersData, summaryData, runningTasksData, cronjobsData] = await Promise.all([
         apiFetch<HealthSnapshot>('/api/health'),
         apiFetch<{ history: HealthHistoryEntry[] }>('/api/health/history?limit=5'),
         apiFetch<{ providers: Array<{ id: string }> }>('/api/providers'),
         apiFetch<{ today: UsageTotals; allTime: UsageTotals }>('/api/stats/summary'),
+        apiFetch<{ tasks: unknown[]; pagination: { total: number } }>('/api/tasks?status=running&limit=1').catch(() => ({ tasks: [], pagination: { total: 0 } })),
+        apiFetch<{ cronjobs: Array<{ enabled: number }> }>('/api/cronjobs').catch(() => ({ cronjobs: [] })),
       ])
 
       health.value = healthData
       healthHistory.value = historyData.history
       providersCount.value = providersData.providers.length
       usageToday.value = summaryData.today
+      activeTaskCount.value = runningTasksData.pagination.total
+      scheduledTaskCount.value = cronjobsData.cronjobs.filter((c: { enabled: number }) => c.enabled).length
     } catch (err) {
       error.value = (err as Error).message
     } finally {
@@ -143,6 +151,8 @@ export function useDashboard() {
     healthHistory: readonly(healthHistory),
     providersCount: readonly(providersCount),
     usageToday: readonly(usageToday),
+    activeTaskCount: readonly(activeTaskCount),
+    scheduledTaskCount: readonly(scheduledTaskCount),
 
     // derived
     providerName,
