@@ -63,6 +63,36 @@
           </Card>
         </section>
 
+        <!-- ─── Active Tasks card ─── -->
+        <section class="mb-6">
+          <NuxtLink to="/tasks" class="block">
+            <Card class="transition-colors hover:border-primary/40">
+              <CardContent class="flex items-center gap-4 p-5">
+                <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                  <AppIcon name="bot" class="h-5 w-5 text-primary" />
+                </div>
+                <div class="min-w-0 flex-1">
+                  <span class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    {{ $t('dashboard.activeTasks.title') }}
+                  </span>
+                  <div class="mt-1 flex items-baseline gap-3">
+                    <strong class="text-2xl font-bold tracking-tight text-foreground">
+                      {{ activeTaskCount }}
+                    </strong>
+                    <span class="text-sm text-muted-foreground">
+                      {{ $t('dashboard.activeTasks.running') }}
+                    </span>
+                  </div>
+                  <span class="mt-0.5 block text-xs text-muted-foreground">
+                    {{ $t('dashboard.activeTasks.scheduled', { count: scheduledTaskCount }) }}
+                  </span>
+                </div>
+                <AppIcon name="arrowRight" class="h-4 w-4 shrink-0 text-muted-foreground" />
+              </CardContent>
+            </Card>
+          </NuxtLink>
+        </section>
+
         <!-- ─── Provider health + Health history (2-col) ─── -->
         <section class="grid grid-cols-1 gap-6 md:grid-cols-2">
           <!-- Provider health -->
@@ -237,6 +267,8 @@ const {
   lastCheckLatency,
   lastCheckError,
   usageToday,
+  activeTaskCount,
+  scheduledTaskCount,
   load,
 } = useDashboard()
 
