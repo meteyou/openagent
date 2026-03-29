@@ -96,6 +96,8 @@ export interface ToolCallQueryOptions {
   dateTo?: string
   page?: number
   limit?: number
+  /** Filter by source: 'main' (non-task sessions), 'task' (task-* sessions), or undefined (all) */
+  sourceFilter?: 'main' | 'task'
 }
 
 export interface ToolCallQueryResult {
@@ -151,6 +153,11 @@ export function queryToolCalls(db: Database, options: ToolCallQueryOptions = {})
   if (options.toolName) {
     where += ' AND tool_name = ?'
     params.push(options.toolName)
+  }
+  if (options.sourceFilter === 'task') {
+    where += " AND session_id LIKE 'task-%'"
+  } else if (options.sourceFilter === 'main') {
+    where += " AND (session_id IS NULL OR session_id NOT LIKE 'task-%')"
   }
   if (options.search) {
     where += ' AND (tool_name LIKE ? OR input LIKE ? OR output LIKE ?)'

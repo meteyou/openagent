@@ -11,6 +11,8 @@ export interface UsageStatsQueryOptions {
   provider?: string
   model?: string
   priceTable?: TokenPriceTable
+  /** Filter by session type: 'main' (non-task sessions), 'task' (task-* sessions), or undefined (all) */
+  sessionType?: 'main' | 'task'
 }
 
 export interface UsageTotals {
@@ -118,6 +120,12 @@ function buildWhereClause(options: UsageStatsQueryOptions, whereOptions: WhereOp
   if (includeModel && options.model) {
     clauses.push('model = ?')
     params.push(options.model)
+  }
+
+  if (options.sessionType === 'task') {
+    clauses.push("session_id LIKE 'task-%'")
+  } else if (options.sessionType === 'main') {
+    clauses.push("(session_id IS NULL OR session_id NOT LIKE 'task-%')")
   }
 
   return {
