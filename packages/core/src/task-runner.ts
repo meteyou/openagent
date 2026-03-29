@@ -8,6 +8,14 @@ import type { Task, TaskResultStatus } from './task-store.js'
 import { logTokenUsage, logToolCall } from './token-logger.js'
 import { estimateCost } from './provider-config.js'
 import type { ProviderConfig } from './provider-config.js'
+import {
+  ToolCallTracker,
+  buildSmartDetectionPrompt,
+  parseSmartDetectionResponse,
+  resolveDetectionMethod,
+  formatPeriodicStatusUpdate,
+} from './loop-detection.js'
+import type { LoopDetectionConfig, LoopDetectionResult } from './loop-detection.js'
 
 export interface TaskRunnerOptions {
   db: Database
@@ -23,6 +31,14 @@ export interface TaskRunnerOptions {
   onTaskComplete: (taskId: string, injection: string) => void
   /** Callback when a task pauses with a question — delivers the injection message */
   onTaskPaused?: (taskId: string, injection: string) => void
+  /** Callback for periodic status updates */
+  onStatusUpdate?: (taskId: string, statusMessage: string) => void
+  /** Loop detection configuration */
+  loopDetection?: LoopDetectionConfig
+  /** Status update interval in minutes */
+  statusUpdateIntervalMinutes?: number
+  /** Function to resolve a provider config by ID (for smart detection) */
+  getProviderById?: (providerId: string) => ProviderConfig | null
 }
 
 interface RunningTask {
@@ -36,6 +52,12 @@ interface RunningTask {
   toolCallCount: number
   toolCallTimers: Map<string, number>
   toolCallArgs: Map<string, unknown>
+  /** Tracker for loop detection */
+  toolCallTracker: ToolCallTracker
+  /** Timer for periodic status updates */
+  statusUpdateTimer: ReturnType<typeof setInterval> | null
+  /** When the task started running (for status update runtime calc) */
+  startedAtMs: number
 }
 
 interface PausedTask {
@@ -177,6 +199,9 @@ export class TaskRunner {
       toolCallCount: 0,
       toolCallTimers: new Map(),
       toolCallArgs: new Map(),
+      toolCallTracker: new ToolCallTracker(),
+      statusUpdateTimer: null,
+      startedAtMs: Date.now(),
     }
 
     // Set up max duration timeout
@@ -184,6 +209,14 @@ export class TaskRunner {
       runningTask.timeoutTimer = setTimeout(() => {
         this.abortTask(taskId, 'Max duration exceeded')
       }, task.maxDurationMinutes * 60 * 1000)
+    }
+
+    // Set up periodic status updates
+    const statusIntervalMinutes = this.options.statusUpdateIntervalMinutes ?? 10
+    if (statusIntervalMinutes > 0 && this.options.onStatusUpdate) {
+      runningTask.statusUpdateTimer = setInterval(() => {
+        this.emitStatusUpdate(runningTask, task)
+      }, statusIntervalMinutes * 60 * 1000)
     }
 
     this.runningTasks.set(taskId, runningTask)
@@ -389,17 +422,189 @@ export class TaskRunner {
 
         runningTask.toolCallCount++
 
+        const outputStr = JSON.stringify(event.result ?? {})
+        const isError = event.isError === true || (typeof event.result === 'string' && event.result.startsWith('Error'))
+
+        // Track for loop detection
+        runningTask.toolCallTracker.record(event.toolName, args, outputStr, isError)
+
+        // Check for loops
+        this.checkForLoops(runningTask)
+
         // Log to tool_calls table with task's session_id
         logToolCall(this.db, {
           sessionId,
           toolName: event.toolName,
           input: JSON.stringify(args),
-          output: JSON.stringify(event.result ?? {}),
+          output: outputStr,
           durationMs,
         })
         break
       }
     }
+  }
+
+  /**
+   * Check for loops after each tool call
+   */
+  private checkForLoops(runningTask: RunningTask): void {
+    const config = this.options.loopDetection
+    if (!config?.enabled) return
+
+    const method = resolveDetectionMethod(config, runningTask.toolCallCount)
+    if (method === 'none') return
+
+    if (method === 'systematic') {
+      const result = runningTask.toolCallTracker.checkSystematicLoop(config.maxConsecutiveFailures)
+      if (result.loopDetected) {
+        this.handleLoopDetected(runningTask, result)
+      }
+    } else if (method === 'smart') {
+      // Smart detection runs every M tool calls
+      const checkInterval = config.smartCheckInterval ?? 5
+      if (runningTask.toolCallCount % checkInterval === 0) {
+        this.runSmartDetection(runningTask).catch(err => {
+          console.error(`[task-runner] Smart loop detection error for task ${runningTask.taskId}:`, err)
+        })
+      }
+    }
+  }
+
+  /**
+   * Run LLM-based smart loop detection
+   */
+  private async runSmartDetection(runningTask: RunningTask): Promise<void> {
+    const config = this.options.loopDetection
+    if (!config?.smartProvider || !this.options.getProviderById) return
+
+    const provider = this.options.getProviderById(config.smartProvider)
+    if (!provider) return
+
+    try {
+      const model = this.options.buildModel(provider)
+      const apiKey = await this.options.getApiKey(provider)
+      const prompt = buildSmartDetectionPrompt(runningTask.toolCallTracker.getHistory())
+
+      // Create a lightweight agent for the detection call
+      const detectionAgent = new PiAgent({
+        initialState: {
+          systemPrompt: 'You are a loop detection assistant. Analyze tool call patterns and determine if an agent is making progress or stuck.',
+          model,
+          tools: [],
+        },
+        getApiKey: () => apiKey,
+      })
+
+      // Track token usage from detection
+      const sessionId = `loop-detection-${runningTask.taskId}`
+      detectionAgent.subscribe((event: AgentEvent) => {
+        if (event.type === 'message_end') {
+          const msg = event.message as Message
+          if ('role' in msg && msg.role === 'assistant') {
+            const assistantMsg = msg as AssistantMessage
+            const cost = estimateCost(
+              model,
+              assistantMsg.usage.input,
+              assistantMsg.usage.output,
+              assistantMsg.usage.cacheRead,
+              assistantMsg.usage.cacheWrite,
+            )
+            const finalCost = assistantMsg.usage.cost.total > 0
+              ? assistantMsg.usage.cost.total
+              : cost
+
+            logTokenUsage(this.db, {
+              provider: assistantMsg.provider,
+              model: assistantMsg.model,
+              promptTokens: assistantMsg.usage.input,
+              completionTokens: assistantMsg.usage.output,
+              estimatedCost: finalCost,
+              sessionId,
+            })
+          }
+        }
+      })
+
+      await detectionAgent.prompt(prompt)
+
+      // Extract response
+      const messages = detectionAgent.state.messages
+      const lastMsg = [...messages].reverse().find(
+        (m) => 'role' in m && m.role === 'assistant'
+      ) as AssistantMessage | undefined
+
+      let responseText = ''
+      if (lastMsg && 'content' in lastMsg && Array.isArray(lastMsg.content)) {
+        responseText = lastMsg.content
+          .filter((c: { type: string }) => c.type === 'text')
+          .map((c: { type: string; text?: string }) => c.text ?? '')
+          .join('')
+      }
+
+      const result = parseSmartDetectionResponse(responseText)
+      if (result.loopDetected) {
+        this.handleLoopDetected(runningTask, result)
+      }
+    } catch (err) {
+      console.error(`[task-runner] Smart detection failed for task ${runningTask.taskId}:`, err)
+    }
+  }
+
+  /**
+   * Handle a detected loop — fail the task and notify
+   */
+  private handleLoopDetected(runningTask: RunningTask, result: LoopDetectionResult): void {
+    const { taskId } = runningTask
+    const reason = `Loop detected (${result.method}): ${result.details}`
+
+    // Abort the agent
+    runningTask.agent.abort()
+    this.cleanupRunningTask(taskId)
+
+    const now = new Date().toISOString().replace('T', ' ').slice(0, 19)
+    this.store.update(taskId, {
+      status: 'failed',
+      resultStatus: 'failed',
+      resultSummary: reason,
+      errorMessage: reason,
+      completedAt: now,
+      promptTokens: runningTask.promptTokens,
+      completionTokens: runningTask.completionTokens,
+      estimatedCost: runningTask.estimatedCost,
+      toolCallCount: runningTask.toolCallCount,
+    })
+
+    const task = this.store.getById(taskId)
+    if (task) {
+      const startedAt = task.startedAt ? new Date(task.startedAt).getTime() : Date.now()
+      const durationMinutes = Math.round((Date.now() - startedAt) / 60000)
+      const injection = `<task_injection task_id="${task.id}" task_name="${task.name}" status="failed" trigger="${task.triggerType}" duration_minutes="${durationMinutes}" tokens_used="${task.promptTokens + task.completionTokens}">
+${reason}
+Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
+</task_injection>`
+      this.options.onTaskComplete(taskId, injection)
+    }
+  }
+
+  /**
+   * Emit a periodic status update for a running task
+   */
+  private emitStatusUpdate(runningTask: RunningTask, task: Task): void {
+    if (!this.options.onStatusUpdate) return
+    if (!this.runningTasks.has(runningTask.taskId)) return
+
+    const runtimeMinutes = Math.round((Date.now() - runningTask.startedAtMs) / 60000)
+    const totalTokens = runningTask.promptTokens + runningTask.completionTokens
+
+    const statusMessage = formatPeriodicStatusUpdate(
+      task.id,
+      task.name,
+      runtimeMinutes,
+      runningTask.toolCallCount,
+      totalTokens,
+    )
+
+    this.options.onStatusUpdate(task.id, statusMessage)
   }
 
   /**
@@ -459,6 +664,9 @@ export class TaskRunner {
     if (runningTask.timeoutTimer) {
       clearTimeout(runningTask.timeoutTimer)
     }
+    if (runningTask.statusUpdateTimer) {
+      clearInterval(runningTask.statusUpdateTimer)
+    }
     this.runningTasks.delete(taskId)
   }
 
@@ -496,6 +704,7 @@ export class TaskRunner {
     const model = {} as Model<Api> // model info is in the agent already
 
     // Create a new RunningTask entry
+    const task = this.store.getById(taskId)!
     const runningTask: RunningTask = {
       taskId,
       agent,
@@ -507,6 +716,17 @@ export class TaskRunner {
       toolCallCount: pausedTask.toolCallCount,
       toolCallTimers: new Map(),
       toolCallArgs: new Map(),
+      toolCallTracker: new ToolCallTracker(),
+      statusUpdateTimer: null,
+      startedAtMs: task.startedAt ? new Date(task.startedAt).getTime() : Date.now(),
+    }
+
+    // Set up periodic status updates for resumed task
+    const statusIntervalMinutes = this.options.statusUpdateIntervalMinutes ?? 10
+    if (statusIntervalMinutes > 0 && this.options.onStatusUpdate) {
+      runningTask.statusUpdateTimer = setInterval(() => {
+        this.emitStatusUpdate(runningTask, task)
+      }, statusIntervalMinutes * 60 * 1000)
     }
 
     this.runningTasks.set(taskId, runningTask)
@@ -780,6 +1000,9 @@ export class TaskRunner {
       runningTask.agent.abort()
       if (runningTask.timeoutTimer) {
         clearTimeout(runningTask.timeoutTimer)
+      }
+      if (runningTask.statusUpdateTimer) {
+        clearInterval(runningTask.statusUpdateTimer)
       }
     }
     this.runningTasks.clear()
