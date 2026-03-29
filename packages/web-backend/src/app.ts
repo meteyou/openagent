@@ -18,7 +18,7 @@ import { createStatsRouter } from './routes/stats.js'
 import { createHealthRouter } from './routes/health.js'
 import { createTasksRouter } from './routes/tasks.js'
 import { createCronjobsRouter } from './routes/cronjobs.js'
-import type { TaskRunner, TaskScheduler } from '@openagent/core'
+import type { TaskRunner, TaskScheduler, TaskEventBus } from '@openagent/core'
 import { ensureAdminUser } from './auth.js'
 import type { HeartbeatService } from './heartbeat.js'
 import type { RuntimeMetrics } from './runtime-metrics.js'
@@ -36,6 +36,7 @@ export interface AppOptions {
   onTelegramSettingsChanged?: () => void
   getTaskRunner?: () => TaskRunner | null
   getTaskScheduler?: () => TaskScheduler | null
+  taskEventBus?: TaskEventBus | null
 }
 
 export function createApp(options?: AppOptions): express.Express {

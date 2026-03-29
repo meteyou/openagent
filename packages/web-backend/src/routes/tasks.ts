@@ -3,6 +3,7 @@ import type { Database } from '@openagent/core'
 import { TaskStore } from '@openagent/core'
 import type { TaskStatus, TaskTriggerType } from '@openagent/core'
 import type { TaskRunner } from '@openagent/core'
+import { getToolCalls } from '@openagent/core'
 import { jwtMiddleware } from '../auth.js'
 import type { AuthenticatedRequest } from '../auth.js'
 
@@ -92,6 +93,59 @@ export function createTasksRouter(options: TasksRouterOptions): Router {
       res.json({ task })
     } catch (err) {
       res.status(500).json({ error: `Failed to get task: ${(err as Error).message}` })
+    }
+  })
+
+  /**
+   * GET /api/tasks/:id/events
+   * Returns ordered list of tool calls and chat messages for a task's session_id
+   */
+  router.get('/:id/events', (req: AuthenticatedRequest, res) => {
+    try {
+      const id = String(req.params.id)
+      const task = store.getById(id)
+      if (!task) {
+        res.status(404).json({ error: 'Task not found' })
+        return
+      }
+
+      const sessionId = task.sessionId ?? `task-${task.id}`
+
+      // Get tool calls for this task's session
+      const toolCalls = getToolCalls(options.db, { sessionId })
+        // getToolCalls returns DESC order; reverse to chronological
+        .reverse()
+        .map(tc => ({
+          type: 'tool_call' as const,
+          timestamp: tc.timestamp,
+          toolName: tc.toolName,
+          input: tc.input,
+          output: tc.output,
+          durationMs: tc.durationMs,
+          status: tc.status ?? 'success',
+        }))
+
+      // Get chat messages for this task's session
+      const messages = (options.db.prepare(
+        'SELECT role, content, metadata, timestamp FROM chat_messages WHERE session_id = ? ORDER BY timestamp ASC'
+      ).all(sessionId) as { role: string; content: string; metadata: string | null; timestamp: string }[])
+        .filter(m => m.role === 'assistant' || m.role === 'system')
+        .map(m => ({
+          type: 'message' as const,
+          timestamp: m.timestamp,
+          role: m.role,
+          content: m.content,
+          metadata: m.metadata ? JSON.parse(m.metadata) : null,
+        }))
+
+      // Merge and sort chronologically
+      const events = [...toolCalls, ...messages].sort((a, b) =>
+        (a.timestamp ?? '').localeCompare(b.timestamp ?? '')
+      )
+
+      res.json({ events, task: { id: task.id, name: task.name, status: task.status } })
+    } catch (err) {
+      res.status(500).json({ error: `Failed to get task events: ${(err as Error).message}` })
     }
   })
 

@@ -6,6 +6,8 @@ import { ensureMemoryStructure } from '@openagent/core'
 import { AgentCore, getActiveProvider, getFallbackProvider, buildModel, getApiKeyForProvider, loadConfig, ProviderManager } from '@openagent/core'
 import { setupWebSocketChat } from './ws-chat.js'
 import { setupWebSocketLogs } from './ws-logs.js'
+import { setupWebSocketTask } from './ws-task.js'
+import { TaskEventBus } from '@openagent/core'
 import { HeartbeatService } from './heartbeat.js'
 import { RuntimeMetrics } from './runtime-metrics.js'
 import { MemoryConsolidationScheduler } from './memory-consolidation-scheduler.js'
@@ -111,6 +113,9 @@ consolidationScheduler.start()
 // Create the cross-channel chat event bus
 const chatEventBus = new ChatEventBus()
 
+// Create the task event bus for live task streaming
+const taskEventBus = new TaskEventBus()
+
 // Initialize Telegram bot (if configured and enabled)
 // Wire Telegram chat events into the cross-channel event bus
 const onTelegramChatEvent = (event: import('@openagent/telegram').TelegramChatEvent) => {
@@ -203,6 +208,9 @@ if (agentCore) {
 // Set up WebSocket chat (with cross-channel event bus)
 setupWebSocketChat(server, db, agentCore, runtimeMetrics, chatEventBus)
 
+// Set up WebSocket task viewer (live event streaming)
+setupWebSocketTask({ server, db, taskEventBus })
+
 // Set up WebSocket logs for real-time streaming
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const { wss: _logsWss, broadcast: broadcastLog } = setupWebSocketLogs(server)
@@ -214,6 +222,7 @@ server.listen(PORT, HOST, () => {
   console.log(`[openagent] Health check: http://${HOST}:${PORT}/health`)
   console.log(`[openagent] WebSocket chat: ws://${HOST}:${PORT}/ws/chat`)
   console.log(`[openagent] WebSocket logs: ws://${HOST}:${PORT}/ws/logs`)
+  console.log(`[openagent] WebSocket task viewer: ws://${HOST}:${PORT}/ws/task/:id`)
 })
 
 let shuttingDown = false
