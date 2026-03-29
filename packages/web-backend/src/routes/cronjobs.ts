@@ -100,12 +100,15 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
         return
       }
 
-      const { name, prompt, schedule, provider, enabled } = req.body as {
+      const { name, prompt, schedule, provider, enabled, toolsOverride, skillsOverride, systemPromptOverride } = req.body as {
         name?: string
         prompt?: string
         schedule?: string
         provider?: string
         enabled?: boolean
+        toolsOverride?: string | null
+        skillsOverride?: string | null
+        systemPromptOverride?: string | null
       }
 
       // Validate cron expression if provided
@@ -117,12 +120,47 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
         }
       }
 
+      // Validate override JSON formats
+      if (toolsOverride !== undefined && toolsOverride !== null) {
+        try {
+          const parsed = JSON.parse(toolsOverride)
+          if (!Array.isArray(parsed) || !parsed.every((v: unknown) => typeof v === 'string')) {
+            res.status(400).json({ error: 'toolsOverride must be a JSON array of strings' })
+            return
+          }
+        } catch {
+          res.status(400).json({ error: 'toolsOverride must be valid JSON' })
+          return
+        }
+      }
+
+      if (skillsOverride !== undefined && skillsOverride !== null) {
+        try {
+          const parsed = JSON.parse(skillsOverride)
+          if (!Array.isArray(parsed) || !parsed.every((v: unknown) => typeof v === 'string')) {
+            res.status(400).json({ error: 'skillsOverride must be a JSON array of strings' })
+            return
+          }
+        } catch {
+          res.status(400).json({ error: 'skillsOverride must be valid JSON' })
+          return
+        }
+      }
+
+      if (systemPromptOverride !== undefined && systemPromptOverride !== null && typeof systemPromptOverride !== 'string') {
+        res.status(400).json({ error: 'systemPromptOverride must be a string' })
+        return
+      }
+
       const updated = store.update(id, {
         name,
         prompt,
         schedule,
         provider,
         enabled,
+        toolsOverride: toolsOverride !== undefined ? toolsOverride : undefined,
+        skillsOverride: skillsOverride !== undefined ? skillsOverride : undefined,
+        systemPromptOverride: systemPromptOverride !== undefined ? systemPromptOverride : undefined,
       })
 
       if (!updated) {
