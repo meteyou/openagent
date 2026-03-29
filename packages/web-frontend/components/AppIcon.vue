@@ -51,6 +51,8 @@ import {
   Users,
   Wrench,
   X,
+  ListTodo,
+  OctagonX,
 } from 'lucide-vue-next'
 
 const iconMap = {
@@ -96,6 +98,8 @@ const iconMap = {
   wrench: Wrench,
   trash: Trash2,
   upload: Upload,
+  tasks: ListTodo,
+  kill: OctagonX,
 } as const
 
 const props = withDefaults(defineProps<{
