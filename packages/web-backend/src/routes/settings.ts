@@ -53,6 +53,7 @@ export interface SettingsRouterOptions {
   agentCore?: AgentCore | null
   onHeartbeatSettingsChanged?: () => void
   onConsolidationSettingsChanged?: () => void
+  onTelegramSettingsChanged?: () => void
 }
 
 export function createSettingsRouter(options: SettingsRouterOptions = {}): Router {
@@ -141,6 +142,8 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
       const telegram = JSON.parse(fs.readFileSync(telegramPath, 'utf-8')) as TelegramData
       const previousHeartbeatInterval = settings.heartbeatIntervalMinutes ?? 5
       const previousBatchingDelayMs = settings.batchingDelayMs ?? telegram.batchingDelayMs ?? 2500
+      const previousTelegramEnabled = telegram.enabled
+      const previousTelegramBotToken = telegram.botToken
 
       if (body.sessionTimeoutMinutes !== undefined) {
         if (typeof body.sessionTimeoutMinutes !== 'number' || !Number.isFinite(body.sessionTimeoutMinutes) || body.sessionTimeoutMinutes < 1) {
@@ -299,6 +302,10 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
 
       if (consolidationChanged) {
         options.onConsolidationSettingsChanged?.()
+      }
+
+      if (telegram.enabled !== previousTelegramEnabled || telegram.botToken !== previousTelegramBotToken) {
+        options.onTelegramSettingsChanged?.()
       }
 
       const consolidationOut = (settingsRaw.memoryConsolidation ?? {}) as Record<string, unknown>

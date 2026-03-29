@@ -113,23 +113,25 @@ const chatEventBus = new ChatEventBus()
 
 // Initialize Telegram bot (if configured and enabled)
 // Wire Telegram chat events into the cross-channel event bus
-const telegramBot = agentCore
-  ? createTelegramBot(agentCore, db, (event) => {
-      if (event.userId == null) return // unlinked telegram users can't sync
-      chatEventBus.broadcast({
-        type: event.type,
-        userId: event.userId,
-        source: 'telegram',
-        sessionId: event.sessionId,
-        text: event.text,
-        toolName: event.toolName,
-        toolCallId: event.toolCallId,
-        toolArgs: event.toolArgs,
-        toolResult: event.toolResult,
-        toolIsError: event.toolIsError,
-        senderName: event.senderName,
-      })
-    })
+const onTelegramChatEvent = (event: import('@openagent/telegram').TelegramChatEvent) => {
+  if (event.userId == null) return // unlinked telegram users can't sync
+  chatEventBus.broadcast({
+    type: event.type,
+    userId: event.userId,
+    source: 'telegram',
+    sessionId: event.sessionId,
+    text: event.text,
+    toolName: event.toolName,
+    toolCallId: event.toolCallId,
+    toolArgs: event.toolArgs,
+    toolResult: event.toolResult,
+    toolIsError: event.toolIsError,
+    senderName: event.senderName,
+  })
+}
+
+let telegramBot = agentCore
+  ? createTelegramBot(agentCore, db, onTelegramChatEvent)
   : null
 if (telegramBot) {
   telegramBot.start().catch((err) => {
@@ -137,8 +139,53 @@ if (telegramBot) {
   })
 }
 
+/**
+ * (Re-)create and start the Telegram bot after settings change.
+ * Stops the previous instance if running.
+ */
+async function restartTelegramBot(): Promise<void> {
+  if (!agentCore) {
+    console.warn('[openagent] Cannot start Telegram bot: no agent core initialized')
+    return
+  }
+
+  // Stop previous instance
+  if (telegramBot) {
+    try {
+      await telegramBot.stop()
+    } catch { /* ignore */ }
+    telegramBot = null
+  }
+
+  // Try to create a new bot with the (potentially updated) config
+  telegramBot = createTelegramBot(agentCore, db, onTelegramChatEvent)
+  if (telegramBot) {
+    try {
+      await telegramBot.start()
+      console.log('[openagent] Telegram bot (re)started after settings change')
+    } catch (err) {
+      console.error('[openagent] Failed to start Telegram bot after settings change:', err)
+      telegramBot = null
+    }
+  } else {
+    console.log('[openagent] Telegram bot disabled or not configured after settings change')
+  }
+}
+
 // Start server
-const app = createApp({ db, agentCore, heartbeatService, runtimeMetrics, consolidationScheduler, telegramBot })
+const app = createApp({
+  db,
+  agentCore,
+  heartbeatService,
+  runtimeMetrics,
+  consolidationScheduler,
+  getTelegramBot: () => telegramBot,
+  onTelegramSettingsChanged: () => {
+    restartTelegramBot().catch((err) => {
+      console.error('[openagent] Error restarting Telegram bot:', err)
+    })
+  },
+})
 const server = http.createServer(app)
 
 // Wire session timeout events into the chat event bus
