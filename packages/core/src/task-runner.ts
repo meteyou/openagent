@@ -18,6 +18,15 @@ import {
 import type { LoopDetectionConfig, LoopDetectionResult } from './loop-detection.js'
 import type { TaskEventBus } from './task-event-bus.js'
 
+export interface TaskOverrides {
+  /** JSON array of tool names to exclude (null = all enabled) */
+  toolsOverride?: string | null
+  /** JSON array of skill names to exclude (null = all enabled) */
+  skillsOverride?: string | null
+  /** Custom system prompt — replaces default entirely when set */
+  systemPromptOverride?: string | null
+}
+
 export interface TaskRunnerOptions {
   db: Database
   /** Function to build a Model from a provider config */
@@ -168,6 +177,7 @@ export class TaskRunner {
   async startTask(
     task: Task,
     provider: ProviderConfig,
+    overrides?: TaskOverrides,
   ): Promise<string> {
     const taskId = task.id
     const sessionId = task.sessionId ?? `task-${taskId}`
@@ -176,15 +186,30 @@ export class TaskRunner {
     const model = this.options.buildModel(provider)
     const apiKey = await this.options.getApiKey(provider)
 
-    // Build task-specific system prompt
-    const systemPrompt = buildTaskSystemPrompt(task.prompt, this.options.memoryDir)
+    // Determine effective system prompt
+    const systemPrompt = overrides?.systemPromptOverride
+      ? overrides.systemPromptOverride
+      : buildTaskSystemPrompt(task.prompt, this.options.memoryDir)
+
+    // Determine effective tools (filter out disabled tools)
+    let effectiveTools = this.options.tools
+    if (overrides?.toolsOverride) {
+      try {
+        const disabledTools: string[] = JSON.parse(overrides.toolsOverride)
+        if (Array.isArray(disabledTools) && disabledTools.length > 0) {
+          effectiveTools = effectiveTools.filter(t => !disabledTools.includes(t.name))
+        }
+      } catch {
+        // Invalid JSON — use all tools
+      }
+    }
 
     // Create isolated PiAgent
     const agent = new PiAgent({
       initialState: {
         systemPrompt,
         model,
-        tools: this.options.tools,
+        tools: effectiveTools,
       },
       getApiKey: () => apiKey,
     })

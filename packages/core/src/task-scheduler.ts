@@ -3,6 +3,7 @@ import { ScheduledTaskStore } from './scheduled-task-store.js'
 import type { ScheduledTask } from './scheduled-task-store.js'
 import type { TaskStore } from './task-store.js'
 import type { TaskRunner } from './task-runner.js'
+import type { TaskOverrides } from './task-runner.js'
 import type { ProviderConfig } from './provider-config.js'
 import { parseCronExpression, getNextRunTime } from './cron-parser.js'
 
@@ -229,9 +230,16 @@ export class TaskScheduler {
       lastRunStatus: 'running',
     })
 
+    // Build overrides from scheduled task
+    const overrides: TaskOverrides = {
+      toolsOverride: scheduledTask.toolsOverride,
+      skillsOverride: scheduledTask.skillsOverride,
+      systemPromptOverride: scheduledTask.systemPromptOverride,
+    }
+
     // Start the task
     try {
-      await this.taskRunner.startTask(task, provider)
+      await this.taskRunner.startTask(task, provider, overrides)
 
       // Subscribe to task completion to update last_run_status
       this.watchTaskCompletion(scheduledTask.id, task.id)
