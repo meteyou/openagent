@@ -21,6 +21,8 @@ export interface TaskRunnerOptions {
   memoryDir?: string
   /** Callback when a task completes/fails — delivers the injection message */
   onTaskComplete: (taskId: string, injection: string) => void
+  /** Callback when a task pauses with a question — delivers the injection message */
+  onTaskPaused?: (taskId: string, injection: string) => void
 }
 
 interface RunningTask {
@@ -35,6 +37,22 @@ interface RunningTask {
   toolCallTimers: Map<string, number>
   toolCallArgs: Map<string, unknown>
 }
+
+interface PausedTask {
+  taskId: string
+  agent: PiAgent
+  provider: ProviderConfig
+  pausedAt: number
+  promptTokens: number
+  completionTokens: number
+  estimatedCost: number
+  toolCallCount: number
+}
+
+/** Interval for cleaning up stale paused tasks (1 hour) */
+const CLEANUP_INTERVAL_MS = 60 * 60 * 1000
+/** Max time a task can remain paused before being cleaned up (24 hours) */
+const MAX_PAUSE_DURATION_MS = 24 * 60 * 60 * 1000
 
 /**
  * Build the system prompt for a task agent
@@ -99,12 +117,17 @@ export class TaskRunner {
   private store: TaskStore
   private db: Database
   private runningTasks: Map<string, RunningTask> = new Map()
+  private pausedTasks: Map<string, PausedTask> = new Map()
   private options: TaskRunnerOptions
+  private cleanupTimer: ReturnType<typeof setInterval> | null = null
 
   constructor(options: TaskRunnerOptions) {
     this.options = options
     this.db = options.db
     this.store = new TaskStore(options.db)
+
+    // Start periodic cleanup of stale paused tasks
+    this.cleanupTimer = setInterval(() => this.cleanupStalePausedTasks(), CLEANUP_INTERVAL_MS)
   }
 
   /**
@@ -218,6 +241,48 @@ export class TaskRunner {
 
       const { status, summary } = parseTaskOutput(resultText)
       const now = new Date().toISOString().replace('T', ' ').slice(0, 19)
+
+      // Handle "question" status — pause the task instead of completing
+      if (status === 'question') {
+        // Clear the timeout but keep the agent in memory
+        if (runningTask.timeoutTimer) {
+          clearTimeout(runningTask.timeoutTimer)
+          runningTask.timeoutTimer = null
+        }
+        this.runningTasks.delete(taskId)
+
+        // Store as paused task
+        const pausedTask: PausedTask = {
+          taskId,
+          agent: runningTask.agent,
+          provider: {} as ProviderConfig, // provider info already saved in DB
+          pausedAt: Date.now(),
+          promptTokens: runningTask.promptTokens,
+          completionTokens: runningTask.completionTokens,
+          estimatedCost: runningTask.estimatedCost,
+          toolCallCount: runningTask.toolCallCount,
+        }
+        this.pausedTasks.set(taskId, pausedTask)
+
+        this.store.update(taskId, {
+          status: 'paused',
+          resultStatus: 'question',
+          resultSummary: summary,
+          promptTokens: runningTask.promptTokens,
+          completionTokens: runningTask.completionTokens,
+          estimatedCost: runningTask.estimatedCost,
+          toolCallCount: runningTask.toolCallCount,
+        })
+
+        // Notify via injection with question status
+        const task = this.store.getById(taskId)!
+        const startedAt = task.startedAt ? new Date(task.startedAt).getTime() : Date.now()
+        const durationMinutes = Math.round((Date.now() - startedAt) / 60000)
+        const injection = formatTaskInjection(task, durationMinutes)
+        this.options.onTaskPaused?.(taskId, injection)
+        unsubscribe()
+        return
+      }
 
       const updatedTask = this.store.update(taskId, {
         status: status === 'failed' ? 'failed' : 'completed',
@@ -398,9 +463,319 @@ export class TaskRunner {
   }
 
   /**
-   * Dispose all running tasks
+   * Check if a task is currently paused
+   */
+  isPaused(taskId: string): boolean {
+    return this.pausedTasks.has(taskId)
+  }
+
+  /**
+   * Get all paused task IDs
+   */
+  getPausedTaskIds(): string[] {
+    return Array.from(this.pausedTasks.keys())
+  }
+
+  /**
+   * Resume a paused task by sending a follow-up message
+   */
+  async resumeTask(taskId: string, message: string): Promise<boolean> {
+    const pausedTask = this.pausedTasks.get(taskId)
+    if (!pausedTask) return false
+
+    // Remove from paused map
+    this.pausedTasks.delete(taskId)
+
+    // Update status back to running
+    this.store.update(taskId, {
+      status: 'running',
+    })
+
+    const { agent } = pausedTask
+    const sessionId = this.store.getById(taskId)?.sessionId ?? `task-${taskId}`
+    const model = {} as Model<Api> // model info is in the agent already
+
+    // Create a new RunningTask entry
+    const runningTask: RunningTask = {
+      taskId,
+      agent,
+      abortController: new AbortController(),
+      timeoutTimer: null,
+      promptTokens: pausedTask.promptTokens,
+      completionTokens: pausedTask.completionTokens,
+      estimatedCost: pausedTask.estimatedCost,
+      toolCallCount: pausedTask.toolCallCount,
+      toolCallTimers: new Map(),
+      toolCallArgs: new Map(),
+    }
+
+    this.runningTasks.set(taskId, runningTask)
+
+    // Subscribe to events for the resumed task
+    const unsubscribe = agent.subscribe((event: AgentEvent) => {
+      this.handleTaskEvent(runningTask, event, sessionId, model)
+    })
+
+    // Send the follow-up message to the agent, which resumes execution
+    this.runResumedTaskAsync(runningTask, unsubscribe, sessionId, message)
+
+    return true
+  }
+
+  /**
+   * Run a resumed task asynchronously (after receiving a follow-up)
+   */
+  private async runResumedTaskAsync(
+    runningTask: RunningTask,
+    unsubscribe: () => void,
+    sessionId: string,
+    message: string,
+  ): Promise<void> {
+    const { taskId, agent } = runningTask
+
+    try {
+      // Send the follow-up via prompt (which adds a user message and continues the agentic loop)
+      await agent.prompt(message)
+
+      // Task completed after resume
+      unsubscribe()
+      this.cleanupRunningTask(taskId)
+
+      const messages = agent.state.messages
+      const lastAssistantMsg = [...messages].reverse().find(
+        (m) => 'role' in m && m.role === 'assistant'
+      ) as AssistantMessage | undefined
+
+      let resultText = ''
+      if (lastAssistantMsg && 'content' in lastAssistantMsg && Array.isArray(lastAssistantMsg.content)) {
+        resultText = lastAssistantMsg.content
+          .filter((c: { type: string }) => c.type === 'text')
+          .map((c: { type: string; text?: string }) => c.text ?? '')
+          .join('')
+      }
+
+      const { status, summary } = parseTaskOutput(resultText)
+      const now = new Date().toISOString().replace('T', ' ').slice(0, 19)
+
+      // Handle nested question (task pauses again)
+      if (status === 'question') {
+        if (runningTask.timeoutTimer) {
+          clearTimeout(runningTask.timeoutTimer)
+          runningTask.timeoutTimer = null
+        }
+        this.runningTasks.delete(taskId)
+
+        const pausedTask: PausedTask = {
+          taskId,
+          agent: runningTask.agent,
+          provider: {} as ProviderConfig,
+          pausedAt: Date.now(),
+          promptTokens: runningTask.promptTokens,
+          completionTokens: runningTask.completionTokens,
+          estimatedCost: runningTask.estimatedCost,
+          toolCallCount: runningTask.toolCallCount,
+        }
+        this.pausedTasks.set(taskId, pausedTask)
+
+        this.store.update(taskId, {
+          status: 'paused',
+          resultStatus: 'question',
+          resultSummary: summary,
+          promptTokens: runningTask.promptTokens,
+          completionTokens: runningTask.completionTokens,
+          estimatedCost: runningTask.estimatedCost,
+          toolCallCount: runningTask.toolCallCount,
+        })
+
+        const task = this.store.getById(taskId)!
+        const startedAt = task.startedAt ? new Date(task.startedAt).getTime() : Date.now()
+        const durationMinutes = Math.round((Date.now() - startedAt) / 60000)
+        const injection = formatTaskInjection(task, durationMinutes)
+        this.options.onTaskPaused?.(taskId, injection)
+        return
+      }
+
+      this.store.update(taskId, {
+        status: status === 'failed' ? 'failed' : 'completed',
+        resultStatus: status,
+        resultSummary: summary,
+        completedAt: now,
+        promptTokens: runningTask.promptTokens,
+        completionTokens: runningTask.completionTokens,
+        estimatedCost: runningTask.estimatedCost,
+        toolCallCount: runningTask.toolCallCount,
+      })
+
+      const task = this.store.getById(taskId)!
+      const startedAt = task.startedAt ? new Date(task.startedAt).getTime() : Date.now()
+      const durationMinutes = Math.round((Date.now() - startedAt) / 60000)
+      const injection = formatTaskInjection(task, durationMinutes)
+      this.options.onTaskComplete(taskId, injection)
+    } catch (err) {
+      unsubscribe()
+      this.cleanupRunningTask(taskId)
+
+      const errorMessage = err instanceof Error ? err.message : String(err)
+      const now = new Date().toISOString().replace('T', ' ').slice(0, 19)
+
+      this.store.update(taskId, {
+        status: 'failed',
+        resultStatus: 'failed',
+        resultSummary: `Task failed with error: ${errorMessage}`,
+        errorMessage,
+        completedAt: now,
+        promptTokens: runningTask.promptTokens,
+        completionTokens: runningTask.completionTokens,
+        estimatedCost: runningTask.estimatedCost,
+        toolCallCount: runningTask.toolCallCount,
+      })
+
+      const task = this.store.getById(taskId)!
+      const startedAt = task.startedAt ? new Date(task.startedAt).getTime() : Date.now()
+      const durationMinutes = Math.round((Date.now() - startedAt) / 60000)
+      const injection = formatTaskInjection(task, durationMinutes)
+      this.options.onTaskComplete(taskId, injection)
+    }
+  }
+
+  /**
+   * Clean up paused tasks that have been waiting for >24 hours
+   */
+  cleanupStalePausedTasks(): number {
+    let cleanedCount = 0
+    const now = Date.now()
+
+    for (const [taskId, pausedTask] of this.pausedTasks) {
+      if (now - pausedTask.pausedAt >= MAX_PAUSE_DURATION_MS) {
+        // Free the agent from memory
+        pausedTask.agent.abort()
+        this.pausedTasks.delete(taskId)
+
+        // Mark as failed in DB
+        const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 19)
+        this.store.update(taskId, {
+          status: 'failed',
+          resultStatus: 'failed',
+          resultSummary: 'timeout — no response received',
+          errorMessage: 'timeout — no response received',
+          completedAt: nowStr,
+          promptTokens: pausedTask.promptTokens,
+          completionTokens: pausedTask.completionTokens,
+          estimatedCost: pausedTask.estimatedCost,
+          toolCallCount: pausedTask.toolCallCount,
+        })
+
+        // Notify via injection
+        const task = this.store.getById(taskId)
+        if (task) {
+          const startedAt = task.startedAt ? new Date(task.startedAt).getTime() : Date.now()
+          const durationMinutes = Math.round((Date.now() - startedAt) / 60000)
+          const injection = formatTaskInjection(task, durationMinutes)
+          this.options.onTaskComplete(taskId, injection)
+        }
+
+        cleanedCount++
+      }
+    }
+
+    return cleanedCount
+  }
+
+  /**
+   * Recover tasks after server restart.
+   * - `running` tasks: re-start with original prompt + progress summary
+   * - `paused` tasks: mark as failed with "server restart" reason
+   */
+  async recoverTasks(
+    getProvider: (name: string) => ProviderConfig | null,
+    defaultProvider: ProviderConfig,
+  ): Promise<{ resumed: number; failed: number }> {
+    let resumed = 0
+    let failed = 0
+
+    // Handle paused tasks — mark as failed
+    const pausedTasks = this.store.list({ status: 'paused' })
+    for (const task of pausedTasks) {
+      const now = new Date().toISOString().replace('T', ' ').slice(0, 19)
+      this.store.update(task.id, {
+        status: 'failed',
+        resultStatus: 'failed',
+        resultSummary: 'server restart — please re-ask your question',
+        errorMessage: 'server restart',
+        completedAt: now,
+      })
+      failed++
+    }
+
+    // Handle running tasks — build summary from stored tool_calls and re-start
+    const runningTasks = this.store.list({ status: 'running' })
+    for (const task of runningTasks) {
+      const provider = (task.provider ? getProvider(task.provider) : null) ?? defaultProvider
+
+      // Build a progress summary from stored tool calls
+      const toolCalls = this.db.prepare(
+        'SELECT tool_name, output FROM tool_calls WHERE session_id = ? ORDER BY timestamp ASC'
+      ).all(task.sessionId ?? `task-${task.id}`) as { tool_name: string; output: string }[]
+
+      let progressSummary = ''
+      if (toolCalls.length > 0) {
+        const toolSummaries = toolCalls.slice(-10).map(tc => {
+          const outputPreview = tc.output?.slice(0, 200) ?? ''
+          return `- ${tc.tool_name}: ${outputPreview}`
+        })
+        progressSummary = `\n\nProgress from previous run (${toolCalls.length} tool calls made):\n${toolSummaries.join('\n')}`
+      }
+
+      // Create a new task entry for the resumed run
+      const resumedTask = this.store.create({
+        name: `${task.name} (resumed)`,
+        prompt: `${task.prompt}${progressSummary}\n\nNote: This task was interrupted by a server restart. Continue from where you left off.`,
+        triggerType: task.triggerType,
+        triggerSourceId: task.triggerSourceId ?? undefined,
+        maxDurationMinutes: task.maxDurationMinutes ?? undefined,
+        sessionId: task.sessionId ?? undefined,
+      })
+
+      // Mark the old task as failed
+      const now = new Date().toISOString().replace('T', ' ').slice(0, 19)
+      this.store.update(task.id, {
+        status: 'failed',
+        resultStatus: 'failed',
+        resultSummary: 'server restart — task being resumed',
+        errorMessage: 'server restart',
+        completedAt: now,
+      })
+
+      try {
+        await this.startTask(resumedTask, provider)
+        resumed++
+      } catch {
+        // If we can't start the resumed task, mark it as failed too
+        this.store.update(resumedTask.id, {
+          status: 'failed',
+          resultStatus: 'failed',
+          resultSummary: 'Failed to resume after server restart',
+          errorMessage: 'Failed to resume after server restart',
+          completedAt: now,
+        })
+        failed++
+      }
+    }
+
+    return { resumed, failed }
+  }
+
+  /**
+   * Dispose all running and paused tasks, stop cleanup timer
    */
   dispose(): void {
+    // Stop cleanup timer
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer)
+      this.cleanupTimer = null
+    }
+
+    // Abort running tasks
     for (const [taskId, runningTask] of this.runningTasks) {
       runningTask.agent.abort()
       if (runningTask.timeoutTimer) {
@@ -408,5 +783,11 @@ export class TaskRunner {
       }
     }
     this.runningTasks.clear()
+
+    // Free paused tasks
+    for (const [taskId, pausedTask] of this.pausedTasks) {
+      pausedTask.agent.abort()
+    }
+    this.pausedTasks.clear()
   }
 }
