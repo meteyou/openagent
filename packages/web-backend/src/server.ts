@@ -36,6 +36,7 @@ import { HeartbeatService } from './heartbeat.js'
 import { RuntimeMetrics } from './runtime-metrics.js'
 import { MemoryConsolidationScheduler } from './memory-consolidation-scheduler.js'
 import { createTelegramBot } from '@openagent/telegram'
+import type { TelegramBot } from '@openagent/telegram'
 import { ChatEventBus } from './chat-event-bus.js'
 
 const PORT = parseInt(process.env.PORT ?? '3000', 10)
@@ -188,81 +189,199 @@ function handleTaskNotification(taskId: string, injection: string, taskStore: Ta
   })
 }
 
-// Initialize Agent Core with the active provider
+// Initialize task infrastructure (provider-independent)
+const taskStore = new TaskStore(db)
+const taskRunner = new TaskRunner({
+  db,
+  buildModel,
+  getApiKey: getApiKeyForProvider,
+  tools: [...createYoloTools(), ...createBuiltinWebTools(builtinToolsConfig)],
+  onTaskComplete: (taskId: string, injection: string) => {
+    handleTaskNotification(taskId, injection, taskStore)
+  },
+  onTaskPaused: (taskId: string, injection: string) => {
+    handleTaskNotification(taskId, injection, taskStore)
+  },
+  loopDetection: taskSettings.loopDetection.enabled
+    ? {
+        enabled: true,
+        method: taskSettings.loopDetection.method as LoopDetectionConfig['method'],
+        maxConsecutiveFailures: taskSettings.loopDetection.maxConsecutiveFailures,
+        smartProvider: taskSettings.loopDetection.smartProvider || undefined,
+        smartCheckInterval: taskSettings.loopDetection.smartCheckInterval,
+      }
+    : undefined,
+  statusUpdateIntervalMinutes: taskSettings.statusUpdateIntervalMinutes,
+  getProviderById: (id: string) => resolveProvider(id),
+  taskEventBus,
+})
+
+const taskScheduler = new TaskScheduler({
+  db,
+  taskStore,
+  taskRunner,
+  getDefaultProvider: getTaskDefaultProvider,
+  resolveProvider,
+})
+
+// Build agent tools for tasks and cronjobs
+const taskToolsOptions = {
+  taskStore,
+  taskRunner,
+  getDefaultProvider: getTaskDefaultProvider,
+  resolveProvider,
+  defaultMaxDurationMinutes: taskSettings.maxDurationMinutes,
+  maxDurationMinutesCap: taskSettings.maxDurationMinutes * 2,
+}
+
+const scheduledTaskStore = new ScheduledTaskStore(db)
+const cronjobToolsOptions = {
+  scheduledTaskStore,
+  taskScheduler,
+}
+
+const agentTools = [
+  createTaskTool(taskToolsOptions),
+  createResumeTaskTool(taskToolsOptions),
+  listTasksTool({ taskStore }),
+  createCronjobTool(cronjobToolsOptions),
+  editCronjobTool(cronjobToolsOptions),
+  removeCronjobTool(cronjobToolsOptions),
+  listCronjobsTool(cronjobToolsOptions),
+]
+
+// Start the task scheduler to pick up existing cronjobs
+taskScheduler.start()
+
+// Provider-dependent state (initialized lazily when a provider is configured)
 let agentCore: AgentCore | null = null
 let providerManager: ProviderManager | null = null
-let taskRunner: TaskRunner | null = null
-let taskScheduler: TaskScheduler | null = null
-const provider = getActiveProvider()
-if (provider) {
+let telegramBot: TelegramBot | null = null
+
+// Initialize services early (updated via setters when agentCore/providerManager become available)
+const heartbeatService = new HeartbeatService({ db, providerManager: null })
+heartbeatService.start()
+
+const consolidationScheduler = new MemoryConsolidationScheduler({ db, agentCore: null })
+consolidationScheduler.start()
+
+// Wire Telegram chat events into the cross-channel event bus
+const onTelegramChatEvent = (event: import('@openagent/telegram').TelegramChatEvent) => {
+  if (event.userId == null) return // unlinked telegram users can't sync
+  chatEventBus.broadcast({
+    type: event.type,
+    userId: event.userId,
+    source: 'telegram',
+    sessionId: event.sessionId,
+    text: event.text,
+    toolName: event.toolName,
+    toolCallId: event.toolCallId,
+    toolArgs: event.toolArgs,
+    toolResult: event.toolResult,
+    toolIsError: event.toolIsError,
+    senderName: event.senderName,
+  })
+}
+
+/**
+ * Wire session/task-injection events on agentCore.
+ * Called each time agentCore is (re)created.
+ */
+function wireAgentCoreEvents(): void {
+  if (!agentCore) return
+
+  agentCore.setOnSessionEnd((userId: string, summary: string | null) => {
+    chatEventBus.broadcast({
+      type: 'session_end',
+      userId: parseInt(userId, 10),
+      source: 'web',
+      text: summary ?? undefined,
+    })
+  })
+
+  let taskInjectionResponseBuffer = ''
+  agentCore.setOnTaskInjectionChunk((chunk) => {
+    if (chunk.type === 'text' && chunk.text) {
+      taskInjectionResponseBuffer += chunk.text
+    }
+
+    if (chunk.type === 'done' && taskInjectionResponseBuffer) {
+      const responseText = taskInjectionResponseBuffer
+      taskInjectionResponseBuffer = ''
+      try {
+        db.prepare(
+          'INSERT INTO chat_messages (session_id, user_id, role, content, metadata) VALUES (?, ?, ?, ?, ?)'
+        ).run(`task-injection-${Date.now()}`, 1, 'assistant', responseText, JSON.stringify({ type: 'task_injection_response' }))
+      } catch (err) {
+        console.error('[openagent] Failed to persist task injection response:', err)
+      }
+    }
+
+    chatEventBus.broadcast({
+      type: chunk.type === 'done' ? 'done' : chunk.type,
+      userId: 1,
+      source: 'task',
+      text: chunk.text,
+      toolName: chunk.toolName,
+      toolCallId: chunk.toolCallId,
+      toolArgs: chunk.toolArgs,
+      toolResult: chunk.toolResult,
+      toolIsError: chunk.toolIsError,
+      error: chunk.error,
+    })
+  })
+}
+
+/**
+ * (Re-)create and start the Telegram bot.
+ * Stops the previous instance if running.
+ */
+async function restartTelegramBot(): Promise<void> {
+  if (!agentCore) {
+    console.warn('[openagent] Cannot start Telegram bot: no agent core initialized')
+    return
+  }
+
+  // Stop previous instance
+  if (telegramBot) {
+    try {
+      await telegramBot.stop()
+    } catch { /* ignore */ }
+    telegramBot = null
+  }
+
+  // Try to create a new bot with the (potentially updated) config
+  telegramBot = createTelegramBot(agentCore, db, onTelegramChatEvent)
+  if (telegramBot) {
+    try {
+      await telegramBot.start()
+      console.log('[openagent] Telegram bot (re)started')
+    } catch (err) {
+      console.error('[openagent] Failed to start Telegram bot:', err)
+      telegramBot = null
+    }
+  } else {
+    console.log('[openagent] Telegram bot disabled or not configured')
+  }
+}
+
+/**
+ * Initialize or update the agent core when the active provider changes.
+ * Creates providerManager + agentCore, wires events, updates dependent services.
+ */
+async function initOrUpdateAgentCore(): Promise<void> {
+  const provider = getActiveProvider()
+  if (!provider) {
+    console.warn('[openagent] No provider configured \u2014 chat will be unavailable. Configure a provider in Settings.')
+    return
+  }
+
   try {
     const model = buildModel(provider)
     const apiKey = await getApiKeyForProvider(provider)
-
-    // Create ProviderManager with primary and optional fallback
     const fallbackProvider = getFallbackProvider()
+
     providerManager = new ProviderManager(provider, fallbackProvider)
-
-    // Initialize TaskStore, TaskRunner, and TaskScheduler
-    const taskStore = new TaskStore(db)
-    taskRunner = new TaskRunner({
-      db,
-      buildModel,
-      getApiKey: getApiKeyForProvider,
-      tools: [...createYoloTools(), ...createBuiltinWebTools(builtinToolsConfig)],
-      onTaskComplete: (taskId: string, injection: string) => {
-        handleTaskNotification(taskId, injection, taskStore)
-      },
-      onTaskPaused: (taskId: string, injection: string) => {
-        handleTaskNotification(taskId, injection, taskStore)
-      },
-      loopDetection: taskSettings.loopDetection.enabled
-        ? {
-            enabled: true,
-            method: taskSettings.loopDetection.method as LoopDetectionConfig['method'],
-            maxConsecutiveFailures: taskSettings.loopDetection.maxConsecutiveFailures,
-            smartProvider: taskSettings.loopDetection.smartProvider || undefined,
-            smartCheckInterval: taskSettings.loopDetection.smartCheckInterval,
-          }
-        : undefined,
-      statusUpdateIntervalMinutes: taskSettings.statusUpdateIntervalMinutes,
-      getProviderById: (id: string) => resolveProvider(id),
-      taskEventBus,
-    })
-
-    taskScheduler = new TaskScheduler({
-      db,
-      taskStore,
-      taskRunner,
-      getDefaultProvider: getTaskDefaultProvider,
-      resolveProvider,
-    })
-
-    // Build agent tools for tasks and cronjobs
-    const taskToolsOptions = {
-      taskStore,
-      taskRunner,
-      getDefaultProvider: getTaskDefaultProvider,
-      resolveProvider,
-      defaultMaxDurationMinutes: taskSettings.maxDurationMinutes,
-      maxDurationMinutesCap: taskSettings.maxDurationMinutes * 2,
-    }
-
-    const scheduledTaskStore = new ScheduledTaskStore(db)
-    const cronjobToolsOptions = {
-      scheduledTaskStore,
-      taskScheduler,
-    }
-
-    const agentTools = [
-      createTaskTool(taskToolsOptions),
-      createResumeTaskTool(taskToolsOptions),
-      listTasksTool({ taskStore }),
-      createCronjobTool(cronjobToolsOptions),
-      editCronjobTool(cronjobToolsOptions),
-      removeCronjobTool(cronjobToolsOptions),
-      listCronjobsTool(cronjobToolsOptions),
-    ]
 
     agentCore = new AgentCore({
       model,
@@ -274,9 +393,6 @@ if (provider) {
       providerManager,
       sessionTimeoutMinutes,
     })
-
-    // Start the task scheduler to pick up existing cronjobs
-    taskScheduler.start()
 
     // Wire ProviderManager events to AgentCore.swapProvider()
     providerManager.on('mode:fallback', async () => {
@@ -305,6 +421,16 @@ if (provider) {
       }
     })
 
+    // Update dependent services with new references
+    heartbeatService.setProviderManager(providerManager)
+    consolidationScheduler.setAgentCore(agentCore)
+
+    // Wire agent core events (session end, task injection)
+    wireAgentCoreEvents()
+
+    // Try to start Telegram bot if configured
+    await restartTelegramBot()
+
     console.log(`[openagent] Agent core initialized with provider: ${provider.name} (${provider.defaultModel})`)
     if (fallbackProvider) {
       console.log(`[openagent] Fallback provider configured: ${fallbackProvider.name} (${fallbackProvider.defaultModel})`)
@@ -312,151 +438,37 @@ if (provider) {
   } catch (err) {
     console.error('[openagent] Failed to initialize agent core:', err)
   }
-} else {
-  console.warn('[openagent] No provider configured — chat will be unavailable. Configure a provider in Settings.')
 }
 
-// Initialize heartbeat service with provider manager
-const heartbeatService = new HeartbeatService({ db, providerManager })
-heartbeatService.start()
-
-// Initialize memory consolidation scheduler
-const consolidationScheduler = new MemoryConsolidationScheduler({
-  db,
-  agentCore,
-})
-consolidationScheduler.start()
-
-// Initialize Telegram bot (if configured and enabled)
-// Wire Telegram chat events into the cross-channel event bus
-const onTelegramChatEvent = (event: import('@openagent/telegram').TelegramChatEvent) => {
-  if (event.userId == null) return // unlinked telegram users can't sync
-  chatEventBus.broadcast({
-    type: event.type,
-    userId: event.userId,
-    source: 'telegram',
-    sessionId: event.sessionId,
-    text: event.text,
-    toolName: event.toolName,
-    toolCallId: event.toolCallId,
-    toolArgs: event.toolArgs,
-    toolResult: event.toolResult,
-    toolIsError: event.toolIsError,
-    senderName: event.senderName,
-  })
-}
-
-let telegramBot = agentCore
-  ? createTelegramBot(agentCore, db, onTelegramChatEvent)
-  : null
-if (telegramBot) {
-  telegramBot.start().catch((err) => {
-    console.error('[openagent] Failed to start Telegram bot:', err)
-  })
-}
-
-/**
- * (Re-)create and start the Telegram bot after settings change.
- * Stops the previous instance if running.
- */
-async function restartTelegramBot(): Promise<void> {
-  if (!agentCore) {
-    console.warn('[openagent] Cannot start Telegram bot: no agent core initialized')
-    return
-  }
-
-  // Stop previous instance
-  if (telegramBot) {
-    try {
-      await telegramBot.stop()
-    } catch { /* ignore */ }
-    telegramBot = null
-  }
-
-  // Try to create a new bot with the (potentially updated) config
-  telegramBot = createTelegramBot(agentCore, db, onTelegramChatEvent)
-  if (telegramBot) {
-    try {
-      await telegramBot.start()
-      console.log('[openagent] Telegram bot (re)started after settings change')
-    } catch (err) {
-      console.error('[openagent] Failed to start Telegram bot after settings change:', err)
-      telegramBot = null
-    }
-  } else {
-    console.log('[openagent] Telegram bot disabled or not configured after settings change')
-  }
-}
+// Initial agent core setup
+await initOrUpdateAgentCore()
 
 // Start server
 const app = createApp({
   db,
-  agentCore,
+  getAgentCore: () => agentCore,
   heartbeatService,
   runtimeMetrics,
   consolidationScheduler,
-  getTaskRunner: () => taskRunner ?? null,
-  getTaskScheduler: () => taskScheduler ?? null,
+  getTaskRunner: () => taskRunner,
+  getTaskScheduler: () => taskScheduler,
   getTelegramBot: () => telegramBot,
   onTelegramSettingsChanged: () => {
     restartTelegramBot().catch((err) => {
       console.error('[openagent] Error restarting Telegram bot:', err)
     })
   },
+  onActiveProviderChanged: () => {
+    initOrUpdateAgentCore().catch((err) => {
+      console.error('[openagent] Error initializing agent core after provider change:', err)
+    })
+  },
+  taskEventBus,
 })
 const server = http.createServer(app)
 
-// Wire session timeout events into the chat event bus
-if (agentCore) {
-  agentCore.setOnSessionEnd((userId: string, summary: string | null) => {
-    chatEventBus.broadcast({
-      type: 'session_end',
-      userId: parseInt(userId, 10),
-      source: 'web',
-      text: summary ?? undefined,
-    })
-  })
-
-  // Stream agent responses to task injections to all connected admin clients
-  // and persist the full response to chat_messages
-  let taskInjectionResponseBuffer = ''
-  agentCore.setOnTaskInjectionChunk((chunk) => {
-    // Collect text for persistence
-    if (chunk.type === 'text' && chunk.text) {
-      taskInjectionResponseBuffer += chunk.text
-    }
-
-    // When done, persist the agent's response to DB so it shows in chat history
-    if (chunk.type === 'done' && taskInjectionResponseBuffer) {
-      const responseText = taskInjectionResponseBuffer
-      taskInjectionResponseBuffer = ''
-      try {
-        db.prepare(
-          'INSERT INTO chat_messages (session_id, user_id, role, content, metadata) VALUES (?, ?, ?, ?, ?)'
-        ).run(`task-injection-${Date.now()}`, 1, 'assistant', responseText, JSON.stringify({ type: 'task_injection_response' }))
-      } catch (err) {
-        console.error('[openagent] Failed to persist task injection response:', err)
-      }
-    }
-
-    // Broadcast to admin user (userId=1) — the agent's natural language response
-    chatEventBus.broadcast({
-      type: chunk.type === 'done' ? 'done' : chunk.type,
-      userId: 1,
-      source: 'task',
-      text: chunk.text,
-      toolName: chunk.toolName,
-      toolCallId: chunk.toolCallId,
-      toolArgs: chunk.toolArgs,
-      toolResult: chunk.toolResult,
-      toolIsError: chunk.toolIsError,
-      error: chunk.error,
-    })
-  })
-}
-
-// Set up WebSocket chat (with cross-channel event bus)
-wsChat = setupWebSocketChat(server, db, agentCore, runtimeMetrics, chatEventBus)
+// Set up WebSocket chat (with cross-channel event bus and dynamic agentCore getter)
+wsChat = setupWebSocketChat(server, db, () => agentCore, runtimeMetrics, chatEventBus)
 
 // Set up WebSocket task viewer (live event streaming)
 setupWebSocketTask({ server, db, taskEventBus })
