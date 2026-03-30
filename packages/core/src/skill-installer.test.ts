@@ -45,6 +45,15 @@ describe('skill-installer', () => {
       expect(source.owner).toBe('zats')
     })
 
+    it('normalizes GitHub /blob/ URL to /tree/', () => {
+      const source = parseSkillSource('https://github.com/openclaw/openclaw/blob/main/skills/weather')
+      expect(source.type).toBe('github')
+      expect(source.owner).toBe('openclaw')
+      expect(source.name).toBe('weather')
+      expect(source.apiUrl).toBe('https://api.github.com/repos/openclaw/openclaw/contents/skills/weather?ref=main')
+      expect(source.sourceUrl).toBe('https://github.com/openclaw/openclaw/tree/main/skills/weather')
+    })
+
     it('throws on invalid input', () => {
       expect(() => parseSkillSource('invalid')).toThrow('Invalid skill source')
       expect(() => parseSkillSource('a/b/c')).toThrow('Invalid skill source')

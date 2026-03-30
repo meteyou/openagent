@@ -45,6 +45,12 @@ interface GitHubContentEntry {
 export function parseSkillSource(input: string): SkillSource {
   input = input.trim()
 
+  // Normalize /blob/ to /tree/ — skills are always directories
+  input = input.replace(
+    /^(https?:\/\/github\.com\/[^/]+\/[^/]+)\/blob\//,
+    '$1/tree/'
+  )
+
   // Check if it's a GitHub URL
   const githubMatch = input.match(
     /^https?:\/\/github\.com\/([^/]+)\/([^/]+)(?:\/tree\/([^/]+)\/(.+))?$/
