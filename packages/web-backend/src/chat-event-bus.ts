@@ -49,6 +49,8 @@ export interface ChatEvent {
   reminderName?: string
   /** Cronjob ID (for reminder events) */
   cronjobId?: string
+  /** Whether this message was also delivered to Telegram */
+  telegramDelivered?: boolean
 }
 
 /**

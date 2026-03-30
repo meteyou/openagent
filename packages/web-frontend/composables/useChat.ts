@@ -18,6 +18,8 @@ export interface ChatMessage {
   senderName?: string
   /** Tool call details (for role=tool) */
   toolData?: ToolCallData
+  /** Whether this message was also delivered to Telegram */
+  telegramDelivered?: boolean
 }
 
 interface WsMessage {
@@ -40,6 +42,8 @@ interface WsMessage {
   reminderName?: string
   /** Cronjob ID */
   cronjobId?: string
+  /** Whether this message was also delivered to Telegram */
+  telegramDelivered?: boolean
 }
 
 type ConnectionStatus = 'connecting' | 'connected' | 'disconnected'
@@ -236,7 +240,11 @@ export function useChat() {
           const updated = [...messages.value]
           const last = updated[updated.length - 1]
           if (last && last.streaming) {
-            updated[updated.length - 1] = { ...last, streaming: false }
+            updated[updated.length - 1] = {
+              ...last,
+              streaming: false,
+              telegramDelivered: msg.telegramDelivered || last.telegramDelivered,
+            }
             messages.value = updated
           }
         }

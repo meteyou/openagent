@@ -196,11 +196,11 @@
               <AppIcon v-else-if="msg.role === 'assistant'" name="bot" class="h-4 w-4" />
               <AppIcon v-else name="info" class="h-4 w-4" />
 
-              <!-- Telegram source badge -->
+              <!-- Telegram badge (source or delivered) -->
               <span
-                v-if="msg.source === 'telegram'"
+                v-if="msg.source === 'telegram' || msg.telegramDelivered"
                 class="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#2AABEE] text-white shadow-sm"
-                :title="msg.senderName ? `via Telegram (${msg.senderName})` : 'via Telegram'"
+                :title="msg.source === 'telegram' ? (msg.senderName ? `via Telegram (${msg.senderName})` : 'via Telegram') : 'Also sent via Telegram'"
               >
                 <svg class="h-2 w-2" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M12 0C5.37 0 0 5.37 0 12s5.37 12 12 12 12-5.37 12-12S18.63 0 12 0zm5.53 7.18l-1.97 9.3c-.15.67-.54.83-1.09.52l-3.01-2.22-1.45 1.4c-.16.16-.3.3-.61.3l.22-3.05 5.55-5.02c.24-.22-.05-.34-.38-.13l-6.87 4.33-2.96-.93c-.64-.2-.66-.64.13-.95l11.57-4.46c.54-.19 1.01.13.87.91z"/>
@@ -214,13 +214,17 @@
               :class="{
                 'rounded-br-sm bg-primary text-primary-foreground': msg.role === 'user' && msg.source !== 'telegram',
                 'rounded-br-sm border border-[#2AABEE]/30 bg-[#2AABEE]/10 text-foreground': msg.role === 'user' && msg.source === 'telegram',
-                'rounded-bl-sm border border-border bg-muted text-foreground': msg.role === 'assistant',
+                'rounded-bl-sm border border-border bg-muted text-foreground': msg.role === 'assistant' && !msg.telegramDelivered,
+                'rounded-bl-sm border border-[#2AABEE]/30 bg-[#2AABEE]/10 text-foreground': msg.role === 'assistant' && msg.telegramDelivered,
                 'rounded-lg border border-border bg-muted/50 text-muted-foreground text-xs': msg.role === 'system',
               }"
             >
-              <!-- Telegram source label -->
+              <!-- Telegram label (source or delivered) -->
               <p v-if="msg.source === 'telegram'" class="mb-1 text-xs font-medium text-[#2AABEE]">
                 via Telegram{{ msg.senderName ? ` (${msg.senderName})` : '' }}
+              </p>
+              <p v-else-if="msg.telegramDelivered" class="mb-1 text-xs font-medium text-[#2AABEE]">
+                via Telegram
               </p>
               <!-- Markdown rendered content for assistant, plain text for user/system -->
               <div
@@ -463,6 +467,15 @@ async function loadHistory() {
         if (m.role === 'tool' && m.metadata) {
           try {
             base.toolData = JSON.parse(m.metadata)
+          } catch { /* ignore */ }
+        }
+        // Parse telegramDelivered from task injection response metadata
+        if (m.role === 'assistant' && m.metadata) {
+          try {
+            const meta = JSON.parse(m.metadata)
+            if (meta.telegramDelivered) {
+              base.telegramDelivered = true
+            }
           } catch { /* ignore */ }
         }
         return base

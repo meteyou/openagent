@@ -458,6 +458,7 @@ function wireAgentCoreEvents(): void {
   })
 
   let taskInjectionResponseBuffer = ''
+  let lastTelegramDelivered = false
   agentCore.setOnTaskInjectionChunk((chunk) => {
     if (chunk.type === 'text' && chunk.text) {
       taskInjectionResponseBuffer += chunk.text
@@ -466,17 +467,7 @@ function wireAgentCoreEvents(): void {
     if (chunk.type === 'done') {
       const responseText = taskInjectionResponseBuffer
       taskInjectionResponseBuffer = ''
-
-      // Persist agent response to chat_messages
-      if (responseText) {
-        try {
-          db.prepare(
-            'INSERT INTO chat_messages (session_id, user_id, role, content, metadata) VALUES (?, ?, ?, ?, ?)'
-          ).run(`task-injection-${Date.now()}`, 1, 'assistant', responseText, JSON.stringify({ type: 'task_injection_response' }))
-        } catch (err) {
-          console.error('[openagent] Failed to persist task injection response:', err)
-        }
-      }
+      lastTelegramDelivered = false
 
       // Send the agent's formatted response to Telegram
       // (instead of the raw task summary that was sent before)
@@ -489,10 +480,23 @@ function wireAgentCoreEvents(): void {
         if (shouldSend) {
           const chatId = telegramBot.getTelegramChatIdForUser(pendingMeta.userId)
           if (chatId) {
+            lastTelegramDelivered = true
             telegramBot.sendFormattedMessage(chatId, responseText).catch(err => {
               console.error(`[openagent] Failed to send Telegram for task ${pendingMeta.taskId}:`, err)
             })
           }
+        }
+      }
+
+      // Persist agent response to chat_messages (after Telegram decision so we can store the flag)
+      if (responseText) {
+        try {
+          const metadata = JSON.stringify({ type: 'task_injection_response', telegramDelivered: lastTelegramDelivered })
+          db.prepare(
+            'INSERT INTO chat_messages (session_id, user_id, role, content, metadata) VALUES (?, ?, ?, ?, ?)'
+          ).run(`task-injection-${Date.now()}`, 1, 'assistant', responseText, metadata)
+        } catch (err) {
+          console.error('[openagent] Failed to persist task injection response:', err)
         }
       }
     }
@@ -508,6 +512,7 @@ function wireAgentCoreEvents(): void {
       toolResult: chunk.toolResult,
       toolIsError: chunk.toolIsError,
       error: chunk.error,
+      telegramDelivered: chunk.type === 'done' ? lastTelegramDelivered : undefined,
     })
   })
 }

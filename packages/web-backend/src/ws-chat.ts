@@ -46,6 +46,8 @@ interface ChatResponse {
   reminderName?: string
   /** Cronjob ID (for reminder events) */
   cronjobId?: string
+  /** Whether this message was also delivered to Telegram */
+  telegramDelivered?: boolean
 }
 
 function saveChatMessage(
@@ -394,6 +396,7 @@ export function setupWebSocketChat(
             toolResult: event.toolResult,
             toolIsError: event.toolIsError,
             error: event.error,
+            telegramDelivered: event.telegramDelivered,
           })
         }
       }
