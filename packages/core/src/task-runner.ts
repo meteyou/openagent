@@ -445,6 +445,31 @@ export class TaskRunner {
             estimatedCost: finalCost,
             sessionId,
           })
+
+          // Persist assistant text and thinking to chat_messages for the task viewer
+          const textParts = assistantMsg.content
+            .filter((c): c is { type: 'text'; text: string } => c.type === 'text')
+            .map(c => c.text)
+          const thinkingParts = assistantMsg.content
+            .filter((c): c is { type: 'thinking'; thinking: string } => c.type === 'thinking')
+            .map(c => c.thinking)
+
+          if (textParts.length > 0 || thinkingParts.length > 0) {
+            const content = textParts.join('\n')
+            const metadata = JSON.stringify({
+              type: 'assistant_message',
+              thinking: thinkingParts.length > 0 ? thinkingParts.join('\n') : undefined,
+              provider: assistantMsg.provider,
+              model: assistantMsg.model,
+            })
+            try {
+              this.db.prepare(
+                'INSERT INTO chat_messages (session_id, user_id, role, content, metadata) VALUES (?, ?, ?, ?, ?)'
+              ).run(sessionId, 0, 'assistant', content, metadata)
+            } catch {
+              // Ignore persistence errors — non-critical
+            }
+          }
         }
         break
       }
