@@ -117,7 +117,7 @@ export {
   decryptBraveApiKey,
 } from './web-tools.js'
 export type { WebSearchResult, WebSearchConfig, WebFetchConfig, BuiltinToolsConfig, SearchProvider, ResolvedSearchProvider } from './web-tools.js'
-export { AgentCore, createYoloTools } from './agent.js'
+export { AgentCore, createYoloTools, getWorkspaceDir } from './agent.js'
 export type { ResponseChunk, AgentCoreOptions } from './agent.js'
 export { ProviderManager } from './provider-manager.js'
 export type { OperatingMode, ProviderManagerEvents } from './provider-manager.js'

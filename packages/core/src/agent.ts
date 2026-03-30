@@ -55,7 +55,7 @@ export interface AgentCoreOptions {
  * Get the workspace directory for agent file operations.
  * Falls back to DATA_DIR/workspace, then /workspace (Docker default).
  */
-function getWorkspaceDir(): string {
+export function getWorkspaceDir(): string {
   if (process.env.WORKSPACE_DIR) return process.env.WORKSPACE_DIR
   if (process.env.DATA_DIR) {
     const wsDir = nodePath.join(process.env.DATA_DIR, 'workspace')
