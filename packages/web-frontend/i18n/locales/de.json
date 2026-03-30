@@ -653,6 +653,8 @@
     "arguments": "Argumente",
     "result": "Ergebnis",
     "agentResponse": "Agent-Antwort",
-    "thinking": "Überlegung"
+    "thinking": "Überlegung",
+    "resultSummary": "Task-Ergebnis",
+    "noSummary": "Task ohne Zusammenfassung abgeschlossen."
   }
 }

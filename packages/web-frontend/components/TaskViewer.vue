@@ -176,6 +176,29 @@
         </div>
       </div>
 
+      <!-- Task result summary (end message sent back to main agent) -->
+      <div
+        v-if="taskInfo?.status === 'completed' || taskInfo?.status === 'failed'"
+        class="rounded-lg border border-border bg-card"
+      >
+        <div class="px-4 py-3">
+          <div class="flex items-start gap-3">
+            <AppIcon
+              :name="taskInfo.status === 'completed' ? 'check' : 'close'"
+              size="sm"
+              :class="taskInfo.status === 'completed' ? 'mt-0.5 text-green-500' : 'mt-0.5 text-destructive'"
+            />
+            <div class="min-w-0 flex-1">
+              <p class="mb-1 text-xs font-medium" :class="taskInfo.status === 'completed' ? 'text-green-500' : 'text-destructive'">
+                {{ $t('taskViewer.resultSummary') }}
+              </p>
+              <!-- eslint-disable-next-line vue/no-v-html -->
+              <div class="prose-chat text-sm" v-html="renderMarkdown(taskInfo.resultSummary ?? taskInfo.errorMessage ?? $t('taskViewer.noSummary'))" />
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Auto-scroll anchor -->
       <div ref="scrollAnchor" />
     </div>

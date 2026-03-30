@@ -25,6 +25,8 @@ interface TaskInfo {
   name: string
   status: string
   prompt?: string
+  resultSummary?: string
+  errorMessage?: string
 }
 
 interface TaskEventsResponse {
@@ -141,6 +143,8 @@ export function useTaskViewer() {
           name: (data.name as string) ?? taskInfo.value?.name ?? '',
           status: (data.status as string) ?? taskInfo.value?.status ?? '',
           prompt: data.prompt as string | undefined,
+          resultSummary: data.resultSummary as string | undefined,
+          errorMessage: data.errorMessage as string | undefined,
         }
         break
 
@@ -172,6 +176,14 @@ export function useTaskViewer() {
         events.value.push(data as unknown as TaskEventItem)
         if (data.status && taskInfo.value) {
           taskInfo.value.status = data.status as string
+          // Capture statusMessage as resultSummary/errorMessage for end-of-task display
+          if (data.statusMessage) {
+            if (data.status === 'completed') {
+              taskInfo.value.resultSummary = data.statusMessage as string
+            } else if (data.status === 'failed') {
+              taskInfo.value.errorMessage = data.statusMessage as string
+            }
+          }
         }
         break
 

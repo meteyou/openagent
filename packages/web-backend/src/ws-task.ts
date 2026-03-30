@@ -75,6 +75,8 @@ export function setupWebSocketTask(options: WebSocketTaskOptions): WebSocketServ
       name: task.name,
       status: task.status,
       prompt: task.prompt,
+      resultSummary: task.resultSummary,
+      errorMessage: task.errorMessage,
     })
 
     if (task.status === 'running' || task.status === 'paused') {
