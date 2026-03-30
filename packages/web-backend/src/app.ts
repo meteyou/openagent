@@ -29,11 +29,13 @@ const startTime = Date.now()
 export interface AppOptions {
   db: Database
   agentCore?: AgentCore | null
+  getAgentCore?: () => AgentCore | null
   heartbeatService?: HeartbeatService | null
   runtimeMetrics?: RuntimeMetrics | null
   consolidationScheduler?: MemoryConsolidationScheduler | null
   getTelegramBot?: () => TelegramBot | null
   onTelegramSettingsChanged?: () => void
+  onActiveProviderChanged?: () => void
   getTaskRunner?: () => TaskRunner | null
   getTaskScheduler?: () => TaskScheduler | null
   taskEventBus?: TaskEventBus | null
@@ -72,6 +74,9 @@ export function createApp(options?: AppOptions): express.Express {
     })
   })
 
+  // Build dynamic agentCore getter: prefer explicit getter, fall back to static reference
+  const getAgentCore = options?.getAgentCore ?? (() => options?.agentCore ?? null)
+
   if (options?.db) {
     ensureAdminUser(options.db)
     app.use('/api/auth', createAuthRouter(options.db))
@@ -80,11 +85,12 @@ export function createApp(options?: AppOptions): express.Express {
     app.use('/api/providers', createProvidersRouter({
       onActiveProviderChanged: () => {
         options.heartbeatService?.restart({ resetState: true })
+        options.onActiveProviderChanged?.()
       },
     }))
-    app.use('/api/memory', createMemoryRouter(options.agentCore ?? null, options.consolidationScheduler ?? null))
+    app.use('/api/memory', createMemoryRouter(getAgentCore, options.consolidationScheduler ?? null))
     app.use('/api/settings', createSettingsRouter({
-      agentCore: options.agentCore ?? null,
+      getAgentCore,
       onHeartbeatSettingsChanged: () => {
         options.heartbeatService?.restart()
       },
@@ -101,7 +107,7 @@ export function createApp(options?: AppOptions): express.Express {
       getTelegramBot: options.getTelegramBot ?? (() => null),
     }))
     app.use('/api/skills', createSkillsRouter({
-      agentCore: options.agentCore ?? null,
+      getAgentCore,
     }))
     app.use('/api/stats', createStatsRouter(options.db))
     app.use('/api/tasks', createTasksRouter({
@@ -145,7 +151,11 @@ export function createApp(options?: AppOptions): express.Express {
       }
       const indexPath = path.join(frontendDir, 'index.html')
       if (fs.existsSync(indexPath)) {
-        res.sendFile(indexPath)
+        res.sendFile(indexPath, (err) => {
+          if (err && !res.headersSent) {
+            res.status(404).send('Frontend not found')
+          }
+        })
       } else {
         res.status(404).send('Frontend not found')
       }
