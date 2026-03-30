@@ -1,9 +1,12 @@
+export type CronjobActionType = 'task' | 'injection'
+
 export interface Cronjob {
   id: string
   name: string
   prompt: string
   schedule: string
   scheduleHuman: string
+  actionType: CronjobActionType
   provider: string | null
   enabled: boolean
   toolsOverride: string | null
@@ -28,6 +31,7 @@ export interface CronjobFormData {
   name: string
   prompt: string
   schedule: string
+  actionType?: CronjobActionType
   provider?: string
   enabled?: boolean
   toolsOverride?: string | null

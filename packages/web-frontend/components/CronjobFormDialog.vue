@@ -45,8 +45,20 @@
           </p>
         </div>
 
-        <!-- Provider -->
+        <!-- Action Type -->
         <div class="space-y-2">
+          <Label for="cronjob-action-type">{{ $t('cronjobs.form.actionType') }}</Label>
+          <Select id="cronjob-action-type" v-model="form.actionType">
+            <option value="task">{{ $t('cronjobs.form.actionTypeTask') }}</option>
+            <option value="injection">{{ $t('cronjobs.form.actionTypeInjection') }}</option>
+          </Select>
+          <p class="text-xs text-muted-foreground">
+            {{ form.actionType === 'injection' ? $t('cronjobs.form.actionTypeInjectionHelp') : $t('cronjobs.form.actionTypeTaskHelp') }}
+          </p>
+        </div>
+
+        <!-- Provider (only for task type) -->
+        <div v-if="form.actionType !== 'injection'" class="space-y-2">
           <Label for="cronjob-provider">{{ $t('cronjobs.form.provider') }}</Label>
           <Select id="cronjob-provider" v-model="form.provider">
             <option value="">{{ $t('cronjobs.form.defaultProvider') }}</option>
@@ -60,8 +72,8 @@
           </Select>
         </div>
 
-        <!-- Advanced Section (Collapsible) -->
-        <div class="border border-border rounded-md">
+        <!-- Advanced Section (Collapsible) — only for task type -->
+        <div v-if="form.actionType !== 'injection'" class="border border-border rounded-md">
           <button
             type="button"
             class="flex w-full items-center justify-between px-4 py-3 text-sm font-medium hover:bg-muted/50 transition-colors"
@@ -177,6 +189,7 @@ const emit = defineEmits<{
     name: string
     prompt: string
     schedule: string
+    actionType?: 'task' | 'injection'
     provider?: string
     toolsOverride?: string | null
     skillsOverride?: string | null
@@ -211,6 +224,7 @@ const form = reactive({
   name: '',
   prompt: '',
   schedule: '',
+  actionType: 'task' as 'task' | 'injection',
   provider: '',
   systemPromptOverride: '',
 })
@@ -231,6 +245,7 @@ watch(() => props.open, (isOpen) => {
       form.name = props.cronjob.name
       form.prompt = props.cronjob.prompt
       form.schedule = props.cronjob.schedule
+      form.actionType = props.cronjob.actionType ?? 'task'
       form.provider = props.cronjob.provider ?? ''
       form.systemPromptOverride = props.cronjob.systemPromptOverride ?? ''
 
@@ -264,6 +279,7 @@ watch(() => props.open, (isOpen) => {
       form.name = ''
       form.prompt = ''
       form.schedule = ''
+      form.actionType = 'task'
       form.provider = ''
       form.systemPromptOverride = ''
       disabledTools.value = []
@@ -298,14 +314,15 @@ function onSubmit() {
     name: form.name,
     prompt: form.prompt,
     schedule: form.schedule,
-    provider: form.provider || undefined,
-    toolsOverride: disabledTools.value.length > 0
-      ? JSON.stringify(disabledTools.value)
-      : null,
-    skillsOverride: disabledSkills.value.length > 0
-      ? JSON.stringify(disabledSkills.value)
-      : null,
-    systemPromptOverride: form.systemPromptOverride?.trim() || null,
+    actionType: form.actionType,
+    provider: form.actionType === 'injection' ? undefined : (form.provider || undefined),
+    toolsOverride: form.actionType === 'injection' ? null : (
+      disabledTools.value.length > 0 ? JSON.stringify(disabledTools.value) : null
+    ),
+    skillsOverride: form.actionType === 'injection' ? null : (
+      disabledSkills.value.length > 0 ? JSON.stringify(disabledSkills.value) : null
+    ),
+    systemPromptOverride: form.actionType === 'injection' ? null : (form.systemPromptOverride?.trim() || null),
   })
 }
 </script>

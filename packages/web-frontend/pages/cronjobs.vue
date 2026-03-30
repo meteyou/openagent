@@ -80,6 +80,7 @@
             <TableRow>
               <TableHead>{{ $t('cronjobs.columns.name') }}</TableHead>
               <TableHead>{{ $t('cronjobs.columns.schedule') }}</TableHead>
+              <TableHead>{{ $t('cronjobs.columns.actionType') }}</TableHead>
               <TableHead>{{ $t('cronjobs.columns.provider') }}</TableHead>
               <TableHead>{{ $t('cronjobs.columns.enabled') }}</TableHead>
               <TableHead>{{ $t('cronjobs.columns.lastRun') }}</TableHead>
@@ -113,8 +114,13 @@
                   <span class="font-mono text-xs text-muted-foreground">{{ cj.schedule }}</span>
                 </div>
               </TableCell>
+              <TableCell>
+                <Badge :variant="cj.actionType === 'injection' ? 'warning' : 'default'">
+                  {{ cj.actionType === 'injection' ? $t('cronjobs.actionTypeInjection') : $t('cronjobs.actionTypeTask') }}
+                </Badge>
+              </TableCell>
               <TableCell class="text-muted-foreground">
-                {{ cj.provider || $t('cronjobs.defaultProvider') }}
+                {{ cj.actionType === 'injection' ? '—' : (cj.provider || $t('cronjobs.defaultProvider')) }}
               </TableCell>
               <TableCell @click.stop>
                 <Switch
@@ -229,7 +235,7 @@ function openEditCronjob(cj: Cronjob) {
   cronjobDialog.open = true
 }
 
-async function handleCronjobSubmit(form: { name: string; prompt: string; schedule: string; provider?: string; toolsOverride?: string | null; skillsOverride?: string | null; systemPromptOverride?: string | null }) {
+async function handleCronjobSubmit(form: { name: string; prompt: string; schedule: string; actionType?: 'task' | 'injection'; provider?: string; toolsOverride?: string | null; skillsOverride?: string | null; systemPromptOverride?: string | null }) {
   cronjobDialog.loading = true
 
   if (cronjobDialog.mode === 'create') {
