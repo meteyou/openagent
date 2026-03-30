@@ -64,8 +64,10 @@ export function useTasks() {
     tasks.value.some(t => t.status === 'running')
   )
 
-  async function loadTasks(page: number = 1) {
-    loading.value = true
+  async function loadTasks(page: number = 1, { silent = false }: { silent?: boolean } = {}) {
+    if (!silent) {
+      loading.value = true
+    }
     error.value = null
 
     try {
@@ -79,9 +81,13 @@ export function useTasks() {
       tasks.value = data.tasks
       pagination.value = data.pagination
     } catch (err) {
-      error.value = (err as Error).message
+      if (!silent) {
+        error.value = (err as Error).message
+      }
     } finally {
-      loading.value = false
+      if (!silent) {
+        loading.value = false
+      }
     }
   }
 
@@ -134,7 +140,7 @@ export function useTasks() {
     pollTimer = setInterval(() => {
       // Only poll if there are running tasks or on first loads
       if (hasRunningTasks.value || tasks.value.length === 0) {
-        loadTasks(pagination.value.page)
+        loadTasks(pagination.value.page, { silent: true })
       }
     }, intervalMs)
   }
