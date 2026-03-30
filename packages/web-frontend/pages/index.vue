@@ -31,6 +31,24 @@
         <AppIcon name="sparkles" class="h-4 w-4" />
         <span class="hidden sm:inline">{{ $t('chat.newSession') }}</span>
       </Button>
+      <Popover v-model:open="filterOpen">
+        <template #trigger>
+          <Button variant="outline" size="sm" class="gap-2">
+            <AppIcon name="settings" class="h-4 w-4" />
+          </Button>
+        </template>
+        <div class="flex flex-col gap-3 min-w-[200px]">
+          <p class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Display Filters</p>
+          <div class="flex items-center justify-between gap-3">
+            <Label class="text-sm cursor-pointer" for="filter-tools">Tool Calls</Label>
+            <Switch id="filter-tools" v-model="showToolCalls" />
+          </div>
+          <div class="flex items-center justify-between gap-3">
+            <Label class="text-sm cursor-pointer" for="filter-injections">Injections</Label>
+            <Switch id="filter-injections" v-model="showInjections" />
+          </div>
+        </div>
+      </Popover>
     </div>
 
     <!-- Messages area -->
@@ -75,7 +93,7 @@
       <!-- Messages -->
       <template v-else>
         <div
-          v-for="(msg, i) in messages"
+          v-for="(msg, i) in filteredMessages"
           :key="i"
           :class="[
             msg.role === 'divider'
@@ -372,6 +390,20 @@ function toolDisplayName(toolData: ToolCallData): string {
 }
 
 // Track which tool calls are expanded
+// Display filter state
+const filterOpen = ref(false)
+const showToolCalls = ref(true)
+const showInjections = ref(false)
+
+const filteredMessages = computed(() => {
+  return messages.value.filter((msg) => {
+    if (!showToolCalls.value && msg.role === 'tool' && msg.toolData) return false
+    if (!showInjections.value && msg.role === 'system' && msg.isTaskResult) return false
+    if (!showInjections.value && msg.role === 'assistant' && msg.isTaskInjection) return false
+    return true
+  })
+})
+
 const expandedTools = ref<Set<string>>(new Set())
 
 function toggleTool(toolCallId: string) {
