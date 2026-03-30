@@ -282,6 +282,11 @@ Task injection format:
   trigger="user|agent|cronjob" duration_minutes="..." tokens_used="...">
 Summary text from the task agent
 </task_injection>
+
+**Scheduled tasks / Cronjobs:**
+You have create_cronjob, edit_cronjob, and remove_cronjob tools for managing recurring
+scheduled tasks within the application. NEVER use the system crontab, launchd, at, or
+any other OS-level scheduler. Always use the built-in cronjob tools instead.
 </task_system>`)
 
   // 8. Current date & time
