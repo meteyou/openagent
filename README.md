@@ -1,6 +1,19 @@
 # OpenAgent
 
-An AI agent platform with web interface and Telegram integration.
+> **There are many agents, but this one is mine.**  
+> *Inspired by [pi.dev](https://pi.dev)*
+
+OpenAgent is not just an AI agent platform. It is a foundation for building an agent that becomes truly your own through
+customization, memory, workflow integration, and continued collaboration.
+
+It combines a minimal core with practical interfaces like the web UI and Telegram, while leaving room for extension,
+refinement, and personal shaping. The goal is not only to provide a capable assistant, but to enable an agent that can
+adapt to one person’s way of thinking, building, and working.
+
+Over time, an agent should become more than a generic tool. It should become a reliable working partner. Shaped by use,
+improved through iteration, and aligned with the needs of its user.
+
+**OpenAgent is not only what it is built on. It is also what you make of it.**
 
 ## Quick Start with Docker
 
