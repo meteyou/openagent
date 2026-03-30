@@ -993,6 +993,31 @@ export class TelegramBot {
   }
 
   /**
+   * Send a Markdown-formatted message to a Telegram chat.
+   * Converts Markdown to Telegram HTML and sends with fallback to plain text.
+   * Does NOT sync back to web chat (intended for task injection responses).
+   */
+  async sendFormattedMessage(chatId: string | number, markdown: string): Promise<boolean> {
+    const parts = splitMessage(markdown)
+
+    for (const part of parts) {
+      try {
+        const html = markdownToTelegramHtml(part)
+        await this.bot.api.sendMessage(chatId, html, { parse_mode: 'HTML' })
+      } catch {
+        try {
+          await this.bot.api.sendMessage(chatId, part)
+        } catch (err) {
+          console.error(`[telegram] Failed to send formatted message to ${chatId}:`, err)
+          return false
+        }
+      }
+    }
+
+    return true
+  }
+
+  /**
    * Get the underlying grammy Bot instance (for advanced usage)
    */
   getBot(): Bot {
