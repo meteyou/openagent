@@ -51,7 +51,7 @@ beforeAll(async () => {
     getSnapshot: () => heartbeatSnapshot,
   } as unknown as HeartbeatService
   const runtimeMetrics = new RuntimeMetrics()
-  const app = createApp({ db, agentCore: mockAgentCore, heartbeatService: mockHeartbeatService, runtimeMetrics })
+  const app = createApp({ db, getAgentCore: () => mockAgentCore, heartbeatService: mockHeartbeatService, runtimeMetrics })
   server = http.createServer(app)
   wss = setupWebSocketChat(server, db, null, runtimeMetrics)
   const logsSetup = setupWebSocketLogs(server)
