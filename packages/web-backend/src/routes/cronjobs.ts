@@ -42,10 +42,11 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
    */
   router.post('/', (req: AuthenticatedRequest, res) => {
     try {
-      const { name, prompt, schedule, provider, enabled } = req.body as {
+      const { name, prompt, schedule, actionType, provider, enabled } = req.body as {
         name?: string
         prompt?: string
         schedule?: string
+        actionType?: string
         provider?: string
         enabled?: boolean
       }
@@ -66,6 +67,7 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
         name,
         prompt,
         schedule,
+        actionType: actionType === 'injection' ? 'injection' : 'task',
         provider: provider || undefined,
         enabled: enabled !== undefined ? enabled : true,
       })
@@ -100,10 +102,11 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
         return
       }
 
-      const { name, prompt, schedule, provider, enabled, toolsOverride, skillsOverride, systemPromptOverride } = req.body as {
+      const { name, prompt, schedule, actionType, provider, enabled, toolsOverride, skillsOverride, systemPromptOverride } = req.body as {
         name?: string
         prompt?: string
         schedule?: string
+        actionType?: string
         provider?: string
         enabled?: boolean
         toolsOverride?: string | null
@@ -156,6 +159,7 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
         name,
         prompt,
         schedule,
+        actionType: actionType !== undefined ? (actionType === 'injection' ? 'injection' : 'task') : undefined,
         provider,
         enabled,
         toolsOverride: toolsOverride !== undefined ? toolsOverride : undefined,

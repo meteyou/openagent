@@ -22,6 +22,7 @@ import {
   editCronjobTool,
   removeCronjobTool,
   listCronjobsTool,
+  createReminderTool,
   listTasksTool,
   loadProvidersDecrypted,
   deliverTaskNotification,
@@ -222,6 +223,15 @@ const taskScheduler = new TaskScheduler({
   taskRunner,
   getDefaultProvider: getTaskDefaultProvider,
   resolveProvider,
+  onInjection: (scheduledTaskId: string, injection: string) => {
+    if (agentCore) {
+      agentCore.injectTaskResult(injection).catch(err => {
+        console.error(`[openagent] Failed to inject reminder for scheduled task ${scheduledTaskId}:`, err)
+      })
+    } else {
+      console.warn(`[openagent] Cannot inject reminder: no agent core initialized`)
+    }
+  },
 })
 
 // Build agent tools for tasks and cronjobs
@@ -248,6 +258,7 @@ const agentTools = [
   editCronjobTool(cronjobToolsOptions),
   removeCronjobTool(cronjobToolsOptions),
   listCronjobsTool(cronjobToolsOptions),
+  createReminderTool(cronjobToolsOptions),
 ]
 
 // Start the task scheduler to pick up existing cronjobs
