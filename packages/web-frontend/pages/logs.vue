@@ -38,7 +38,7 @@
           v-model="searchQuery"
           type="text"
           :placeholder="$t('logs.searchPlaceholder')"
-          class="min-w-[180px] flex-1"
+          class="min-w-[180px] flex-1 sm:flex-none"
           @input="debouncedSearch"
         />
 
