@@ -80,14 +80,14 @@
           :class="[
             msg.role === 'divider'
               ? 'w-full animate-in fade-in duration-200'
-              : msg.role === 'tool'
+              : (msg.role === 'tool' || (msg.role === 'system' && msg.isTaskResult))
                 ? 'self-start w-full max-w-[80%] sm:max-w-[75%] pl-11'
                 : 'flex max-w-[80%] gap-3 sm:max-w-[75%]',
-            msg.role === 'tool' || msg.role === 'divider' ? '' : 'animate-in fade-in slide-in-from-bottom-2 duration-200',
+            (msg.role === 'tool' || msg.role === 'divider' || (msg.role === 'system' && msg.isTaskResult)) ? '' : 'animate-in fade-in slide-in-from-bottom-2 duration-200',
             {
               'self-end flex-row-reverse': msg.role === 'user',
               'self-start': msg.role === 'assistant',
-              'self-center max-w-[90%] !sm:max-w-[85%]': msg.role === 'system',
+              'self-center max-w-[90%] !sm:max-w-[85%]': msg.role === 'system' && !msg.isTaskResult,
             },
           ]"
         >
@@ -165,6 +165,50 @@
                   <template v-else>
                     <ToolDataDisplay :data="msg.toolData!.toolResult" :is-error="msg.toolData!.toolIsError" />
                   </template>
+                </div>
+              </div>
+            </div>
+          </template>
+
+          <!-- Task result notification (collapsible, same style as tool call) -->
+          <template v-else-if="msg.role === 'system' && msg.isTaskResult">
+            <div class="w-full overflow-hidden rounded-lg border border-border">
+              <!-- Header (clickable) -->
+              <button
+                class="group flex w-full items-center gap-2 bg-muted/30 px-3 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-muted/60"
+                :class="{ 'border-b border-border': expandedInjections.has(i) }"
+                @click="toggleInjection(i)"
+              >
+                <svg
+                  class="h-3 w-3 shrink-0 transition-transform duration-200"
+                  :class="{ 'rotate-90': expandedInjections.has(i) }"
+                  viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                >
+                  <polyline points="9 18 15 12 9 6" />
+                </svg>
+                <AppIcon name="zap" class="h-3 w-3 shrink-0 opacity-60" />
+                <span class="font-medium">{{ msg.taskResultName ?? 'Background Task' }}</span>
+                <span
+                  v-if="msg.taskResultDuration"
+                  class="ml-1 text-[10px] text-muted-foreground/60"
+                >
+                  ({{ msg.taskResultDuration }}min)
+                </span>
+                <span
+                  class="ml-auto rounded px-1.5 py-0.5 text-[10px] font-medium"
+                  :class="msg.taskResultStatus === 'failed'
+                    ? 'bg-destructive/10 text-destructive'
+                    : msg.taskResultStatus === 'question'
+                      ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                      : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'"
+                >
+                  {{ msg.taskResultStatus === 'failed' ? 'Failed' : msg.taskResultStatus === 'question' ? 'Question' : 'Completed' }}
+                </span>
+              </button>
+              <!-- Expanded details -->
+              <div v-if="expandedInjections.has(i)" class="bg-background text-xs">
+                <div class="max-h-60 overflow-y-auto px-3 py-2">
+                  <div class="prose-chat break-words text-xs text-foreground" v-html="renderMarkdown(taskResultBody(msg.content))" />
                 </div>
               </div>
             </div>
@@ -340,6 +384,28 @@ function toggleTool(toolCallId: string) {
   expandedTools.value = updated
 }
 
+// Extract the body (skip the first title line) for task result notifications
+function taskResultBody(content: string): string {
+  const lines = (content ?? '').split('\n')
+  // Skip the first line (title like "✅ Task completed: ...") and any blank lines after
+  const bodyLines = lines.slice(1)
+  while (bodyLines.length > 0 && bodyLines[0].trim() === '') bodyLines.shift()
+  return bodyLines.join('\n') || content
+}
+
+// Track which task result notifications are expanded
+const expandedInjections = ref<Set<number>>(new Set())
+
+function toggleInjection(index: number) {
+  const updated = new Set(expandedInjections.value)
+  if (updated.has(index)) {
+    updated.delete(index)
+  } else {
+    updated.add(index)
+  }
+  expandedInjections.value = updated
+}
+
 function formatToolData(data: unknown): string {
   if (data === null || data === undefined) return '—'
   if (typeof data === 'string') return data
@@ -453,13 +519,18 @@ async function loadHistory() {
           // Derive source from session_id prefix
           source: m.session_id.startsWith('telegram-') ? 'telegram' as const : undefined,
         }
-        // Parse system messages with session_divider metadata as dividers
+        // Parse system messages with session_divider or task_result metadata
         if (m.role === 'system' && m.metadata) {
           try {
             const meta = JSON.parse(m.metadata)
             if (meta.type === 'session_divider') {
               base.role = 'divider'
               base.content = meta.summary ?? ''
+            } else if (meta.type === 'task_result') {
+              base.isTaskResult = true
+              base.taskResultName = meta.taskName ?? 'Background Task'
+              base.taskResultStatus = meta.taskResultStatus ?? meta.taskStatus ?? 'completed'
+              base.taskResultDuration = meta.durationMinutes
             }
           } catch { /* ignore */ }
         }
@@ -469,12 +540,15 @@ async function loadHistory() {
             base.toolData = JSON.parse(m.metadata)
           } catch { /* ignore */ }
         }
-        // Parse telegramDelivered from task injection response metadata
+        // Parse telegramDelivered and isTaskInjection from task injection response metadata
         if (m.role === 'assistant' && m.metadata) {
           try {
             const meta = JSON.parse(m.metadata)
             if (meta.telegramDelivered) {
               base.telegramDelivered = true
+            }
+            if (meta.type === 'task_injection_response') {
+              base.isTaskInjection = true
             }
           } catch { /* ignore */ }
         }

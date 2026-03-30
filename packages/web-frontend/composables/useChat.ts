@@ -20,10 +20,20 @@ export interface ChatMessage {
   toolData?: ToolCallData
   /** Whether this message was also delivered to Telegram */
   telegramDelivered?: boolean
+  /** Whether this message is a task injection response */
+  isTaskInjection?: boolean
+  /** Whether this is a task result notification (system message) */
+  isTaskResult?: boolean
+  /** Task result display name */
+  taskResultName?: string
+  /** Task result status: completed, failed, question */
+  taskResultStatus?: string
+  /** Task duration in minutes */
+  taskResultDuration?: number
 }
 
 interface WsMessage {
-  type: 'text' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'reminder'
+  type: 'text' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'reminder' | 'task_completed' | 'task_failed' | 'task_question'
   text?: string
   toolName?: string
   toolCallId?: string
@@ -44,6 +54,16 @@ interface WsMessage {
   cronjobId?: string
   /** Whether this message was also delivered to Telegram */
   telegramDelivered?: boolean
+  /** Whether this is a task injection response */
+  isTaskInjection?: boolean
+  /** Task name (for task_completed/task_failed/task_question) */
+  taskName?: string
+  /** Task summary */
+  taskSummary?: string
+  /** Task ID */
+  taskId?: string
+  /** Task duration in minutes */
+  taskDurationMinutes?: number
 }
 
 type ConnectionStatus = 'connecting' | 'connected' | 'disconnected'
@@ -210,6 +230,26 @@ export function useChat() {
         break
       }
 
+      case 'task_completed':
+      case 'task_failed':
+      case 'task_question': {
+        const emoji = msg.type === 'task_completed' ? '✅' : msg.type === 'task_failed' ? '❌' : '❓'
+        const statusLabel = msg.type.replace('task_', '')
+        const content = `${emoji} Task ${statusLabel}: ${msg.taskName ?? 'Unknown'}
+
+${msg.taskSummary ?? msg.text ?? 'No summary available.'}`
+        messages.value = [...messages.value, {
+          role: 'system',
+          content,
+          timestamp: new Date().toISOString(),
+          isTaskResult: true,
+          taskResultName: msg.taskName ?? 'Background Task',
+          taskResultStatus: statusLabel,
+          taskResultDuration: msg.taskDurationMinutes,
+        }]
+        break
+      }
+
       case 'text':
         if (msg.text) {
           const lastMsg = messages.value[messages.value.length - 1]
@@ -219,6 +259,7 @@ export function useChat() {
             updated[updated.length - 1] = {
               ...lastMsg,
               content: lastMsg.content + msg.text,
+              isTaskInjection: lastMsg.isTaskInjection || msg.isTaskInjection,
             }
             messages.value = updated
           } else {
@@ -228,6 +269,7 @@ export function useChat() {
               content: msg.text,
               timestamp: new Date().toISOString(),
               streaming: true,
+              isTaskInjection: msg.isTaskInjection,
             }]
           }
           isStreaming.value = true
@@ -244,6 +286,7 @@ export function useChat() {
               ...last,
               streaming: false,
               telegramDelivered: msg.telegramDelivered || last.telegramDelivered,
+              isTaskInjection: msg.isTaskInjection || last.isTaskInjection,
             }
             messages.value = updated
           }

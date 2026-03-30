@@ -53,6 +53,7 @@ import {
   X,
   ListTodo,
   OctagonX,
+  Zap,
 } from 'lucide-vue-next'
 
 const iconMap = {
@@ -100,6 +101,7 @@ const iconMap = {
   upload: Upload,
   tasks: ListTodo,
   kill: OctagonX,
+  zap: Zap,
 } as const
 
 const props = withDefaults(defineProps<{
