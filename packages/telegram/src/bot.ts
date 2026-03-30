@@ -957,25 +957,30 @@ export class TelegramBot {
 
   /**
    * Send a task notification to a Telegram chat with HTML formatting.
+   * Automatically splits long messages to stay within Telegram's 4096 char limit.
    * Used for proactive task result notifications.
    */
   async sendTaskNotification(chatId: string | number, html: string): Promise<boolean> {
-    try {
-      await this.bot.api.sendMessage(chatId, html, { parse_mode: 'HTML' })
-      this.syncOutgoingMessageToWeb(chatId, telegramHtmlToPlainText(html))
-      return true
-    } catch {
-      // Fallback to plain text if HTML parsing fails
+    const parts = splitMessage(html)
+    const plainFull = telegramHtmlToPlainText(html)
+
+    for (const part of parts) {
       try {
-        const plainText = telegramHtmlToPlainText(html)
-        await this.bot.api.sendMessage(chatId, plainText)
-        this.syncOutgoingMessageToWeb(chatId, plainText)
-        return true
-      } catch (fallbackErr) {
-        console.error(`[telegram] Failed to send task notification to ${chatId}:`, fallbackErr)
-        return false
+        await this.bot.api.sendMessage(chatId, part, { parse_mode: 'HTML' })
+      } catch {
+        // Fallback to plain text if HTML parsing fails
+        try {
+          const plainPart = telegramHtmlToPlainText(part)
+          await this.bot.api.sendMessage(chatId, plainPart)
+        } catch (fallbackErr) {
+          console.error(`[telegram] Failed to send task notification to ${chatId}:`, fallbackErr)
+          return false
+        }
       }
     }
+
+    this.syncOutgoingMessageToWeb(chatId, plainFull)
+    return true
   }
 
   /**
