@@ -164,6 +164,16 @@ function escapeHtml(text: string): string {
     .replace(/>/g, '&gt;')
 }
 
+function telegramHtmlToPlainText(text: string): string {
+  return text
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+}
+
 /**
  * Split a long text into chunks that fit within Telegram's message limit.
  * Tries to split at newline boundaries when possible.
@@ -896,6 +906,40 @@ export class TelegramBot {
     return this.running
   }
 
+  private syncOutgoingMessageToWeb(chatId: string | number, text: string): void {
+    if (!this.db) return
+
+    const normalizedChatId = String(chatId)
+    const row = this.db.prepare(
+      'SELECT user_id FROM telegram_users WHERE telegram_id = ? AND status = ?'
+    ).get(normalizedChatId, 'approved') as { user_id: number | null } | undefined
+
+    const userId = row?.user_id ?? null
+    if (!userId) return
+
+    const sessionId = `telegram-outbound-${userId}-${Date.now()}`
+
+    try {
+      this.db.prepare(
+        'INSERT INTO chat_messages (session_id, user_id, role, content) VALUES (?, ?, ?, ?)'
+      ).run(sessionId, userId, 'assistant', text)
+    } catch (err) {
+      console.error(`[telegram] Failed to persist outbound Telegram message for user ${userId}:`, err)
+    }
+
+    this.onChatEvent?.({
+      type: 'text',
+      userId,
+      sessionId,
+      text,
+    })
+    this.onChatEvent?.({
+      type: 'done',
+      userId,
+      sessionId,
+    })
+  }
+
   /**
    * Send a message directly to a Telegram chat by chat ID.
    * Used for notifications (e.g. approval messages).
@@ -903,6 +947,7 @@ export class TelegramBot {
   async sendDirectMessage(chatId: string | number, text: string): Promise<boolean> {
     try {
       await this.bot.api.sendMessage(chatId, text)
+      this.syncOutgoingMessageToWeb(chatId, text)
       return true
     } catch (err) {
       console.error(`[telegram] Failed to send direct message to ${chatId}:`, err)
@@ -917,12 +962,14 @@ export class TelegramBot {
   async sendTaskNotification(chatId: string | number, html: string): Promise<boolean> {
     try {
       await this.bot.api.sendMessage(chatId, html, { parse_mode: 'HTML' })
+      this.syncOutgoingMessageToWeb(chatId, telegramHtmlToPlainText(html))
       return true
-    } catch (err) {
+    } catch {
       // Fallback to plain text if HTML parsing fails
       try {
-        const plainText = html.replace(/<[^>]+>/g, '')
+        const plainText = telegramHtmlToPlainText(html)
         await this.bot.api.sendMessage(chatId, plainText)
+        this.syncOutgoingMessageToWeb(chatId, plainText)
         return true
       } catch (fallbackErr) {
         console.error(`[telegram] Failed to send task notification to ${chatId}:`, fallbackErr)
