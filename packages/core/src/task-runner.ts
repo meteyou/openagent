@@ -465,7 +465,7 @@ export class TaskRunner {
             try {
               this.db.prepare(
                 'INSERT INTO chat_messages (session_id, user_id, role, content, metadata) VALUES (?, ?, ?, ?, ?)'
-              ).run(sessionId, 0, 'assistant', content, metadata)
+              ).run(sessionId, null, 'assistant', content, metadata)
             } catch {
               // Ignore persistence errors — non-critical
             }
