@@ -14,7 +14,7 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222 47% 11%;
 
-    --primary: 160 84% 39%;
+    --primary: 160 84% 30%;
     --primary-foreground: 0 0% 100%;
 
     --secondary: 210 40% 96%;
@@ -37,7 +37,7 @@
 
     --border: 214 32% 91%;
     --input: 214 32% 91%;
-    --ring: 160 84% 39%;
+    --ring: 160 84% 30%;
 
     --radius: 0.625rem;
     --shadow-color: 222 47% 11%;
@@ -57,13 +57,13 @@
     --color-text: hsl(222 47% 11%);
     --color-text-secondary: hsl(215 25% 35%);
     --color-text-muted: hsl(215 16% 55%);
-    --color-primary: hsl(160 84% 39%);
-    --color-primary-hover: hsl(160 84% 34%);
-    --color-primary-bg: hsl(160 84% 39% / 0.1);
+    --color-primary: hsl(160 84% 30%);
+    --color-primary-hover: hsl(160 84% 25%);
+    --color-primary-bg: hsl(160 84% 30% / 0.1);
     --color-danger: hsl(0 84% 60%);
     --color-success: hsl(142 71% 45%);
     --color-warning: hsl(38 92% 50%);
-    --color-user-bubble: hsl(160 84% 39%);
+    --color-user-bubble: hsl(160 84% 30%);
     --color-assistant-bubble: hsl(210 40% 96%);
     --color-system-bubble: hsl(210 40% 92%);
     --sidebar-width: 260px;
@@ -82,7 +82,7 @@
     --popover: 228 22% 14%;
     --popover-foreground: 220 20% 90%;
 
-    --primary: 160 84% 39%;
+    --primary: 160 84% 30%;
     --primary-foreground: 0 0% 100%;
 
     --secondary: 228 18% 18%;
@@ -105,7 +105,7 @@
 
     --border: 228 18% 20%;
     --input: 228 18% 20%;
-    --ring: 160 84% 39%;
+    --ring: 160 84% 30%;
 
     --shadow-color: 228 22% 5%;
 
@@ -124,13 +124,13 @@
     --color-text: #dde1ec;
     --color-text-secondary: #a0a8be;
     --color-text-muted: #6b7280;
-    --color-primary: #10b981;
-    --color-primary-hover: #059669;
-    --color-primary-bg: rgba(16, 185, 129, 0.12);
+    --color-primary: #0d9668;
+    --color-primary-hover: #047857;
+    --color-primary-bg: rgba(13, 150, 104, 0.12);
     --color-danger: #ef4444;
     --color-success: #22c55e;
     --color-warning: #f59e0b;
-    --color-user-bubble: #10b981;
+    --color-user-bubble: #0d9668;
     --color-assistant-bubble: #1e2233;
     --color-system-bubble: #181c2a;
     --sidebar-width: 260px;
