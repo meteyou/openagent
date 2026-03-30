@@ -588,7 +588,7 @@
       "user": "User",
       "agent": "Agent",
       "cronjob": "Cronjob"
-    },
+    }
   },
   "cronjobs": {
     "pageTitle": "Cronjobs",
@@ -605,9 +605,12 @@
     "runNow": "Run Now",
     "triggerSuccess": "Cronjob \"{name}\" triggered successfully.",
     "defaultProvider": "Default",
+    "actionTypeTask": "Task",
+    "actionTypeInjection": "Injection",
     "columns": {
       "name": "Name",
       "schedule": "Schedule",
+      "actionType": "Action",
       "provider": "Provider",
       "enabled": "Enabled",
       "lastRun": "Last Run"
@@ -619,6 +622,11 @@
       "promptPlaceholder": "Describe what this cronjob should do on each run...",
       "schedule": "Schedule (Cron Expression)",
       "scheduleHelp": "Format: minute hour day-of-month month day-of-week. Examples: \"0 9 * * *\" (daily at 9:00), \"*/15 * * * *\" (every 15 min), \"30 14 * * 1-5\" (weekdays at 14:30)",
+      "actionType": "Action Type",
+      "actionTypeTask": "Task (full agent)",
+      "actionTypeInjection": "Injection (lightweight)",
+      "actionTypeTaskHelp": "Spawns a full background agent with tools and capabilities. Best for complex work like research, file operations, or builds.",
+      "actionTypeInjectionHelp": "Injects a message directly into the main chat. Lightweight and instant — ideal for reminders, notifications, and simple alerts.",
       "provider": "Provider",
       "defaultProvider": "Default provider",
       "advanced": "Advanced Configuration",

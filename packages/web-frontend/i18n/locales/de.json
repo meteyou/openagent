@@ -586,7 +586,7 @@
       "user": "Benutzer",
       "agent": "Agent",
       "cronjob": "Cronjob"
-    },
+    }
   },
   "cronjobs": {
     "pageTitle": "Cronjobs",
@@ -603,9 +603,12 @@
     "runNow": "Jetzt ausführen",
     "triggerSuccess": "Cronjob \"{name}\" erfolgreich ausgelöst.",
     "defaultProvider": "Standard",
+    "actionTypeTask": "Task",
+    "actionTypeInjection": "Injection",
     "columns": {
       "name": "Name",
       "schedule": "Zeitplan",
+      "actionType": "Aktion",
       "provider": "Anbieter",
       "enabled": "Aktiviert",
       "lastRun": "Letzter Lauf"
@@ -617,6 +620,11 @@
       "promptPlaceholder": "Beschreiben Sie, was dieser Cronjob bei jedem Lauf tun soll...",
       "schedule": "Zeitplan (Cron-Ausdruck)",
       "scheduleHelp": "Format: Minute Stunde Tag-im-Monat Monat Wochentag. Beispiele: \"0 9 * * *\" (täglich um 9:00), \"*/15 * * * *\" (alle 15 Min), \"30 14 * * 1-5\" (wochentags um 14:30)",
+      "actionType": "Aktionstyp",
+      "actionTypeTask": "Task (vollständiger Agent)",
+      "actionTypeInjection": "Injection (leichtgewichtig)",
+      "actionTypeTaskHelp": "Startet einen vollständigen Hintergrund-Agenten mit Tools und Fähigkeiten. Am besten für komplexe Arbeiten wie Recherche, Dateioperationen oder Builds.",
+      "actionTypeInjectionHelp": "Injiziert eine Nachricht direkt in den Haupt-Chat. Leichtgewichtig und sofort — ideal für Erinnerungen, Benachrichtigungen und einfache Hinweise.",
       "provider": "Anbieter",
       "defaultProvider": "Standardanbieter",
       "advanced": "Erweiterte Konfiguration",
