@@ -179,7 +179,8 @@
     "preset_today": "Heute",
     "preset_yesterday": "Gestern",
     "preset_last7": "Letzte 7 Tage",
-    "preset_last30": "Letzte 30 Tage"
+    "preset_last30": "Letzte 30 Tage",
+    "unchangedLines": "{count} unveränderte Zeilen"
   },
   "memory": {
     "kicker": "Persistenter Kontext",

@@ -166,7 +166,7 @@
               <h4 class="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 {{ $t('logs.input') }}
               </h4>
-              <div class="max-h-[200px] overflow-y-auto rounded-md border border-border bg-muted/50 p-3 text-xs leading-relaxed">
+              <div class="oa-scrollbar max-h-[200px] overflow-y-auto rounded-md border border-border bg-muted/50 p-3 text-xs leading-snug">
                 <ToolDataDisplay :data="parseLogData(expandedDetail.input)" />
               </div>
             </div>
@@ -176,9 +176,15 @@
               <h4 class="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 {{ $t('logs.output') }}
               </h4>
-              <div class="max-h-[300px] overflow-y-auto rounded-md border border-border bg-muted/50 p-3 text-xs leading-relaxed">
+              <div
+                class="oa-scrollbar overflow-y-auto rounded-md border border-border bg-muted/50 p-3 text-xs leading-snug"
+                :class="hasMemoryConsolidationDiff(expandedDetail) ? 'max-h-[420px]' : 'max-h-[300px]'"
+              >
                 <template v-if="isEntrySkillLoad(expandedDetail)">
                   <pre class="whitespace-pre-wrap break-all text-foreground">{{ extractSkillContent(expandedDetail.output) ?? '' }}</pre>
+                </template>
+                <template v-else-if="hasMemoryConsolidationDiff(expandedDetail)">
+                  <MemoryConsolidationDiff :output="expandedDetail.output" />
                 </template>
                 <template v-else>
                   <ToolDataDisplay :data="parseLogData(expandedDetail.output)" :is-error="expandedDetail.status === 'error'" />
@@ -382,6 +388,17 @@ function toolBadgeClass(name: string): string {
   return 'border-transparent bg-primary/15 text-primary'
 }
 
+type MemoryConsolidationLogData = Record<string, unknown> & {
+  memoryDiff?: {
+    before?: string
+    after?: string
+  }
+}
+
+function isMemoryConsolidationEntry(entry: LogEntry): boolean {
+  return entry.toolName.toLowerCase() === 'memory_consolidation'
+}
+
 function parseLogData(data: string | null | undefined): unknown {
   if (!data) return null
   try {
@@ -389,6 +406,19 @@ function parseLogData(data: string | null | undefined): unknown {
   } catch {
     return data
   }
+}
+
+function parseMemoryConsolidationOutput(output: string | null | undefined): MemoryConsolidationLogData | null {
+  const parsed = parseLogData(output)
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
+  return parsed as MemoryConsolidationLogData
+}
+
+function hasMemoryConsolidationDiff(entry: LogEntry): boolean {
+  if (!isMemoryConsolidationEntry(entry)) return false
+  const parsed = parseMemoryConsolidationOutput(entry.output)
+  const diff = parsed?.memoryDiff
+  return !!diff && typeof diff.before === 'string' && typeof diff.after === 'string'
 }
 
 function parseInputParams(input: string | null | undefined): Record<string, string> {
