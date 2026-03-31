@@ -395,7 +395,6 @@ const filteredMessages = computed(() => {
   return messages.value.filter((msg) => {
     if (!showToolCalls.value && msg.role === 'tool' && msg.toolData) return false
     if (!showInjections.value && msg.role === 'system' && msg.isTaskResult) return false
-    if (!showInjections.value && msg.role === 'assistant' && msg.isTaskInjection) return false
     return true
   })
 })
