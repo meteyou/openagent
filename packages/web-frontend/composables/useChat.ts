@@ -131,6 +131,17 @@ export function useChat() {
 
     ws.onopen = () => {
       connectionStatus.value = 'connected'
+
+      // Clean up stale streaming messages from before the reconnect.
+      // If we lost the connection mid-stream, those messages will never
+      // receive a 'done' event, so force them to non-streaming.
+      const staleFixed = messages.value.map(m =>
+        m.streaming ? { ...m, streaming: false } : m
+      )
+      if (staleFixed.some((m, i) => m !== messages.value[i])) {
+        messages.value = staleFixed
+      }
+      isStreaming.value = false
     }
 
     ws.onmessage = (event) => {
@@ -294,14 +305,23 @@ ${msg.taskSummary ?? msg.text ?? 'No summary available.'}`
         isStreaming.value = false
         break
 
-      case 'error':
-        messages.value = [...messages.value, {
+      case 'error': {
+        // Clear streaming flag on the last message so it doesn't stay
+        // stuck with a loading indicator forever
+        const updatedOnError = [...messages.value]
+        const lastOnError = updatedOnError[updatedOnError.length - 1]
+        if (lastOnError && lastOnError.streaming) {
+          updatedOnError[updatedOnError.length - 1] = { ...lastOnError, streaming: false }
+        }
+        updatedOnError.push({
           role: 'system',
           content: `Error: ${msg.error}`,
           timestamp: new Date().toISOString(),
-        }]
+        })
+        messages.value = updatedOnError
         isStreaming.value = false
         break
+      }
 
       case 'tool_call_start':
         if (msg.toolName) {
