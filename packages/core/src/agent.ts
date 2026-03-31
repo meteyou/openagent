@@ -526,6 +526,8 @@ export class AgentCore {
       }
     })
 
+    let yieldedDone = false
+
     try {
       while (true) {
         // Process all queued events
@@ -533,6 +535,7 @@ export class AgentCore {
           const event = eventQueue.shift()!
           const chunks = this.processEvent(event, sessionId)
           for (const chunk of chunks) {
+            if (chunk.type === 'done') yieldedDone = true
             yield chunk
           }
         }
@@ -547,6 +550,12 @@ export class AgentCore {
     } finally {
       unsubscribe()
       await promptPromise
+    }
+
+    // Safety net: if no 'done' chunk was yielded (e.g. agent_end never fired),
+    // ensure we always signal completion so the frontend doesn't hang.
+    if (!yieldedDone && !preStreamError) {
+      yield { type: 'done' as const }
     }
 
     // Handle pre-stream error with fallback retry
