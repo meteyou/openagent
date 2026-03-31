@@ -37,10 +37,32 @@ export function useFormat() {
     }).format(new Date(value))
   }
 
+  /** Compact timestamp for log rows: "Mar 28, 14:30:05" */
+  function formatTimestamp(ts: string): string {
+    if (!ts) return ''
+    const d = new Date(ts + (ts.includes('Z') || ts.includes('+') ? '' : 'Z'))
+    return d.toLocaleString(locale.value, {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    })
+  }
+
+  /** Human-friendly duration: "120ms" or "1.2s" */
+  function formatDuration(ms: number | null | undefined): string {
+    if (ms == null) return '—'
+    if (ms < 1000) return `${ms}ms`
+    return `${(ms / 1000).toFixed(1)}s`
+  }
+
   return {
     formatNumber,
     formatCurrency,
     formatDateTime,
     formatDate,
+    formatTimestamp,
+    formatDuration,
   }
 }
