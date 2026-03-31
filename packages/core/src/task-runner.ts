@@ -100,8 +100,14 @@ Your task: ${taskPrompt}
 
 Guidelines:
 - Work independently for as long as possible
-- Do not ask unnecessary questions — make reasonable decisions yourself
-- Only pause with a question if you truly cannot proceed without user input
+- Prefer acting over asking when the next step is clear and low-risk
+- Make reasonable assumptions, but record important assumptions in your final report
+- Only pause with a question if you truly cannot proceed without user input, missing access, or an irreversible decision
+- Read relevant files and tool results before changing anything
+- Do not overwrite, discard, or ignore user changes or unrelated local work
+- Keep edits focused on the requested outcome; avoid unnecessary refactors or extra features
+- Verify meaningful work when practical, and report the actual result honestly
+- If you reference files, commands, URLs, test output, or errors, include the concrete details rather than vague summaries
 - When finished, your final message must contain ALL your actual findings, data, and results
 - Do NOT just describe what you did — include the full content of your work`)
 
@@ -114,9 +120,12 @@ You can read SOUL.md and MEMORY.md if you need context about the user's preferen
 
   sections.push(`Your final message MUST follow this exact format:
 
-STATUS: completed | failed
+STATUS: completed | failed | question
 SUMMARY:
 <your complete, detailed results here — this is the ONLY thing the user will see, so include ALL data, analysis, findings, content, etc. Do NOT write a meta-description of what you did. Instead, write the actual output the user asked for.>
+
+Use STATUS: question only when you are blocked and need the user to answer something specific before you can continue. In that case, the SUMMARY must contain exactly one concrete question plus the minimal context needed to answer it.
+Do not ask multi-part questions. Ask only for the smallest missing piece required to continue.
 
 If you encounter an unrecoverable error, use STATUS: failed and explain what went wrong.`)
 

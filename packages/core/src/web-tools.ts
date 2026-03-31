@@ -323,7 +323,7 @@ export function createWebSearchTool(config?: WebSearchConfig): AgentTool {
     label: 'Web Search',
     description:
       'Search the web for information. Returns a list of results with title, URL, and snippet. ' +
-      'Use this to find current information, documentation, facts, or any web content.',
+      'Use this to find current information, documentation, facts, or candidate sources. Search results are not the source itself — fetch the most relevant page before making claims about its contents.',
     parameters: Type.Object({
       query: Type.String({ description: 'The search query' }),
       count: Type.Optional(Type.Number({ description: 'Number of results to return (default: 5, max: 20)' })),
@@ -371,10 +371,10 @@ export function createWebFetchTool(_config?: WebFetchConfig): AgentTool {
     label: 'Web Fetch',
     description:
       'Fetch a web page and extract its text content. Use this to read articles, documentation, ' +
-      'blog posts, or any web page. Returns the extracted text without HTML tags.',
+      'blog posts, or other web pages when you need the page contents themselves rather than a search result. Returns extracted text without HTML tags. Use this after web_search when you need to verify what a page actually says.',
     parameters: Type.Object({
-      url: Type.String({ description: 'The URL to fetch' }),
-      maxLength: Type.Optional(Type.Number({ description: 'Maximum length of extracted text (default: 50000)' })),
+      url: Type.String({ description: 'The URL to fetch. Provide a complete URL including the scheme, e.g. https://example.com/page' }),
+      maxLength: Type.Optional(Type.Number({ description: 'Maximum length of extracted text to return (default: 50000). Lower this when you only need a focused excerpt.' })),
     }),
     execute: async (_toolCallId, params) => {
       const { url, maxLength: rawMaxLength } = params as { url: string; maxLength?: number }
