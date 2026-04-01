@@ -37,10 +37,10 @@ export function createCronjobTool(options: CronjobToolsOptions): AgentTool {
       'Convert the user\'s natural language schedule description into a standard cron expression (5 fields: minute hour day-of-month month day-of-week). ' +
       'Examples: "every day at 9:00" → "0 9 * * *", "every 15 minutes" → "*/15 * * * *", "weekdays at 14:30" → "30 14 * * 1-5". ' +
       'Use action_type "injection" only for lightweight static messages (reminders, notifications, simple alerts) that should be delivered 1:1 with no agent run. ' +
-      'Use action_type "task" (default) whenever the scheduled action must think, use tools/skills, fetch current data, check status, analyze something, or produce a fresh result at run time.',
+      'Use action_type "task" (default) whenever the scheduled action must think, use tools/skills, fetch current data, check status, analyze something, or produce a fresh result at run time. If unsure, choose "task".',
     parameters: Type.Object({
       prompt: Type.String({
-        description: 'Detailed prompt describing what the cronjob should do on each run. For injection type, this must be a static message to deliver verbatim. If the run should fetch current data, use tools/skills, or perform work first, use action_type "task" instead.',
+        description: 'Detailed prompt describing what the cronjob should do on each run. For action_type "task", make this self-contained and include the goal, constraints, and expected output. For action_type "injection", this must be a static message delivered verbatim. If the run should fetch current data, use tools/skills, or perform work first, use action_type "task" instead.',
       }),
       name: Type.String({
         description: 'Short, descriptive name for the cronjob (e.g., "Daily News Summary", "Hourly Health Check")',

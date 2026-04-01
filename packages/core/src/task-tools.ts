@@ -27,7 +27,7 @@ export function createResumeTaskTool(options: TaskToolsOptions): AgentTool {
     label: 'Resume Paused Task',
     description:
       'Send a response to a paused background task. Use this when a task has asked a question ' +
-      '(status: question) and the user has provided an answer. The task will resume with the provided message.',
+      '(status: question) and the user has now answered. Include the answer plus any brief context the task needs, then the task resumes in the background.',
     parameters: Type.Object({
       task_id: Type.String({
         description: 'The ID of the paused task to resume.',
@@ -103,12 +103,13 @@ export function createTaskTool(options: TaskToolsOptions): AgentTool {
     name: 'create_task',
     label: 'Create Background Task',
     description:
-      'Start a background task that runs autonomously. Use this for complex, long-running work ' +
-      'that the user wants done in the background (e.g., building apps, research, complex file operations). ' +
-      'The task runs in an isolated agent instance and results are reported back when complete.',
+      'Start a background task that runs autonomously. Use this for complex, long-running, or parallelizable work ' +
+      'that should continue in the background (e.g., building apps, substantial refactors, multi-step research, complex file operations). ' +
+      'Do not use it for simple questions or quick checks you can finish in the current turn. ' +
+      'Provide a self-contained prompt; the task runs in an isolated agent instance and reports back when complete, fails, or needs input.',
     parameters: Type.Object({
       prompt: Type.String({
-        description: 'Detailed prompt describing what the task should accomplish. Be specific and include all context needed.',
+        description: 'Detailed, self-contained prompt describing what the task should accomplish. Include the goal, constraints, relevant files or URLs, required checks, and the expected final deliverable. Write it so the task can proceed without relying on hidden chat context.',
       }),
       name: Type.String({
         description: 'Short, descriptive name for the task (e.g., "Build React App", "Research AI Papers")',
