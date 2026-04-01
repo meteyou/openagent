@@ -14,6 +14,8 @@ RUN apt-get update && apt-get install -y \
     jq \
     ca-certificates \
     gnupg \
+    sudo \
+    gosu \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js
@@ -49,6 +51,16 @@ ENV PATH="/data/npm-global/bin:${PATH}"
 
 # Create data directories
 RUN mkdir -p /data/db /data/config /data/memory/daily /data/skills /data/npm-global /workspace
+
+# Create non-root agent user with /workspace as home
+ARG USERNAME=agent
+ARG USER_UID=1000
+ARG USER_GID=1000
+RUN groupadd --gid ${USER_GID} ${USERNAME} \
+    && useradd --uid ${USER_UID} --gid ${USER_GID} -d /workspace ${USERNAME} -s /bin/bash \
+    && echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${USERNAME} \
+    && chmod 0440 /etc/sudoers.d/${USERNAME} \
+    && chown -R ${USER_UID}:${USER_GID} /workspace /data
 
 # Copy entrypoint
 COPY entrypoint.sh /entrypoint.sh

@@ -4,7 +4,28 @@ set -e
 echo "[openagent] Starting entrypoint..."
 
 # Ensure data directories exist
-mkdir -p /data/db /data/config /data/memory/daily /data/skills /workspace
+mkdir -p /data/db /data/config /data/memory/daily /data/skills /data/npm-global /workspace
+
+# Fix ownership on first run or after migration from root user
+if [ "$(stat -c '%u' /workspace)" = "0" ]; then
+    echo "[openagent] Migrating workspace ownership to agent user..."
+    chown -R agent:agent /workspace
+fi
+
+if [ "$(stat -c '%u' /data)" = "0" ]; then
+    echo "[openagent] Migrating data ownership to agent user..."
+    chown -R agent:agent /data
+fi
+
+# Set up home defaults if missing (volume overlays image content on first run)
+if [ ! -f /workspace/.bashrc ]; then
+    cp /etc/skel/.bashrc /workspace/.bashrc
+    chown agent:agent /workspace/.bashrc
+fi
+
+if [ ! -d /workspace/.ssh ]; then
+    gosu agent mkdir -p -m 700 /workspace/.ssh
+fi
 
 # Install user-defined packages from packages.txt
 PACKAGES_FILE="/data/packages.txt"
@@ -27,7 +48,7 @@ else
     echo "[openagent] No $PACKAGES_FILE found, skipping package installation."
 fi
 
-# Start the application
-echo "[openagent] Starting server..."
+# Start the application as agent user
+echo "[openagent] Starting server as agent user..."
 cd /app
-exec npm run start --workspace=packages/web-backend
+exec gosu agent npm run start --workspace=packages/web-backend
