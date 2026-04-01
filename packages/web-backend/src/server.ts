@@ -29,10 +29,9 @@ import {
   deliverTaskNotification,
   createYoloTools,
   createBuiltinWebTools,
-  resolveBuiltinToolsConfig,
   logToolCall,
 } from '@openagent/core'
-import type { ProviderConfig, LoopDetectionConfig, BuiltinToolsConfig, SettingsBuiltinToolsConfig } from '@openagent/core'
+import type { ProviderConfig, LoopDetectionConfig, BuiltinToolsConfig } from '@openagent/core'
 import { setupWebSocketChat } from './ws-chat.js'
 import { setupWebSocketLogs } from './ws-logs.js'
 import { setupWebSocketTask } from './ws-task.js'
@@ -81,14 +80,15 @@ try {
   const settings = loadConfig<{
     sessionTimeoutMinutes?: number
     tasks?: typeof taskSettings
-  } & SettingsBuiltinToolsConfig>('settings.json')
+    builtinTools?: BuiltinToolsConfig
+  }>('settings.json')
   if (settings.sessionTimeoutMinutes && settings.sessionTimeoutMinutes > 0) {
     sessionTimeoutMinutes = settings.sessionTimeoutMinutes
   }
   if (settings.tasks) {
     taskSettings = { ...taskSettings, ...settings.tasks }
   }
-  builtinToolsConfig = resolveBuiltinToolsConfig(settings)
+  builtinToolsConfig = settings.builtinTools
 } catch { /* use default */ }
 
 // Helper: resolve a provider by name or ID
