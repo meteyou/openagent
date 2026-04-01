@@ -126,8 +126,11 @@ export {
   resolveSearchProvider,
   encryptBraveApiKey,
   decryptBraveApiKey,
+  stripInlineHtml,
+  withRetry,
+  BraveSearchError,
 } from './web-tools.js'
-export type { WebSearchResult, WebSearchConfig, WebFetchConfig, BuiltinToolsConfig, SearchProvider, ResolvedSearchProvider } from './web-tools.js'
+export type { WebSearchResult, WebSearchConfig, WebFetchConfig, BuiltinToolsConfig, SearchProvider, ResolvedSearchProvider, BraveErrorCategory, RetryOptions } from './web-tools.js'
 export { AgentCore, createYoloTools, getWorkspaceDir } from './agent.js'
 export type { ResponseChunk, AgentCoreOptions } from './agent.js'
 export { ProviderManager } from './provider-manager.js'

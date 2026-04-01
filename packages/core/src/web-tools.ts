@@ -16,6 +16,11 @@ export interface WebSearchConfig {
   provider?: SearchProvider
   braveSearchApiKey?: string
   searxngUrl?: string
+  retry?: {
+    maxRetries?: number
+    baseDelayMs?: number
+    delayFn?: (ms: number) => Promise<void>
+  }
 }
 
 export interface WebFetchConfig {
@@ -30,6 +35,22 @@ export interface BuiltinToolsConfig {
     searxngUrl?: string
   }
   webFetch?: { enabled?: boolean }
+}
+
+// ─── Error Types ─────────────────────────────────────────────────────────────
+
+export type BraveErrorCategory = 'auth' | 'rate_limit' | 'server_error' | 'network' | 'unknown'
+
+export class BraveSearchError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly category: BraveErrorCategory,
+    public readonly retryable: boolean,
+  ) {
+    super(message)
+    this.name = 'BraveSearchError'
+  }
 }
 
 // ─── HTML-to-Text Extraction ─────────────────────────────────────────────────
@@ -75,6 +96,67 @@ export function extractTextFromHtml(html: string): string {
   text = text.split('\n').map(line => line.trim()).join('\n')
 
   return text.trim()
+}
+
+// ─── Inline HTML Stripping ───────────────────────────────────────────────────
+
+/**
+ * Strip inline HTML tags and decode common entities.
+ * Lighter than extractTextFromHtml — designed for short snippets.
+ */
+export function stripInlineHtml(text: string): string {
+  return text
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&#x27;/gi, "'")
+    .replace(/&#(\d+);/g, (_match, code) => String.fromCharCode(Number(code)))
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+// ─── Retry Utility ───────────────────────────────────────────────────────────
+
+export interface RetryOptions {
+  maxRetries: number
+  baseDelayMs: number
+  shouldRetry?: (err: unknown) => boolean
+  delayFn?: (ms: number) => Promise<void>
+}
+
+const defaultDelay = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms))
+
+/**
+ * Execute a function with retry and exponential backoff.
+ * Returns the result along with the number of retries that occurred.
+ */
+export async function withRetry<T>(
+  fn: () => Promise<T>,
+  opts: RetryOptions,
+): Promise<{ result: T; retries: number }> {
+  const { maxRetries, baseDelayMs, shouldRetry, delayFn = defaultDelay } = opts
+  let lastError: unknown
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const result = await fn()
+      return { result, retries: attempt }
+    } catch (err) {
+      lastError = err
+      if (attempt < maxRetries && (!shouldRetry || shouldRetry(err))) {
+        const delay = baseDelayMs * Math.pow(2, attempt)
+        await delayFn(delay)
+      } else {
+        break
+      }
+    }
+  }
+
+  throw lastError
 }
 
 // ─── DuckDuckGo Search Provider ──────────────────────────────────────────────
@@ -186,7 +268,39 @@ export async function searchBrave(
   })
 
   if (!response.ok) {
-    throw new Error(`Brave Search failed: HTTP ${response.status}`)
+    let bodyText = ''
+    try {
+      bodyText = await response.text()
+    } catch { /* ignore body read failures */ }
+
+    const detail = bodyText ? ` Details: ${bodyText}` : ''
+    const status = response.status
+
+    if (status === 401) {
+      throw new BraveSearchError(
+        `Brave Search auth failed (HTTP 401): invalid or missing API key. Check your braveSearchApiKey configuration.${detail}`,
+        status, 'auth', false,
+      )
+    }
+
+    if (status === 429) {
+      throw new BraveSearchError(
+        `Brave Search rate limited (HTTP 429). You may have hit the free plan limit.${detail}`,
+        status, 'rate_limit', true,
+      )
+    }
+
+    if (status >= 500) {
+      throw new BraveSearchError(
+        `Brave Search server error (HTTP ${status}).${detail}`,
+        status, 'server_error', true,
+      )
+    }
+
+    throw new BraveSearchError(
+      `Brave Search failed (HTTP ${status}).${detail}`,
+      status, 'unknown', false,
+    )
   }
 
   const data = await response.json() as { web?: { results?: Array<{ title?: string; url?: string; description?: string }> } }
@@ -195,7 +309,7 @@ export async function searchBrave(
   return webResults.slice(0, count).map(r => ({
     title: r.title ?? '',
     url: r.url ?? '',
-    snippet: r.description ?? '',
+    snippet: stripInlineHtml(r.description ?? ''),
   }))
 }
 
@@ -335,30 +449,82 @@ export function createWebSearchTool(config?: WebSearchConfig): AgentTool {
       const { query, count: rawCount } = params as { query: string; count?: number }
       const count = Math.min(Math.max(rawCount ?? 5, 1), 20)
 
-      try {
-        const results = await resolved.searchFn(query, count)
+      const retryOpts: RetryOptions = {
+        maxRetries: resolved.provider !== 'duckduckgo' ? (config?.retry?.maxRetries ?? 2) : 0,
+        baseDelayMs: config?.retry?.baseDelayMs ?? 500,
+        shouldRetry: (err: unknown) => err instanceof BraveSearchError && err.retryable,
+        delayFn: config?.retry?.delayFn,
+      }
 
-        if (results.length === 0) {
+      let results: WebSearchResult[]
+      let retries = 0
+      let usedFallback = false
+      let failureCategory: BraveErrorCategory | 'network' | undefined
+
+      try {
+        const retryResult = await withRetry(
+          () => resolved.searchFn(query, count),
+          retryOpts,
+        )
+        results = retryResult.result
+        retries = retryResult.retries
+      } catch (err: unknown) {
+        failureCategory = err instanceof BraveSearchError ? err.category : 'network'
+
+        // Fall back to DuckDuckGo if primary provider is not already DDG
+        if (resolved.provider !== 'duckduckgo') {
+          try {
+            results = await searchDuckDuckGo(query, count)
+            usedFallback = true
+          } catch (_fallbackErr: unknown) {
+            const message = err instanceof Error ? err.message : String(err)
+            return {
+              content: [{ type: 'text' as const, text: `Search failed: ${message}` }],
+              details: { error: true, query, provider: resolved.provider, failureCategory },
+            }
+          }
+        } else {
+          const message = err instanceof Error ? err.message : String(err)
           return {
-            content: [{ type: 'text' as const, text: `No results found for: "${query}"` }],
-            details: { query, count: 0, provider: resolved.provider },
+            content: [{ type: 'text' as const, text: `Search failed: ${message}` }],
+            details: { error: true, query, provider: resolved.provider },
           }
         }
+      }
 
-        const formatted = results
-          .map((r, i) => `${i + 1}. **${r.title}**\n   URL: ${r.url}\n   ${r.snippet}`)
-          .join('\n\n')
+      const actualProvider = usedFallback ? 'duckduckgo' : resolved.provider
 
+      if (results!.length === 0) {
         return {
-          content: [{ type: 'text' as const, text: formatted }],
-          details: { query, count: results.length, provider: resolved.provider, results },
+          content: [{ type: 'text' as const, text: `No results found for: "${query}"` }],
+          details: {
+            query,
+            count: 0,
+            provider: actualProvider,
+            ...(retries > 0 && { retries }),
+            ...(usedFallback && { fallback: true, requestedProvider: resolved.provider, failureCategory }),
+          },
         }
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : String(err)
-        return {
-          content: [{ type: 'text' as const, text: `Search failed: ${message}` }],
-          details: { error: true, query, provider: resolved.provider },
-        }
+      }
+
+      const formatted = results!
+        .map((r, i) => `${i + 1}. **${r.title}**\n   URL: ${r.url}\n   ${r.snippet}`)
+        .join('\n\n')
+
+      const fallbackNote = usedFallback
+        ? `\n\n_Note: ${resolved.provider} search failed after retries. Results from DuckDuckGo fallback._`
+        : ''
+
+      return {
+        content: [{ type: 'text' as const, text: formatted + fallbackNote }],
+        details: {
+          query,
+          count: results!.length,
+          provider: actualProvider,
+          results: results!,
+          ...(retries > 0 && { retries }),
+          ...(usedFallback && { fallback: true, requestedProvider: resolved.provider, failureCategory }),
+        },
       }
     },
   }

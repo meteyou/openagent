@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
   extractTextFromHtml,
+  stripInlineHtml,
+  withRetry,
+  BraveSearchError,
   parseDuckDuckGoLiteHtml,
   searchDuckDuckGo,
   searchBrave,
@@ -94,6 +97,144 @@ describe('extractTextFromHtml', () => {
     const html = '<p>&#65;&#66;&#67;</p>'
     const text = extractTextFromHtml(html)
     expect(text).toContain('ABC')
+  })
+})
+
+// ─── stripInlineHtml ─────────────────────────────────────────────────────────
+
+describe('stripInlineHtml', () => {
+  it('strips basic HTML tags', () => {
+    expect(stripInlineHtml('<strong>bold text</strong>')).toBe('bold text')
+  })
+
+  it('strips multiple nested tags', () => {
+    expect(stripInlineHtml('<em><strong>nested</strong> text</em>')).toBe('nested text')
+  })
+
+  it('decodes HTML entities', () => {
+    expect(stripInlineHtml('&amp; &lt; &gt; &quot; &#39;')).toBe('& < > " \'')
+  })
+
+  it('normalizes whitespace', () => {
+    expect(stripInlineHtml('  too   many   spaces  ')).toBe('too many spaces')
+  })
+
+  it('handles empty string', () => {
+    expect(stripInlineHtml('')).toBe('')
+  })
+
+  it('returns plain text unchanged', () => {
+    expect(stripInlineHtml('just plain text')).toBe('just plain text')
+  })
+
+  it('handles Brave-style snippet markup', () => {
+    expect(stripInlineHtml('<strong>an open platform</strong> for building AI agents'))
+      .toBe('an open platform for building AI agents')
+  })
+
+  it('decodes nbsp', () => {
+    expect(stripInlineHtml('hello&nbsp;world')).toBe('hello world')
+  })
+
+  it('decodes numeric entities', () => {
+    expect(stripInlineHtml('&#65;&#66;&#67;')).toBe('ABC')
+  })
+})
+
+// ─── withRetry ───────────────────────────────────────────────────────────────
+
+describe('withRetry', () => {
+  const noDelay = async () => {}
+
+  it('returns result on first success', async () => {
+    const fn = vi.fn().mockResolvedValue('ok')
+    const { result, retries } = await withRetry(fn, { maxRetries: 2, baseDelayMs: 10, delayFn: noDelay })
+    expect(result).toBe('ok')
+    expect(retries).toBe(0)
+    expect(fn).toHaveBeenCalledTimes(1)
+  })
+
+  it('retries on failure and succeeds', async () => {
+    const fn = vi.fn()
+      .mockRejectedValueOnce(new BraveSearchError('rate limited', 429, 'rate_limit', true))
+      .mockResolvedValue('ok')
+    const delayFn = vi.fn().mockResolvedValue(undefined)
+
+    const { result, retries } = await withRetry(fn, {
+      maxRetries: 2,
+      baseDelayMs: 100,
+      shouldRetry: (err) => err instanceof BraveSearchError && err.retryable,
+      delayFn,
+    })
+    expect(result).toBe('ok')
+    expect(retries).toBe(1)
+    expect(fn).toHaveBeenCalledTimes(2)
+    expect(delayFn).toHaveBeenCalledWith(100) // baseDelayMs * 2^0
+  })
+
+  it('applies exponential backoff delays', async () => {
+    const fn = vi.fn()
+      .mockRejectedValueOnce(new BraveSearchError('err', 500, 'server_error', true))
+      .mockRejectedValueOnce(new BraveSearchError('err', 500, 'server_error', true))
+      .mockResolvedValue('ok')
+    const delayFn = vi.fn().mockResolvedValue(undefined)
+
+    await withRetry(fn, {
+      maxRetries: 3,
+      baseDelayMs: 100,
+      shouldRetry: (err) => err instanceof BraveSearchError && err.retryable,
+      delayFn,
+    })
+
+    expect(delayFn).toHaveBeenCalledTimes(2)
+    expect(delayFn).toHaveBeenNthCalledWith(1, 100)  // 100 * 2^0
+    expect(delayFn).toHaveBeenNthCalledWith(2, 200)  // 100 * 2^1
+  })
+
+  it('throws after maxRetries exhausted', async () => {
+    const error = new BraveSearchError('rate limited', 429, 'rate_limit', true)
+    const fn = vi.fn().mockRejectedValue(error)
+
+    await expect(withRetry(fn, {
+      maxRetries: 2,
+      baseDelayMs: 10,
+      shouldRetry: () => true,
+      delayFn: noDelay,
+    })).rejects.toThrow('rate limited')
+
+    expect(fn).toHaveBeenCalledTimes(3) // initial + 2 retries
+  })
+
+  it('does not retry non-retryable errors', async () => {
+    const error = new BraveSearchError('auth failed', 401, 'auth', false)
+    const fn = vi.fn().mockRejectedValue(error)
+    const delayFn = vi.fn().mockResolvedValue(undefined)
+
+    await expect(withRetry(fn, {
+      maxRetries: 2,
+      baseDelayMs: 10,
+      shouldRetry: (err) => err instanceof BraveSearchError && err.retryable,
+      delayFn,
+    })).rejects.toThrow('auth failed')
+
+    expect(fn).toHaveBeenCalledTimes(1)
+    expect(delayFn).not.toHaveBeenCalled()
+  })
+
+  it('works with maxRetries=0 (no retry)', async () => {
+    const fn = vi.fn().mockRejectedValue(new Error('fail'))
+    await expect(withRetry(fn, { maxRetries: 0, baseDelayMs: 10, delayFn: noDelay })).rejects.toThrow('fail')
+    expect(fn).toHaveBeenCalledTimes(1)
+  })
+
+  it('retries all errors when shouldRetry is not provided', async () => {
+    const fn = vi.fn()
+      .mockRejectedValueOnce(new Error('transient'))
+      .mockResolvedValue('ok')
+
+    const { result, retries } = await withRetry(fn, { maxRetries: 1, baseDelayMs: 10, delayFn: noDelay })
+    expect(result).toBe('ok')
+    expect(retries).toBe(1)
   })
 })
 
@@ -289,13 +430,123 @@ describe('searchBrave', () => {
     })
   })
 
-  it('throws on non-OK response', async () => {
+  it('throws BraveSearchError with auth category on 401', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      text: async () => 'Unauthorized',
+    })
+
+    try {
+      await searchBrave('test', 'bad-key', 5, mockFetch)
+      expect.fail('should have thrown')
+    } catch (err) {
+      expect(err).toBeInstanceOf(BraveSearchError)
+      const e = err as InstanceType<typeof BraveSearchError>
+      expect(e.status).toBe(401)
+      expect(e.category).toBe('auth')
+      expect(e.retryable).toBe(false)
+      expect(e.message).toContain('auth failed')
+      expect(e.message).toContain('API key')
+      expect(e.message).toContain('Unauthorized')
+    }
+  })
+
+  it('throws BraveSearchError with rate_limit category on 429', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 429,
+      text: async () => 'Too Many Requests',
+    })
+
+    try {
+      await searchBrave('test', 'key', 5, mockFetch)
+      expect.fail('should have thrown')
+    } catch (err) {
+      expect(err).toBeInstanceOf(BraveSearchError)
+      const e = err as InstanceType<typeof BraveSearchError>
+      expect(e.status).toBe(429)
+      expect(e.category).toBe('rate_limit')
+      expect(e.retryable).toBe(true)
+      expect(e.message).toContain('rate limited')
+      expect(e.message).toContain('free plan')
+    }
+  })
+
+  it('throws BraveSearchError with server_error category on 5xx', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 503,
+      text: async () => 'Service Unavailable',
+    })
+
+    try {
+      await searchBrave('test', 'key', 5, mockFetch)
+      expect.fail('should have thrown')
+    } catch (err) {
+      expect(err).toBeInstanceOf(BraveSearchError)
+      const e = err as InstanceType<typeof BraveSearchError>
+      expect(e.status).toBe(503)
+      expect(e.category).toBe('server_error')
+      expect(e.retryable).toBe(true)
+      expect(e.message).toContain('server error')
+      expect(e.message).toContain('Service Unavailable')
+    }
+  })
+
+  it('includes response body details in error for unknown status', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 403,
+      text: async () => '{"error": "forbidden"}',
+    })
+
+    try {
+      await searchBrave('test', 'key', 5, mockFetch)
+      expect.fail('should have thrown')
+    } catch (err) {
+      expect(err).toBeInstanceOf(BraveSearchError)
+      const e = err as InstanceType<typeof BraveSearchError>
+      expect(e.status).toBe(403)
+      expect(e.category).toBe('unknown')
+      expect(e.retryable).toBe(false)
+      expect(e.message).toContain('{"error": "forbidden"}')
+    }
+  })
+
+  it('handles missing response body gracefully in errors', async () => {
     const mockFetch = vi.fn().mockResolvedValue({
       ok: false,
       status: 401,
     })
 
-    await expect(searchBrave('test', 'bad-key', 5, mockFetch)).rejects.toThrow('HTTP 401')
+    try {
+      await searchBrave('test', 'bad-key', 5, mockFetch)
+      expect.fail('should have thrown')
+    } catch (err) {
+      expect(err).toBeInstanceOf(BraveSearchError)
+      const e = err as InstanceType<typeof BraveSearchError>
+      expect(e.status).toBe(401)
+      expect(e.message).toContain('auth failed')
+      expect(e.message).not.toContain('Details:')
+    }
+  })
+
+  it('strips HTML from result snippets', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        web: {
+          results: [
+            { title: 'Test', url: 'https://example.com', description: '<strong>an open platform</strong> for building AI agents' },
+          ],
+        },
+      }),
+    })
+
+    const results = await searchBrave('test', 'key', 5, mockFetch)
+    expect(results[0].snippet).toBe('an open platform for building AI agents')
+    expect(results[0].snippet).not.toContain('<strong>')
   })
 
   it('returns empty array when no web results', async () => {
@@ -573,6 +824,155 @@ describe('createWebSearchTool', () => {
       expect(text).toContain('Search failed')
       expect(text).toContain('Network error')
       expect(result.details.error).toBe(true)
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  it('falls back to DuckDuckGo when Brave fails after retries', async () => {
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+      if (typeof url === 'string' && url.includes('api.search.brave.com')) {
+        return Promise.resolve({
+          ok: false,
+          status: 429,
+          text: async () => 'Rate limited',
+        })
+      }
+      // DuckDuckGo fallback
+      return Promise.resolve({
+        ok: true,
+        text: async () => `
+          <a rel="nofollow" href="https://example.com" class="result-link">DDG Fallback</a>
+          <td class="result-snippet">Fallback snippet</td>
+        `,
+      })
+    }) as unknown as typeof fetch
+
+    try {
+      const tool = createWebSearchTool({
+        provider: 'brave',
+        braveSearchApiKey: 'test-key',
+        retry: { maxRetries: 1, baseDelayMs: 1, delayFn: async () => {} },
+      })
+      const result = await tool.execute('test-id', { query: 'test' })
+
+      const text = (result.content[0] as { type: 'text'; text: string }).text
+      expect(text).toContain('DDG Fallback')
+      expect(text).toContain('DuckDuckGo fallback')
+      expect(result.details.provider).toBe('duckduckgo')
+      expect(result.details.fallback).toBe(true)
+      expect(result.details.requestedProvider).toBe('brave')
+      expect(result.details.failureCategory).toBe('rate_limit')
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  it('includes retry count in metadata when retries occurred', async () => {
+    const originalFetch = globalThis.fetch
+    let braveCallCount = 0
+    globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+      if (typeof url === 'string' && url.includes('api.search.brave.com')) {
+        braveCallCount++
+        if (braveCallCount === 1) {
+          return Promise.resolve({
+            ok: false,
+            status: 503,
+            text: async () => 'Server Error',
+          })
+        }
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            web: {
+              results: [
+                { title: 'Brave Result', url: 'https://example.com', description: 'Got it on retry' },
+              ],
+            },
+          }),
+        })
+      }
+      return Promise.resolve({ ok: false, status: 500 })
+    }) as unknown as typeof fetch
+
+    try {
+      const tool = createWebSearchTool({
+        provider: 'brave',
+        braveSearchApiKey: 'test-key',
+        retry: { maxRetries: 2, baseDelayMs: 1, delayFn: async () => {} },
+      })
+      const result = await tool.execute('test-id', { query: 'test' })
+
+      const text = (result.content[0] as { type: 'text'; text: string }).text
+      expect(text).toContain('Brave Result')
+      expect(result.details.retries).toBe(1)
+      expect(result.details.provider).toBe('brave')
+      expect(result.details.fallback).toBeUndefined()
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  it('returns error with failureCategory when both Brave and fallback fail', async () => {
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = vi.fn().mockImplementation(() => {
+      return Promise.resolve({
+        ok: false,
+        status: 429,
+        text: async () => 'Rate limited',
+      })
+    }) as unknown as typeof fetch
+
+    try {
+      const tool = createWebSearchTool({
+        provider: 'brave',
+        braveSearchApiKey: 'test-key',
+        retry: { maxRetries: 0, baseDelayMs: 1, delayFn: async () => {} },
+      })
+      const result = await tool.execute('test-id', { query: 'test' })
+
+      const text = (result.content[0] as { type: 'text'; text: string }).text
+      expect(text).toContain('Search failed')
+      expect(result.details.error).toBe(true)
+      expect(result.details.failureCategory).toBe('rate_limit')
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  it('does not retry for non-retryable Brave errors (401)', async () => {
+    const originalFetch = globalThis.fetch
+    let braveCallCount = 0
+    globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+      if (typeof url === 'string' && url.includes('api.search.brave.com')) {
+        braveCallCount++
+        return Promise.resolve({
+          ok: false,
+          status: 401,
+          text: async () => 'Unauthorized',
+        })
+      }
+      // DDG fallback
+      return Promise.resolve({
+        ok: true,
+        text: async () => `
+          <a rel="nofollow" href="https://example.com" class="result-link">DDG Result</a>
+          <td class="result-snippet">DDG snippet</td>
+        `,
+      })
+    }) as unknown as typeof fetch
+
+    try {
+      const tool = createWebSearchTool({
+        provider: 'brave',
+        braveSearchApiKey: 'test-key',
+        retry: { maxRetries: 2, baseDelayMs: 1, delayFn: async () => {} },
+      })
+      await tool.execute('test-id', { query: 'test' })
+
+      // Should only have called Brave once (no retries for 401)
+      expect(braveCallCount).toBe(1)
     } finally {
       globalThis.fetch = originalFetch
     }
