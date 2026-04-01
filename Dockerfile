@@ -65,7 +65,10 @@ RUN chmod +x /usr/local/bin/track-packages.sh \
 ARG USERNAME=agent
 ARG USER_UID=1000
 ARG USER_GID=1000
-RUN groupadd --force --gid ${USER_GID} ${USERNAME} \
+RUN existing_user=$(getent passwd ${USER_UID} | cut -d: -f1) \
+    && if [ -n "$existing_user" ] && [ "$existing_user" != "${USERNAME}" ]; then userdel -r "$existing_user" 2>/dev/null || true; fi \
+    && existing_group=$(getent group ${USER_GID} | cut -d: -f1) \
+    && if [ -n "$existing_group" ] && [ "$existing_group" != "${USERNAME}" ]; then groupmod -n ${USERNAME} "$existing_group"; else groupadd --force --gid ${USER_GID} ${USERNAME}; fi \
     && useradd --uid ${USER_UID} --gid ${USER_GID} -d /workspace ${USERNAME} -s /bin/bash \
     && echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${USERNAME} \
     && chmod 0440 /etc/sudoers.d/${USERNAME} \
