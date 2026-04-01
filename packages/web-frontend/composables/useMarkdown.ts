@@ -7,6 +7,15 @@ marked.setOptions({
   gfm: true,
 })
 
+const renderer = new marked.Renderer()
+renderer.link = ({ href, title, tokens }) => {
+  const text = marked.Parser.parseInline(tokens)
+  const safeHref = href || ''
+  const titleAttr = title ? ` title="${title}"` : ''
+
+  return `<a href="${safeHref}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`
+}
+
 // Configure turndown for HTML → Markdown conversion (used on copy)
 const turndown = new TurndownService({
   headingStyle: 'atx',
@@ -22,7 +31,7 @@ const turndown = new TurndownService({
 export function useMarkdown() {
   function renderMarkdown(text: string): string {
     if (!text) return ''
-    const html = marked.parse(text) as string
+    const html = marked.parse(text, { renderer }) as string
     return html
   }
 
