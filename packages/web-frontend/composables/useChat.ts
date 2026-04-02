@@ -6,6 +6,19 @@ export interface ToolCallData {
   toolIsError?: boolean
 }
 
+export interface ChatAttachment {
+  kind: 'image' | 'file'
+  originalName: string
+  storedName: string
+  relativePath: string
+  urlPath: string
+  mimeType: string
+  size: number
+  previewUrl?: string
+  width?: number
+  height?: number
+}
+
 export interface ChatMessage {
   id?: number
   role: 'user' | 'assistant' | 'system' | 'tool' | 'divider'
@@ -97,6 +110,16 @@ function formatReminderContent(name?: string, message?: string): string {
   }
 
   return `⏰ ${trimmedName}\n\n${trimmedMessage}`
+}
+
+function parseAttachments(metadata?: string): ChatAttachment[] {
+  if (!metadata) return []
+  try {
+    const parsed = JSON.parse(metadata) as { files?: ChatAttachment[] }
+    return Array.isArray(parsed.files) ? parsed.files : []
+  } catch {
+    return []
+  }
 }
 
 // Module-level singletons so multiple useChat() calls share the same WebSocket
@@ -360,18 +383,41 @@ ${msg.taskSummary ?? msg.text ?? 'No summary available.'}`
     }
   }
 
-  function sendMessage(content: string) {
-    if (!ws || ws.readyState !== WebSocket.OPEN) return
-    if (!content.trim()) return
+  async function sendMessage(content: string, files: File[] = []) {
+    const trimmed = content.trim()
+    if (!trimmed && files.length === 0) return
 
-    // Add user message to UI immediately
+    if (files.length > 0) {
+      const { apiFetch } = useApi()
+      const formData = new FormData()
+      formData.append('content', trimmed)
+      for (const file of files) formData.append('files', file)
+
+      const response = await apiFetch<{ message: { session_id: string; role: 'user'; content: string; metadata?: string; timestamp: string } }>('/api/chat/message', {
+        method: 'POST',
+        body: formData as unknown as BodyInit,
+      })
+
+      const attachments = parseAttachments(response.message.metadata)
+      messages.value = [...messages.value, {
+        role: 'user',
+        content: response.message.content,
+        timestamp: response.message.timestamp,
+        attachments,
+      }]
+      return
+    }
+
+    if (!ws || ws.readyState !== WebSocket.OPEN) return
+    if (!trimmed) return
+
     messages.value = [...messages.value, {
       role: 'user',
-      content: content.trim(),
+      content: trimmed,
       timestamp: new Date().toISOString(),
     }]
 
-    ws.send(JSON.stringify({ type: 'message', content: content.trim() }))
+    ws.send(JSON.stringify({ type: 'message', content: trimmed }))
   }
 
   function sendCommand(command: string) {

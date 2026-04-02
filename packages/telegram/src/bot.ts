@@ -3,7 +3,7 @@ import path from 'node:path'
 import { Bot, GrammyError, HttpError } from 'grammy'
 import type { Context } from 'grammy'
 import type { AgentCore, Database } from '@openagent/core'
-import { loadConfig } from '@openagent/core'
+import { loadConfig, saveUpload, serializeUploadsMetadata } from '@openagent/core'
 
 /**
  * Telegram config stored in /data/config/telegram.json
@@ -372,9 +372,16 @@ export class TelegramBot {
       await this.handleKillSwitch(ctx)
     })
 
-    // Regular text messages
     this.bot.on('message:text', async (ctx) => {
       await this.handleMessage(ctx)
+    })
+
+    this.bot.on('message:document', async (ctx) => {
+      await this.handleIncomingAttachment(ctx, 'document')
+    })
+
+    this.bot.on('message:photo', async (ctx) => {
+      await this.handleIncomingAttachment(ctx, 'photo')
     })
   }
 
@@ -554,6 +561,63 @@ export class TelegramBot {
     if (!await this.checkAuthorized(ctx)) return
 
     this.bufferMessage(ctx, text)
+  }
+
+  private async downloadTelegramFile(fileId: string): Promise<{ buffer: Buffer; mimeType?: string }> {
+    const file = await this.bot.api.getFile(fileId)
+    if (!file.file_path) throw new Error('Missing Telegram file path')
+    const url = `https://api.telegram.org/file/bot${this.config.botToken}/${file.file_path}`
+    const response = await fetch(url)
+    if (!response.ok) throw new Error('Failed to download Telegram file')
+    return { buffer: Buffer.from(await response.arrayBuffer()) }
+  }
+
+  private async handleIncomingAttachment(ctx: Context, kind: 'document' | 'photo'): Promise<void> {
+    if (!await this.checkAuthorized(ctx)) return
+
+    const userId = this.resolveUserId(ctx)
+    const numericUserId = this.resolveNumericUserId(ctx)
+    const caption = ctx.msg?.caption?.trim() ?? ''
+    const sessionId = `telegram-${userId}-${Date.now()}`
+
+    try {
+      let upload
+      if (kind === 'document' && ctx.message?.document) {
+        const payload = await this.downloadTelegramFile(ctx.message.document.file_id)
+        upload = saveUpload({
+          buffer: payload.buffer,
+          originalName: ctx.message.document.file_name ?? 'document',
+          mimeType: ctx.message.document.mime_type ?? 'application/octet-stream',
+          source: 'telegram',
+          userId: numericUserId,
+          sessionId,
+        })
+      } else if (kind === 'photo' && ctx.message?.photo?.length) {
+        const photo = ctx.message.photo[ctx.message.photo.length - 1]
+        const payload = await this.downloadTelegramFile(photo.file_id)
+        upload = saveUpload({
+          buffer: payload.buffer,
+          originalName: 'telegram-photo.jpg',
+          mimeType: 'image/jpeg',
+          source: 'telegram',
+          userId: numericUserId,
+          sessionId,
+        })
+      }
+
+      if (!upload) return
+
+      if (this.db && numericUserId) {
+        this.db.prepare('INSERT INTO chat_messages (session_id, user_id, role, content, metadata) VALUES (?, ?, ?, ?, ?)')
+          .run(sessionId, numericUserId, 'user', caption, serializeUploadsMetadata([upload]))
+      }
+
+      this.onChatEvent?.({ type: 'user_message', userId: numericUserId, sessionId, text: caption || upload.originalName, senderName: this.getSenderName(ctx) })
+      await this.safeSendMessage(ctx, '📎 Upload gespeichert.')
+    } catch (err) {
+      console.error('Error handling Telegram attachment:', err)
+      await this.safeSendMessage(ctx, '⚠️ Datei konnte nicht gespeichert werden.')
+    }
   }
 
   private bufferMessage(ctx: Context, text: string): void {
