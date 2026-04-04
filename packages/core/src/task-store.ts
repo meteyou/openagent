@@ -3,7 +3,7 @@ import type { Database } from './database.js'
 
 export type TaskStatus = 'running' | 'paused' | 'completed' | 'failed'
 export type TaskTriggerType = 'user' | 'agent' | 'cronjob'
-export type TaskResultStatus = 'completed' | 'failed' | 'question'
+export type TaskResultStatus = 'completed' | 'failed' | 'question' | 'silent'
 
 export interface Task {
   id: string
@@ -131,7 +131,7 @@ export function initTasksTable(db: Database): void {
       estimated_cost REAL NOT NULL DEFAULT 0.0,
       tool_call_count INTEGER NOT NULL DEFAULT 0,
       result_summary TEXT,
-      result_status TEXT CHECK(result_status IS NULL OR result_status IN ('completed', 'failed', 'question')),
+      result_status TEXT CHECK(result_status IS NULL OR result_status IN ('completed', 'failed', 'question', 'silent')),
       error_message TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       started_at TEXT,
