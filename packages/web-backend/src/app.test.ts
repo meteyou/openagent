@@ -747,6 +747,63 @@ describe('memory API', () => {
     expect(getRes.status).toBe(200)
     expect(getBody.content).toContain('Note')
   })
+
+  it('reads and updates HEARTBEAT.md', async () => {
+    const getRes = await fetch(`${baseUrl}/api/memory/heartbeat`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    })
+    const getBody = (await getRes.json()) as { content: string }
+    expect(getRes.status).toBe(200)
+    expect(getBody.content).toContain('Heartbeat')
+
+    const putRes = await fetch(`${baseUrl}/api/memory/heartbeat`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ content: '# Heartbeat Tasks\n\nUpdated from test\n' }),
+    })
+    const putBody = (await putRes.json()) as { content: string }
+    expect(putRes.status).toBe(200)
+    expect(putBody.content).toContain('Updated from test')
+    expect(refreshSystemPrompt).toHaveBeenCalled()
+  })
+
+  it('reads and updates user profile', async () => {
+    const getRes = await fetch(`${baseUrl}/api/memory/profile`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    })
+    const getBody = (await getRes.json()) as { username: string; content: string }
+    expect(getRes.status).toBe(200)
+    expect(getBody.username).toBe('admin')
+    expect(getBody.content).toContain('admin')
+
+    const putRes = await fetch(`${baseUrl}/api/memory/profile`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ content: '# User Profile — admin\n\nUpdated from test\n' }),
+    })
+    const putBody = (await putRes.json()) as { username: string; content: string }
+    expect(putRes.status).toBe(200)
+    expect(putBody.username).toBe('admin')
+    expect(putBody.content).toContain('Updated from test')
+    expect(refreshSystemPrompt).toHaveBeenCalled()
+  })
+
+  it('requires authentication for memory routes', async () => {
+    const soulRes = await fetch(`${baseUrl}/api/memory/soul`)
+    expect(soulRes.status).toBe(401)
+
+    const heartbeatRes = await fetch(`${baseUrl}/api/memory/heartbeat`)
+    expect(heartbeatRes.status).toBe(401)
+
+    const profileRes = await fetch(`${baseUrl}/api/memory/profile`)
+    expect(profileRes.status).toBe(401)
+  })
 })
 
 describe('settings API', () => {
