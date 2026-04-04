@@ -4,6 +4,7 @@ import { Bot, GrammyError, HttpError, InputFile } from 'grammy'
 import type { Context } from 'grammy'
 import type { AgentCore, Database } from '@openagent/core'
 import { loadConfig, saveUpload, serializeUploadsMetadata, parseUploadsMetadata } from '@openagent/core'
+import type { UploadDescriptor } from '@openagent/core'
 
 /**
  * Telegram config stored in /data/config/telegram.json
@@ -71,6 +72,7 @@ interface TelegramSettings {
 interface QueuedMessage {
   ctx: Context
   text: string
+  attachments?: UploadDescriptor[]
 }
 
 interface PendingBatch {
@@ -607,13 +609,21 @@ export class TelegramBot {
 
       if (!upload) return
 
+      const messageText = caption || upload.originalName
+
       if (this.db && numericUserId) {
         this.db.prepare('INSERT INTO chat_messages (session_id, user_id, role, content, metadata) VALUES (?, ?, ?, ?, ?)')
-          .run(sessionId, numericUserId, 'user', caption, serializeUploadsMetadata([upload]))
+          .run(sessionId, numericUserId, 'user', messageText, serializeUploadsMetadata([upload]))
       }
 
-      this.onChatEvent?.({ type: 'user_message', userId: numericUserId, sessionId, text: caption || upload.originalName, senderName: this.getSenderName(ctx) })
-      await this.safeSendMessage(ctx, '📎 Upload gespeichert.')
+      this.onChatEvent?.({ type: 'user_message', userId: numericUserId, sessionId, text: messageText, senderName: this.getSenderName(ctx) })
+
+      // Route to agent for processing (same path as text messages)
+      const chatKey = getChatKey(ctx)
+      const state = this.getOrCreateChatState(chatKey)
+      state.queue.push({ ctx, text: messageText, attachments: [upload] })
+      this.emitQueueDepthChanged()
+      await this.processQueue(chatKey)
     } catch (err) {
       console.error('Error handling Telegram attachment:', err)
       await this.safeSendMessage(ctx, '⚠️ Datei konnte nicht gespeichert werden.')
@@ -729,7 +739,7 @@ export class TelegramBot {
     const state = this.chatStates.get(chatKey)
     if (!state) return
 
-    const { ctx, text } = queuedMessage
+    const { ctx, text, attachments } = queuedMessage
     const userId = this.resolveUserId(ctx)
     const numericUserId = this.resolveNumericUserId(ctx)
     const messageForAgent = text
@@ -739,20 +749,23 @@ export class TelegramBot {
     const sessionId = `telegram-${userId}-${Date.now()}`
 
     // Save user message to chat_messages (if linked to a web user)
-    if (this.db && numericUserId) {
+    // Skip if this came from handleIncomingAttachment (already saved)
+    if (this.db && numericUserId && !attachments?.length) {
       this.db.prepare(
         'INSERT INTO chat_messages (session_id, user_id, role, content) VALUES (?, ?, ?, ?)'
       ).run(sessionId, numericUserId, 'user', text)
     }
 
-    // Broadcast user message event
-    this.onChatEvent?.({
-      type: 'user_message',
-      userId: numericUserId,
-      sessionId,
-      text,
-      senderName,
-    })
+    // Broadcast user message event (skip if already broadcast by attachment handler)
+    if (!attachments?.length) {
+      this.onChatEvent?.({
+        type: 'user_message',
+        userId: numericUserId,
+        sessionId,
+        text,
+        senderName,
+      })
+    }
 
     try {
       // Send "typing" indicator
@@ -774,7 +787,7 @@ export class TelegramBot {
       }, 4000)
 
       try {
-        for await (const chunk of this.agentCore.sendMessage(userId, messageForAgent, 'telegram')) {
+        for await (const chunk of this.agentCore.sendMessage(userId, messageForAgent, 'telegram', attachments)) {
           if (state.abortRequested) break
 
           if (chunk.type === 'text' && chunk.text) {
