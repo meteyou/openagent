@@ -40,6 +40,15 @@ const TEMPLATES: Record<string, object> = {
       lookbackDays: 3,
       providerId: '',
     },
+    agentHeartbeat: {
+      enabled: false,
+      intervalMinutes: 60,
+      nightMode: {
+        enabled: true,
+        startHour: 23,
+        endHour: 8,
+      },
+    },
     builtinTools: {
       webSearch: { enabled: true, provider: 'duckduckgo' },
       webFetch: { enabled: true },
