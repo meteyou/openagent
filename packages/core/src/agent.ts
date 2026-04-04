@@ -21,6 +21,7 @@ import type { BuiltinToolsConfig } from './web-tools.js'
 import { SessionManager } from './session-manager.js'
 import type { SessionInfo } from './session-manager.js'
 import { MessageQueue } from './message-queue.js'
+import { createAgentSkillTools, getAgentSkillsForPrompt, getAgentSkillsCount, trackAgentSkillUsage } from './agent-skills.js'
 
 /**
  * A chunk yielded from the agent's response stream
@@ -122,6 +123,26 @@ export function createYoloTools(): AgentTool[] {
       try {
         const resolved = resolveWorkspacePath(filePath)
         let content = fs.readFileSync(resolved, 'utf-8')
+
+        // Detect SKILL.md loads under /data/skills_agent/<name>/
+        const agentSkillMdMatch = resolved.match(/\/data\/skills_agent\/([^/]+)\/SKILL\.md$/)
+        if (agentSkillMdMatch) {
+          const skillDir = nodePath.dirname(resolved)
+          content = content.replaceAll('{baseDir}', skillDir)
+          const skillName = agentSkillMdMatch[1]
+          trackAgentSkillUsage(skillName)
+          const header = `Skill directory: ${skillDir}\n\n`
+          return {
+            content: [{ type: 'text' as const, text: header + content }],
+            details: {
+              path: resolved,
+              size: content.length,
+              skillLoad: true,
+              skillName,
+              agentSkill: true,
+            },
+          }
+        }
 
         // Detect SKILL.md loads under /data/skills/
         const skillMdMatch = resolved.match(/\/data\/skills\/(.+)\/SKILL\.md$/)
@@ -306,18 +327,25 @@ export class AgentCore {
     // Load active skills for system prompt
     const activeSkills = getActiveSkillEntries()
 
+    // Load recent agent-managed skills for system prompt
+    const agentSkillEntries = getAgentSkillsForPrompt()
+    const totalAgentSkills = getAgentSkillsCount()
+    const allSkills = [...activeSkills, ...agentSkillEntries]
+
     // Build system prompt from memory
     const systemPrompt = options.systemPrompt ?? assembleSystemPrompt({
       memoryDir: options.memoryDir,
       baseInstructions: options.baseInstructions,
       language,
       timezone,
-      skills: activeSkills,
+      skills: allSkills,
+      agentSkillsOverflowCount: totalAgentSkills > 10 ? totalAgentSkills : undefined,
     })
 
     const tools: AgentTool[] = [
       ...(options.tools ?? []),
       ...createBuiltinWebTools(builtinToolsConfig),
+      ...createAgentSkillTools(),
       ...(options.yoloMode !== false ? createYoloTools() : []),
     ]
 
@@ -821,6 +849,9 @@ export class AgentCore {
     }
 
     const activeSkills = getActiveSkillEntries()
+    const agentSkillEntries = getAgentSkillsForPrompt()
+    const totalAgentSkills = getAgentSkillsCount()
+    const allSkills = [...activeSkills, ...agentSkillEntries]
 
     const prompt = assembleSystemPrompt({
       memoryDir: this.memoryDir,
@@ -828,7 +859,8 @@ export class AgentCore {
       language,
       timezone,
       channel,
-      skills: activeSkills,
+      skills: allSkills,
+      agentSkillsOverflowCount: totalAgentSkills > 10 ? totalAgentSkills : undefined,
     })
     this.agent.setSystemPrompt(prompt)
   }

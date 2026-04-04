@@ -280,6 +280,7 @@ export function assembleSystemPrompt(options?: {
   timezone?: string
   channel?: string
   skills?: SkillPromptEntry[]
+  agentSkillsOverflowCount?: number
 }): string {
   const memoryDir = options?.memoryDir
   const recentDays = options?.recentDays ?? 3
@@ -340,6 +341,11 @@ You can read and write your memory files directly using read_file/write_file too
     const skillEntries = options.skills.map(s =>
       `  <skill>\n    <name>${s.name}</name>\n    <description>${s.description}</description>\n    <location>${s.location}</location>\n  </skill>`
     ).join('\n')
+    let overflowNote = ''
+    if (options?.agentSkillsOverflowCount && options.agentSkillsOverflowCount > 10) {
+      overflowNote = `\n\nYou have ${options.agentSkillsOverflowCount} self-created agent skills in total (only the 10 most recent are shown above). Use \`list_agent_skills\` to browse all of them.`
+    }
+
     sections.push(`<available_skills>
 The following skills provide specialized capabilities you can load on demand.
 When the user's request materially matches a skill's description, load that skill before continuing.
@@ -347,7 +353,7 @@ To load a skill, use the read_file tool to read <location>/SKILL.md, then follow
 Treat this as a strong routing rule: do not answer from memory when a matching skill should be used first.
 Do not claim to be using a skill unless you actually loaded its SKILL.md in the current conversation.
 
-${skillEntries}
+${skillEntries}${overflowNote}
 </available_skills>`)
   }
 
