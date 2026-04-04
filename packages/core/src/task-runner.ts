@@ -129,12 +129,14 @@ You can read SOUL.md and MEMORY.md if you need context about the user's preferen
 
   sections.push(`Your final message MUST follow this exact format:
 
-STATUS: completed | failed | question
+STATUS: completed | failed | question | silent
 SUMMARY:
 <your complete, detailed results here — this is the ONLY thing the user will see, so include ALL data, analysis, findings, content, etc. Do NOT write a meta-description of what you did. Instead, write the actual output the user asked for.>
 
 Use STATUS: question only when you are blocked and need the user to answer something specific before you can continue. In that case, the SUMMARY must contain exactly one concrete question plus the minimal context needed to answer it.
 Do not ask multi-part questions. Ask only for the smallest missing piece required to continue.
+
+Use STATUS: silent when there is genuinely nothing to report to the user (e.g. a periodic check found no changes). The task will be recorded as completed but NO message will be delivered to the user. Only use this when the prompt explicitly allows silent completion.
 
 If you encounter an unrecoverable error, use STATUS: failed and explain what went wrong.`)
 
@@ -147,7 +149,7 @@ If you encounter an unrecoverable error, use STATUS: failed and explain what wen
  * detailed results are preserved and forwarded to the main agent.
  */
 function parseTaskOutput(text: string): { status: TaskResultStatus; summary: string } {
-  const statusMatch = text.match(/STATUS:\s*(completed|failed|question)/i)
+  const statusMatch = text.match(/STATUS:\s*(completed|failed|question|silent)/i)
   const status = (statusMatch?.[1]?.toLowerCase() as TaskResultStatus) ?? 'completed'
 
   // Capture everything after SUMMARY: to end of string (greedy, no m-flag)
@@ -375,6 +377,23 @@ export class TaskRunner {
         const injection = formatTaskInjection(task, durationMinutes)
         this.notifyTaskPaused(taskId, injection, summary)
         unsubscribe()
+        return
+      }
+
+      // Handle "silent" status — record as completed but skip injection/notification
+      if (status === 'silent') {
+        this.store.update(taskId, {
+          status: 'completed',
+          resultStatus: 'silent',
+          resultSummary: summary || 'Nothing to report.',
+          completedAt: now,
+          promptTokens: runningTask.promptTokens,
+          completionTokens: runningTask.completionTokens,
+          estimatedCost: runningTask.estimatedCost,
+          toolCallCount: runningTask.toolCallCount,
+        })
+        // Emit status change event (for task event bus) but skip injection
+        this.emitStatusChange(taskId, 'completed', 'Silent completion — nothing to report')
         return
       }
 
@@ -963,6 +982,22 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
         const durationMinutes = Math.round((Date.now() - startedAt) / 60000)
         const injection = formatTaskInjection(task, durationMinutes)
         this.notifyTaskPaused(taskId, injection, summary)
+        return
+      }
+
+      // Handle "silent" status — record as completed but skip injection/notification
+      if (status === 'silent') {
+        this.store.update(taskId, {
+          status: 'completed',
+          resultStatus: 'silent',
+          resultSummary: summary || 'Nothing to report.',
+          completedAt: now,
+          promptTokens: runningTask.promptTokens,
+          completionTokens: runningTask.completionTokens,
+          estimatedCost: runningTask.estimatedCost,
+          toolCallCount: runningTask.toolCallCount,
+        })
+        this.emitStatusChange(taskId, 'completed', 'Silent completion — nothing to report')
         return
       }
 
