@@ -288,7 +288,8 @@ describe('TelegramBot', () => {
       expect(agentCore.sendMessage).toHaveBeenCalledWith(
         'telegram-12345',
         'Hello\nworld',
-        'telegram'
+        'telegram',
+        undefined
       )
     })
 
@@ -550,7 +551,8 @@ describe('TelegramBot', () => {
       expect(agentCore.sendMessage).toHaveBeenCalledWith(
         'telegram-12345',
         'Hello agent',
-        'telegram'
+        'telegram',
+        undefined
       )
       expect(ctx.reply).toHaveBeenCalledWith('Hello human!', { parse_mode: 'HTML' })
     })
@@ -585,6 +587,74 @@ describe('TelegramBot', () => {
       expect(ctx.reply).toHaveBeenCalledWith(
         expect.stringContaining('encountered an error'),
         { parse_mode: 'HTML' }
+      )
+    })
+  })
+
+  describe('DM vs group chat', () => {
+    it('sends telegram source for DM (private) chats', async () => {
+      vi.mocked(agentCore.sendMessage).mockReturnValue(doneOnlyStream())
+
+      const bot = new TelegramBot({ agentCore, config: defaultConfig })
+      const underlying = bot.getBot() as unknown as MockBotInternals
+      const handler = underlying._handlers.get('message:text')!
+
+      const ctx = createMockContext({
+        chat: { id: 67890, type: 'private' },
+        message: { text: 'Hello DM', message_id: 1 },
+      })
+      await handler(ctx)
+      await vi.advanceTimersByTimeAsync(2500)
+
+      expect(agentCore.sendMessage).toHaveBeenCalledWith(
+        'telegram-12345',
+        'Hello DM',
+        'telegram',
+        undefined
+      )
+    })
+
+    it('sends telegram-group source for group chats', async () => {
+      vi.mocked(agentCore.sendMessage).mockReturnValue(doneOnlyStream())
+
+      const bot = new TelegramBot({ agentCore, config: defaultConfig })
+      const underlying = bot.getBot() as unknown as MockBotInternals
+      const handler = underlying._handlers.get('message:text')!
+
+      const ctx = createMockContext({
+        chat: { id: 67890, type: 'group' },
+        message: { text: 'Hello group', message_id: 1 },
+      })
+      await handler(ctx)
+      await vi.advanceTimersByTimeAsync(2500)
+
+      expect(agentCore.sendMessage).toHaveBeenCalledWith(
+        'telegram-12345',
+        'Hello group',
+        'telegram-group',
+        undefined
+      )
+    })
+
+    it('sends telegram-group source for supergroup chats', async () => {
+      vi.mocked(agentCore.sendMessage).mockReturnValue(doneOnlyStream())
+
+      const bot = new TelegramBot({ agentCore, config: defaultConfig })
+      const underlying = bot.getBot() as unknown as MockBotInternals
+      const handler = underlying._handlers.get('message:text')!
+
+      const ctx = createMockContext({
+        chat: { id: 67890, type: 'supergroup' },
+        message: { text: 'Hello supergroup', message_id: 1 },
+      })
+      await handler(ctx)
+      await vi.advanceTimersByTimeAsync(2500)
+
+      expect(agentCore.sendMessage).toHaveBeenCalledWith(
+        'telegram-12345',
+        'Hello supergroup',
+        'telegram-group',
+        undefined
       )
     })
   })

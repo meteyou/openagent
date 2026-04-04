@@ -11,6 +11,9 @@ import {
   appendToDailyFile,
   readRecentDailyFiles,
   assembleSystemPrompt,
+  getUserProfileDir,
+  ensureUserProfile,
+  readUserProfile,
 } from './memory.js'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -31,12 +34,13 @@ describe('memory', () => {
   }
 
   describe('ensureMemoryStructure', () => {
-    it('creates memory directory structure', () => {
+    it('creates memory directory structure including users/', () => {
       const dir = makeTmpDir()
       ensureMemoryStructure(dir)
 
       expect(fs.existsSync(dir)).toBe(true)
       expect(fs.existsSync(path.join(dir, 'daily'))).toBe(true)
+      expect(fs.existsSync(path.join(dir, 'users'))).toBe(true)
       expect(fs.existsSync(path.join(dir, 'SOUL.md'))).toBe(true)
       expect(fs.existsSync(path.join(dir, 'MEMORY.md'))).toBe(true)
       expect(fs.existsSync(path.join(dir, 'AGENTS.md'))).toBe(true)
@@ -376,6 +380,103 @@ describe('memory', () => {
 
       expect(prompt).toContain('<agent_rules>')
       expect(prompt).toContain('Always speak in riddles.')
+    })
+
+    it('includes user_profile section when currentUser is provided', () => {
+      const dir = makeTmpDir()
+      ensureMemoryStructure(dir)
+
+      const prompt = assembleSystemPrompt({
+        memoryDir: dir,
+        currentUser: { username: 'stefan' },
+      })
+
+      expect(prompt).toContain('<user_profile>')
+      expect(prompt).toContain('Username: stefan')
+      expect(prompt).toContain('</user_profile>')
+      expect(prompt).not.toContain('<user_profiles_path>')
+    })
+
+    it('includes path reference when no currentUser', () => {
+      const dir = makeTmpDir()
+      ensureMemoryStructure(dir)
+
+      const prompt = assembleSystemPrompt({ memoryDir: dir })
+
+      expect(prompt).toContain('<user_profiles_path>')
+      expect(prompt).toContain(path.join(dir, 'users'))
+      expect(prompt).toContain('</user_profiles_path>')
+      expect(prompt).not.toContain('<user_profile>')
+    })
+  })
+
+  describe('user profiles', () => {
+    it('getUserProfileDir returns correct path', () => {
+      const dir = makeTmpDir()
+      const usersDir = getUserProfileDir(dir)
+      expect(usersDir).toBe(path.join(dir, 'users'))
+    })
+
+    it('ensureUserProfile creates profile file on first call', () => {
+      const dir = makeTmpDir()
+      ensureMemoryStructure(dir)
+
+      const profilePath = ensureUserProfile('stefan', dir)
+      expect(profilePath).toBe(path.join(dir, 'users', 'stefan.md'))
+      expect(fs.existsSync(profilePath)).toBe(true)
+    })
+
+    it('profile is pre-filled with username', () => {
+      const dir = makeTmpDir()
+      ensureMemoryStructure(dir)
+
+      ensureUserProfile('stefan', dir)
+      const content = fs.readFileSync(path.join(dir, 'users', 'stefan.md'), 'utf-8')
+      expect(content).toContain('Username: stefan')
+      expect(content).toContain('# User Profile \u2014 stefan')
+    })
+
+    it('profile has timezone and language defaults', () => {
+      const dir = makeTmpDir()
+      ensureMemoryStructure(dir)
+
+      ensureUserProfile('testuser', dir)
+      const content = fs.readFileSync(path.join(dir, 'users', 'testuser.md'), 'utf-8')
+      expect(content).toContain('Timezone:')
+      expect(content).toContain('Language:')
+    })
+
+    it('does not overwrite existing profile', () => {
+      const dir = makeTmpDir()
+      ensureMemoryStructure(dir)
+
+      const usersDir = path.join(dir, 'users')
+      fs.mkdirSync(usersDir, { recursive: true })
+      fs.writeFileSync(path.join(usersDir, 'stefan.md'), '# Custom Profile', 'utf-8')
+
+      ensureUserProfile('stefan', dir)
+      const content = fs.readFileSync(path.join(usersDir, 'stefan.md'), 'utf-8')
+      expect(content).toBe('# Custom Profile')
+    })
+
+    it('readUserProfile creates and reads profile', () => {
+      const dir = makeTmpDir()
+      ensureMemoryStructure(dir)
+
+      const content = readUserProfile('alice', dir)
+      expect(content).toContain('Username: alice')
+      expect(content).toContain('# User Profile')
+    })
+
+    it('readUserProfile reads existing profile', () => {
+      const dir = makeTmpDir()
+      ensureMemoryStructure(dir)
+
+      const usersDir = path.join(dir, 'users')
+      fs.writeFileSync(path.join(usersDir, 'bob.md'), '# Bob\nCustom content', 'utf-8')
+
+      const content = readUserProfile('bob', dir)
+      expect(content).toBe('# Bob\nCustom content')
     })
   })
 })
