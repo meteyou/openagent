@@ -76,31 +76,7 @@
             }">
               <div v-if="msg.role === 'assistant'" class="prose-chat break-words" v-html="renderMarkdown(msg.content ?? '')" />
               <p v-else class="whitespace-pre-wrap break-words">{{ msg.content }}</p>
-              <div v-if="msg.attachments?.length" class="mt-3 flex flex-col gap-3">
-                <div v-for="attachment in msg.attachments" :key="attachment.relativePath" class="rounded-xl border border-border/70 bg-background/70 p-3">
-                  <template v-if="attachment.kind === 'image'">
-                    <a :href="attachment.urlPath" target="_blank" rel="noopener" class="block">
-                      <img :src="attachment.previewUrl || attachment.urlPath" :alt="attachment.originalName" class="max-h-64 rounded-lg border border-border object-contain" />
-                    </a>
-                    <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                      <span>{{ attachment.originalName }}</span>
-                      <span v-if="attachment.width && attachment.height">{{ attachment.width }}×{{ attachment.height }}</span>
-                      <span>{{ formatBytes(attachment.size) }}</span>
-                      <a :href="attachment.urlPath" target="_blank" rel="noopener" class="text-primary underline">Original öffnen</a>
-                      <a :href="`${attachment.urlPath}?download=1`" class="text-primary underline">Download</a>
-                    </div>
-                  </template>
-                  <template v-else>
-                    <div class="flex items-center justify-between gap-3">
-                      <div class="min-w-0 flex-1">
-                        <p class="truncate font-medium text-foreground">{{ attachment.originalName }}</p>
-                        <p class="text-xs text-muted-foreground">{{ attachment.mimeType }} · {{ formatBytes(attachment.size) }}</p>
-                      </div>
-                      <a :href="`${attachment.urlPath}?download=1`" class="shrink-0 text-sm text-primary underline">Download</a>
-                    </div>
-                  </template>
-                </div>
-              </div>
+              <ChatAttachments v-if="msg.attachments?.length" :attachments="msg.attachments" />
               <div v-if="msg.streaming" class="mt-1.5 flex items-center gap-1"><span class="h-1.5 w-1.5 animate-pulse rounded-full bg-current opacity-60" /><span class="h-1.5 w-1.5 animate-pulse rounded-full bg-current opacity-60" /><span class="h-1.5 w-1.5 animate-pulse rounded-full bg-current opacity-60" /></div>
               <p v-if="msg.timestamp && !msg.streaming" class="mt-1 text-right text-[10px] leading-none text-muted-foreground/70">{{ formatMessageTime(msg.timestamp) }}</p>
             </div>
@@ -170,8 +146,19 @@ async function loadHistory() {
     const data = await apiFetch<{ messages: Array<{ id: number; role: 'user' | 'assistant' | 'tool' | 'system'; content: string; metadata?: string; timestamp: string; session_id: string }> }>('/api/chat/history?limit=50')
     if (data.messages?.length) {
       messages.value = data.messages.reverse().map((m) => {
-        const attachments = (() => { try { const parsed = JSON.parse(m.metadata || '{}') as { files?: ChatMessage['attachments'] }; return parsed.files || [] } catch { return [] } })()
-        return { id: m.id, role: m.role, content: m.content, timestamp: m.timestamp, source: m.session_id.startsWith('telegram-') ? 'telegram' as const : undefined, attachments } as ChatMessage
+        const meta = (() => { try { return JSON.parse(m.metadata || '{}') } catch { return {} } })()
+        const attachments = (Array.isArray(meta.files) ? meta.files : []) as ChatMessage['attachments']
+        const source = m.session_id.startsWith('telegram-') ? 'telegram' as const : undefined
+
+        // Reconstruct tool messages with toolData from metadata
+        if (m.role === 'tool' && meta.toolName) {
+          return {
+            id: m.id, role: 'tool' as const, content: m.content, timestamp: m.timestamp, source,
+            toolData: { toolName: meta.toolName, toolCallId: meta.toolCallId ?? '', toolArgs: meta.toolArgs, toolResult: meta.toolResult, toolIsError: meta.toolIsError },
+          } as ChatMessage
+        }
+
+        return { id: m.id, role: m.role, content: m.content, timestamp: m.timestamp, source, attachments } as ChatMessage
       })
     }
   } finally { loadingHistory.value = false; nextTick(() => scrollToBottom()) }
@@ -192,10 +179,5 @@ function autoResize() { const el = inputRef.value; if (!el) return; el.style.hei
 function handleFileSelection(event: Event) { const target = event.target as HTMLInputElement; const files = Array.from(target.files || []); pendingFiles.value = [...pendingFiles.value, ...files]; target.value = '' }
 function removePendingFile(index: number) { pendingFiles.value.splice(index, 1) }
 function formatMessageTime(timestamp: string): string { const d = new Date(timestamp); if (isNaN(d.getTime())) return ''; return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) }
-function formatBytes(size: number): string {
-  if (!Number.isFinite(size) || size < 0) return ''
-  if (size < 1024) return `${size} B`
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`
-}
+
 </script>
