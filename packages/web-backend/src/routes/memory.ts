@@ -7,6 +7,9 @@ import {
   readSoulFile,
   readMemoryFile,
   writeMemoryFile,
+  readHeartbeatFile,
+  readUserProfile,
+  ensureUserProfile,
 } from '@openagent/core'
 import type { AgentCore } from '@openagent/core'
 import { jwtMiddleware } from '../auth.js'
@@ -203,6 +206,73 @@ export function createMemoryRouter(getAgentCore: () => AgentCore | null = () => 
       res.json({ message: `Daily file for ${date} updated`, date, content })
     } catch (err) {
       res.status(500).json({ error: `Failed to write daily file: ${(err as Error).message}` })
+    }
+  })
+
+  // Heartbeat endpoints
+  router.get('/heartbeat', (_req, res) => {
+    try {
+      const content = readHeartbeatFile()
+      res.json({ content })
+    } catch (err) {
+      res.status(500).json({ error: `Failed to read HEARTBEAT.md: ${(err as Error).message}` })
+    }
+  })
+
+  router.put('/heartbeat', (req: AuthenticatedRequest, res) => {
+    const { content } = req.body as { content?: string }
+    if (content === undefined || content === null) {
+      res.status(400).json({ error: 'Content is required' })
+      return
+    }
+
+    try {
+      const memoryDir = getMemoryDir()
+      ensureMemoryStructure(memoryDir)
+      const heartbeatPath = path.join(memoryDir, 'HEARTBEAT.md')
+      fs.writeFileSync(heartbeatPath, content, 'utf-8')
+      refreshAgentPrompt()
+      res.json({ message: 'HEARTBEAT.md updated', content })
+    } catch (err) {
+      res.status(500).json({ error: `Failed to write HEARTBEAT.md: ${(err as Error).message}` })
+    }
+  })
+
+  // User profile endpoints
+  router.get('/profile', (req: AuthenticatedRequest, res) => {
+    try {
+      const username = req.user?.username
+      if (!username) {
+        res.status(400).json({ error: 'Username not available from auth' })
+        return
+      }
+      const content = readUserProfile(username)
+      res.json({ username, content })
+    } catch (err) {
+      res.status(500).json({ error: `Failed to read user profile: ${(err as Error).message}` })
+    }
+  })
+
+  router.put('/profile', (req: AuthenticatedRequest, res) => {
+    const username = req.user?.username
+    if (!username) {
+      res.status(400).json({ error: 'Username not available from auth' })
+      return
+    }
+
+    const { content } = req.body as { content?: string }
+    if (content === undefined || content === null) {
+      res.status(400).json({ error: 'Content is required' })
+      return
+    }
+
+    try {
+      const profilePath = ensureUserProfile(username)
+      fs.writeFileSync(profilePath, content, 'utf-8')
+      refreshAgentPrompt()
+      res.json({ message: `Profile for ${username} updated`, username, content })
+    } catch (err) {
+      res.status(500).json({ error: `Failed to write user profile: ${(err as Error).message}` })
     }
   })
 
