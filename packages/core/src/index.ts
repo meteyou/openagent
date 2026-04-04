@@ -1,4 +1,4 @@
-export { initDatabase, getDatabase } from './database.js'
+export { initDatabase, getDatabase, isValidUsername, validateUsername } from './database.js'
 export type { Database } from './database.js'
 export {
   getDataDir,
@@ -29,6 +29,7 @@ export {
   readRecentDailyFiles,
   assembleSystemPrompt,
 } from './memory.js'
+export { getUserProfileDir, ensureUserProfile, readUserProfile } from './memory.js'
 export type { SkillPromptEntry } from './memory.js'
 export { consolidateMemory, readDailyFilesForConsolidation, buildConsolidationPrompt } from './memory-consolidation.js'
 export type { MemoryConsolidationOptions, ConsolidationResult } from './memory-consolidation.js'

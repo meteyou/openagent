@@ -51,6 +51,22 @@ The agent reads this file on every conversation to follow these rules.
 (none yet)
 `
 
+const USER_PROFILE_TEMPLATE = `# User Profile — {username}
+
+## Basic Info
+- Username: {username}
+- Timezone: {timezone}
+- Language: {language}
+
+## Preferences
+
+(none yet)
+
+## Notes
+
+(none yet)
+`
+
 const HEARTBEAT_TEMPLATE = `# Heartbeat Tasks
 
 This file defines periodic tasks the agent runs during heartbeat cycles.
@@ -81,9 +97,65 @@ export function getMemoryDir(): string {
   return path.join(process.env.DATA_DIR ?? '/data', 'memory')
 }
 
+/**
+ * Get the users profile directory path
+ */
+export function getUserProfileDir(memoryDir?: string): string {
+  const dir = memoryDir ?? getMemoryDir()
+  return path.join(dir, 'users')
+}
+
+/**
+ * Ensure a user profile file exists, creating it from template if missing.
+ * Pre-fills username, timezone, and language from settings.
+ */
+export function ensureUserProfile(username: string, memoryDir?: string): string {
+  const usersDir = getUserProfileDir(memoryDir)
+  const profilePath = path.join(usersDir, `${username}.md`)
+
+  if (!fs.existsSync(usersDir)) {
+    fs.mkdirSync(usersDir, { recursive: true })
+  }
+
+  if (!fs.existsSync(profilePath)) {
+    // Try to load timezone/language from settings
+    let timezone = 'UTC'
+    let language = 'en'
+    try {
+      // Dynamic import to avoid circular dependency — use fs directly
+      const configDir = path.join(process.env.DATA_DIR ?? '/data', 'config')
+      const settingsPath = path.join(configDir, 'settings.json')
+      if (fs.existsSync(settingsPath)) {
+        const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'))
+        if (settings.timezone) timezone = settings.timezone
+        if (settings.language) language = settings.language
+      }
+    } catch {
+      // Use defaults
+    }
+
+    const content = USER_PROFILE_TEMPLATE
+      .replaceAll('{username}', username)
+      .replaceAll('{timezone}', timezone)
+      .replaceAll('{language}', language)
+    fs.writeFileSync(profilePath, content, 'utf-8')
+  }
+
+  return profilePath
+}
+
+/**
+ * Read a user's profile file. Creates it from template if missing.
+ */
+export function readUserProfile(username: string, memoryDir?: string): string {
+  const profilePath = ensureUserProfile(username, memoryDir)
+  return fs.readFileSync(profilePath, 'utf-8')
+}
+
 export function ensureMemoryStructure(memoryDir?: string): void {
   const dir = memoryDir ?? getMemoryDir()
   const dailyDir = path.join(dir, 'daily')
+  const usersDir = path.join(dir, 'users')
 
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true })
@@ -91,6 +163,10 @@ export function ensureMemoryStructure(memoryDir?: string): void {
 
   if (!fs.existsSync(dailyDir)) {
     fs.mkdirSync(dailyDir, { recursive: true })
+  }
+
+  if (!fs.existsSync(usersDir)) {
+    fs.mkdirSync(usersDir, { recursive: true })
   }
 
   const soulPath = path.join(dir, 'SOUL.md')
@@ -281,6 +357,7 @@ export function assembleSystemPrompt(options?: {
   channel?: string
   skills?: SkillPromptEntry[]
   agentSkillsOverflowCount?: number
+  currentUser?: { username: string }
 }): string {
   const memoryDir = options?.memoryDir
   const recentDays = options?.recentDays ?? 3
@@ -313,7 +390,16 @@ export function assembleSystemPrompt(options?: {
     sections.push(`<recent_memory>\n${dailyContext}\n</recent_memory>`)
   }
 
-  // 6. Memory file paths for agent self-access
+  // 6. User profile injection
+  if (options?.currentUser?.username) {
+    const profileContent = readUserProfile(options.currentUser.username, memoryDir)
+    sections.push(`<user_profile>\n${profileContent.trim()}\n</user_profile>`)
+  } else {
+    const usersPath = getUserProfileDir(memoryDir)
+    sections.push(`<user_profiles_path>${usersPath}</user_profiles_path>`)
+  }
+
+  // 7. Memory file paths for agent self-access
   const dir = memoryDir ?? getMemoryDir()
   const today = new Date().toISOString().split('T')[0]
   sections.push(`<memory_paths>
@@ -324,9 +410,10 @@ You can read and write your memory files directly using read_file/write_file too
 - HEARTBEAT.md: ${path.join(dir, 'HEARTBEAT.md')}
 - Daily memory directory: ${path.join(dir, 'daily/')}
 - Today's daily file: ${path.join(dir, 'daily', `${today}.md`)}
+- User profiles directory: ${path.join(dir, 'users/')}
 </memory_paths>`)
 
-  // 7. Language setting
+  // 8. Language setting
   if (options?.language) {
     const lang = options.language.trim()
     if (lang.toLowerCase() === 'match' || lang.toLowerCase() === "match user's language") {
@@ -336,7 +423,7 @@ You can read and write your memory files directly using read_file/write_file too
     }
   }
 
-  // 8. Available skills (progressive disclosure)
+  // 9. Available skills (progressive disclosure)
   if (options?.skills && options.skills.length > 0) {
     const skillEntries = options.skills.map(s =>
       `  <skill>\n    <name>${s.name}</name>\n    <description>${s.description}</description>\n    <location>${s.location}</location>\n  </skill>`
@@ -357,7 +444,7 @@ ${skillEntries}${overflowNote}
 </available_skills>`)
   }
 
-  // 9. Task system instructions
+  // 10. Task system instructions
   sections.push(`<task_system>
 You have access to a background task system. You can start background tasks for complex,
 long-running work using the create_task tool.
@@ -407,18 +494,18 @@ Use create_reminder only for static reminder text delivered verbatim later. If t
 Do not promise that a reminder or cronjob will fetch fresh data unless the configured action type actually supports that.
 </task_system>`)
 
-  // 10. Workspace directory
+  // 11. Workspace directory
   const workspaceDir = resolveWorkspaceDir()
   sections.push(`<workspace>\nYour working directory is ${workspaceDir}. All shell commands execute in this directory by default.\nAll relative paths in read_file, write_file, and list_files resolve against this directory.\nUse this directory for cloning repos, creating files, and all file operations.\n</workspace>`)
 
-  // 11. Current date & time
+  // 12. Current date & time
   const tz = options?.timezone || 'UTC'
   const now = new Date()
   const date = now.toLocaleDateString('en-CA', { timeZone: tz })
   const time = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: tz })
   sections.push(`<current_datetime>\nCurrent date: ${date}\nCurrent time: ${time} (${tz})\n</current_datetime>`)
 
-  // 12. Channel context
+  // 13. Channel context
   if (options?.channel === 'telegram') {
     sections.push(`<channel_context>
 You are communicating with the user through Telegram. You ARE the Telegram bot — messages the user sends arrive directly to you, and your responses are sent back to the user automatically. Do not tell the user to use the Telegram Bot API, curl commands, or any external tools to communicate. Just respond naturally to their messages.
