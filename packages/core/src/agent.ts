@@ -10,7 +10,7 @@ import { logTokenUsage, logToolCall } from './token-logger.js'
 import { estimateCost, getApiKeyForProvider, buildModel } from './provider-config.js'
 import type { ProviderConfig } from './provider-config.js'
 import type { ProviderManager } from './provider-manager.js'
-import { assembleSystemPrompt, ensureMemoryStructure } from './memory.js'
+import { assembleSystemPrompt, ensureMemoryStructure, getMemoryDir } from './memory.js'
 import type { SkillPromptEntry } from './memory.js'
 import { loadConfig, ensureConfigTemplates } from './config.js'
 import { loadSkills, getSkillDecrypted } from './skill-config.js'
@@ -215,14 +215,109 @@ export function createYoloTools(): AgentTool[] {
         if (!fs.existsSync(dir)) {
           fs.mkdirSync(dir, { recursive: true })
         }
+
+        // Capture before-content for memory files (enables diff view in UI)
+        let memoryDiff: { before: string; after: string } | undefined
+        const memoryDir = getMemoryDir()
+        if (resolved.startsWith(memoryDir)) {
+          const before = fs.existsSync(resolved) ? fs.readFileSync(resolved, 'utf-8') : ''
+          memoryDiff = { before, after: content }
+        }
+
         fs.writeFileSync(resolved, content, 'utf-8')
         return {
           content: [{ type: 'text' as const, text: `Successfully wrote ${content.length} bytes to ${resolved}` }],
-          details: { path: resolved, size: content.length },
+          details: { path: resolved, size: content.length, memoryDiff },
         }
       } catch (err: unknown) {
         return {
           content: [{ type: 'text' as const, text: `Error writing file: ${(err as Error).message}` }],
+          details: { error: true },
+        }
+      }
+    },
+  }
+
+  const editFileTool: AgentTool = {
+    name: 'edit_file',
+    label: 'Edit File',
+    description: 'Edit a file using exact text replacements. Each edit specifies an oldText to find and a newText to replace it with. The oldText must match exactly and be unique in the file. Use this instead of write_file when you only need to change specific parts of a file.',
+    parameters: Type.Object({
+      path: Type.String({ description: 'Path to the file to edit' }),
+      edits: Type.Array(
+        Type.Object({
+          oldText: Type.String({ description: 'Exact text to find and replace. Must be unique in the file.' }),
+          newText: Type.String({ description: 'Replacement text.' }),
+        }),
+        { description: 'One or more targeted replacements. Each oldText is matched against the original file.' },
+      ),
+    }),
+    execute: async (_toolCallId, params) => {
+      const { path: filePath, edits } = params as { path: string; edits: Array<{ oldText: string; newText: string }> }
+      try {
+        const resolved = resolveWorkspacePath(filePath)
+
+        if (!fs.existsSync(resolved)) {
+          return {
+            content: [{ type: 'text' as const, text: `File not found: ${resolved}` }],
+            details: { error: true },
+          }
+        }
+
+        if (!Array.isArray(edits) || edits.length === 0) {
+          return {
+            content: [{ type: 'text' as const, text: 'edits must contain at least one replacement.' }],
+            details: { error: true },
+          }
+        }
+
+        const originalContent = fs.readFileSync(resolved, 'utf-8')
+        let content = originalContent
+
+        // Validate all edits first (against original content)
+        for (let i = 0; i < edits.length; i++) {
+          const { oldText } = edits[i]
+          if (!oldText) {
+            return {
+              content: [{ type: 'text' as const, text: `edits[${i}].oldText must not be empty.` }],
+              details: { error: true },
+            }
+          }
+          const occurrences = content.split(oldText).length - 1
+          if (occurrences === 0) {
+            return {
+              content: [{ type: 'text' as const, text: `Could not find edits[${i}].oldText in ${filePath}. The text must match exactly.` }],
+              details: { error: true },
+            }
+          }
+          if (occurrences > 1) {
+            return {
+              content: [{ type: 'text' as const, text: `Found ${occurrences} occurrences of edits[${i}].oldText in ${filePath}. The text must be unique.` }],
+              details: { error: true },
+            }
+          }
+        }
+
+        // Apply all edits
+        for (const { oldText, newText } of edits) {
+          content = content.replace(oldText, newText)
+        }
+
+        if (content === originalContent) {
+          return {
+            content: [{ type: 'text' as const, text: `No changes made to ${filePath}. The replacements produced identical content.` }],
+            details: { error: true },
+          }
+        }
+
+        fs.writeFileSync(resolved, content, 'utf-8')
+        return {
+          content: [{ type: 'text' as const, text: `Successfully replaced ${edits.length} block(s) in ${filePath}.` }],
+          details: { path: resolved, editsApplied: edits.length },
+        }
+      } catch (err: unknown) {
+        return {
+          content: [{ type: 'text' as const, text: `Error editing file: ${(err as Error).message}` }],
           details: { error: true },
         }
       }
@@ -257,7 +352,7 @@ export function createYoloTools(): AgentTool[] {
     },
   }
 
-  return [shellTool, readFileTool, writeFileTool, listFilesTool]
+  return [shellTool, readFileTool, writeFileTool, editFileTool, listFilesTool]
 }
 
 /**
