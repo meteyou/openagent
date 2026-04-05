@@ -38,6 +38,18 @@ export interface TasksSettings {
   statusUpdateIntervalMinutes: number
 }
 
+export interface AgentHeartbeatNightMode {
+  enabled: boolean
+  startHour: number
+  endHour: number
+}
+
+export interface AgentHeartbeatSettings {
+  enabled: boolean
+  intervalMinutes: number
+  nightMode: AgentHeartbeatNightMode
+}
+
 export interface Settings {
   sessionTimeoutMinutes: number
   language: string
@@ -49,6 +61,7 @@ export interface Settings {
   telegramBotToken: string
   healthMonitor: HealthMonitorSettings
   memoryConsolidation: MemoryConsolidationSettings
+  agentHeartbeat: AgentHeartbeatSettings
   tasks: TasksSettings
 }
 
@@ -111,6 +124,15 @@ export function useSettings() {
           runAtHour: 3,
           lookbackDays: 3,
           providerId: '',
+        },
+        agentHeartbeat: result.agentHeartbeat ?? {
+          enabled: false,
+          intervalMinutes: 60,
+          nightMode: {
+            enabled: true,
+            startHour: 23,
+            endHour: 8,
+          },
         },
         tasks: result.tasks ?? {
           defaultProvider: '',

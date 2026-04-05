@@ -178,6 +178,12 @@
                     <span class="text-sm text-muted-foreground">{{ $t('settings.minutes') }}</span>
                   </div>
                   <p class="text-xs text-muted-foreground">{{ $t('settings.sessionTimeoutHint') }}</p>
+                  <Alert v-if="form.agentHeartbeat?.enabled" variant="info" class="mt-2">
+                    <AlertDescription class="text-xs">
+                      <AppIcon name="activity" size="sm" class="mr-1 inline-block align-text-bottom" />
+                      {{ $t('settings.sessionSummarySkippedByHeartbeat') }}
+                    </AlertDescription>
+                  </Alert>
                 </div>
 
                 <div class="flex flex-col gap-2">
@@ -281,6 +287,119 @@
                       </Button>
                     </div>
                   </div>
+                </template>
+              </div>
+            </div>
+
+            <!-- ═══ Agent Heartbeat ═══ -->
+            <div v-else-if="activeTab === 'agentHeartbeat'">
+              <div class="mb-8">
+                <h2 class="text-lg font-semibold tracking-tight text-foreground">
+                  {{ $t('settings.tabs.agentHeartbeat') }}
+                </h2>
+                <p class="mt-1 text-sm text-muted-foreground">
+                  {{ $t('settings.tabs.agentHeartbeatDescription') }}
+                </p>
+              </div>
+
+              <div class="flex flex-col gap-8">
+                <!-- Enable toggle -->
+                <div class="flex items-center justify-between rounded-lg border border-border px-4 py-3">
+                  <div class="flex flex-col gap-0.5 pr-4">
+                    <Label for="heartbeat-enabled" class="cursor-pointer">
+                      {{ $t('settings.agentHeartbeatEnabled') }}
+                    </Label>
+                    <p class="text-xs text-muted-foreground">
+                      {{ $t('settings.agentHeartbeatEnabledHint') }}
+                    </p>
+                  </div>
+                  <Switch
+                    id="heartbeat-enabled"
+                    v-model="form.agentHeartbeat.enabled"
+                  />
+                </div>
+
+                <!-- Configuration — progressive disclosure -->
+                <template v-if="form.agentHeartbeat.enabled">
+                  <!-- Interval -->
+                  <div class="flex flex-col gap-2">
+                    <Label for="heartbeat-interval">{{ $t('settings.agentHeartbeatInterval') }}</Label>
+                    <div class="flex items-center gap-2">
+                      <Input
+                        id="heartbeat-interval"
+                        v-model.number="form.agentHeartbeat.intervalMinutes"
+                        type="number"
+                        min="1"
+                        max="1440"
+                        class="w-full"
+                      />
+                      <span class="text-sm text-muted-foreground">{{ $t('settings.minutes') }}</span>
+                    </div>
+                    <p class="text-xs text-muted-foreground">{{ $t('settings.agentHeartbeatIntervalHint') }}</p>
+                  </div>
+
+                  <Separator />
+
+                  <!-- Night mode section -->
+                  <div>
+                    <h3 class="text-base font-semibold tracking-tight text-foreground">
+                      {{ $t('settings.agentHeartbeatNightMode') }}
+                    </h3>
+                    <p class="mt-1 text-sm text-muted-foreground">
+                      {{ $t('settings.agentHeartbeatNightModeDescription') }}
+                    </p>
+                  </div>
+
+                  <!-- Night mode enable -->
+                  <div class="flex items-center justify-between rounded-lg border border-border px-4 py-3">
+                    <div class="flex flex-col gap-0.5 pr-4">
+                      <Label for="heartbeat-night-enabled" class="cursor-pointer">
+                        {{ $t('settings.agentHeartbeatNightModeEnabled') }}
+                      </Label>
+                      <p class="text-xs text-muted-foreground">
+                        {{ $t('settings.agentHeartbeatNightModeEnabledHint') }}
+                      </p>
+                    </div>
+                    <Switch
+                      id="heartbeat-night-enabled"
+                      v-model="form.agentHeartbeat.nightMode.enabled"
+                    />
+                  </div>
+
+                  <template v-if="form.agentHeartbeat.nightMode.enabled">
+                    <!-- Night start hour -->
+                    <div class="flex flex-col gap-2">
+                      <Label for="heartbeat-night-start">{{ $t('settings.agentHeartbeatNightModeStart') }}</Label>
+                      <div class="flex items-center gap-2">
+                        <Input
+                          id="heartbeat-night-start"
+                          v-model.number="form.agentHeartbeat.nightMode.startHour"
+                          type="number"
+                          min="0"
+                          max="23"
+                          class="w-full"
+                        />
+                        <span class="text-sm text-muted-foreground">{{ $t('settings.oClock') }}</span>
+                      </div>
+                    </div>
+
+                    <!-- Night end hour -->
+                    <div class="flex flex-col gap-2">
+                      <Label for="heartbeat-night-end">{{ $t('settings.agentHeartbeatNightModeEnd') }}</Label>
+                      <div class="flex items-center gap-2">
+                        <Input
+                          id="heartbeat-night-end"
+                          v-model.number="form.agentHeartbeat.nightMode.endHour"
+                          type="number"
+                          min="0"
+                          max="23"
+                          class="w-full"
+                        />
+                        <span class="text-sm text-muted-foreground">{{ $t('settings.oClock') }}</span>
+                      </div>
+                      <p class="text-xs text-muted-foreground">{{ $t('settings.agentHeartbeatNightModeHoursHint') }}</p>
+                    </div>
+                  </template>
                 </template>
               </div>
             </div>
@@ -991,7 +1110,7 @@
 </template>
 
 <script setup lang="ts">
-import type { MemoryConsolidationSettings, HealthMonitorNotificationToggles, HealthMonitorSettings, TasksSettings } from '~/composables/useSettings'
+import type { MemoryConsolidationSettings, HealthMonitorNotificationToggles, HealthMonitorSettings, AgentHeartbeatSettings, TasksSettings } from '~/composables/useSettings'
 import type { TelegramUser } from '~/composables/useTelegramUsers'
 
 /* ── Auth ── */
@@ -1035,7 +1154,7 @@ const timezones = [
   'America/Argentina/Buenos_Aires',
 ]
 
-const VALID_TABS = ['agent', 'memory', 'healthMonitor', 'telegram', 'tasks', 'secrets'] as const
+const VALID_TABS = ['agent', 'memory', 'agentHeartbeat', 'healthMonitor', 'telegram', 'tasks', 'secrets'] as const
 type TabId = (typeof VALID_TABS)[number]
 
 const activeTab = computed<TabId>({
@@ -1052,6 +1171,7 @@ const tabs = computed(() => [
   { id: 'agent' as TabId, icon: 'bot', label: t('settings.tabs.agent') },
   { id: 'healthMonitor' as TabId, icon: 'activity', label: t('settings.tabs.healthMonitor') },
   { id: 'memory' as TabId, icon: 'brain', label: t('settings.tabs.memory') },
+  { id: 'agentHeartbeat' as TabId, icon: 'activity', label: t('settings.tabs.agentHeartbeat') },
   { id: 'secrets' as TabId, icon: 'key', label: t('settings.tabs.secrets') },
   { id: 'tasks' as TabId, icon: 'bot', label: t('settings.tabs.tasks') },
   { id: 'telegram' as TabId, icon: 'send', label: t('settings.tabs.telegram') },
@@ -1266,6 +1386,7 @@ interface SettingsForm {
   telegramBotToken: string
   healthMonitor: HealthMonitorSettings
   memoryConsolidation: MemoryConsolidationSettings
+  agentHeartbeat: AgentHeartbeatSettings
   tasks: TasksSettings
 }
 
@@ -1291,6 +1412,7 @@ function hydrateForm() {
       notifications: { ...s.healthMonitor.notifications },
     },
     memoryConsolidation: { ...s.memoryConsolidation },
+    agentHeartbeat: { ...s.agentHeartbeat, nightMode: { ...s.agentHeartbeat.nightMode } },
     tasks: { ...s.tasks, loopDetection: { ...s.tasks.loopDetection } },
   }
 }
