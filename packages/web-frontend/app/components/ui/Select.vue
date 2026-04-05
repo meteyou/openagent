@@ -1,41 +1,33 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { SelectRoot, type SelectRootEmits, type SelectRootProps, type AcceptableValue } from 'reka-ui'
+import { SelectRoot, type SelectRootEmits, type SelectRootProps, useForwardPropsEmits } from 'reka-ui'
 import { EMPTY_SENTINEL } from '~/lib/selectUtils'
 
 const props = defineProps<SelectRootProps>()
 const emits = defineEmits<SelectRootEmits>()
 
-// Strip undefined props (mimics useForwardProps) so reka-ui
-// doesn’t treat them as controlled, and map "" ↔ sentinel.
-const mappedProps = computed(() => {
-  const result: Record<string, unknown> = {}
-  for (const [key, value] of Object.entries(props)) {
-    if (value === undefined) continue
-    if (key === 'modelValue' || key === 'defaultValue') {
-      result[key] = value === '' ? EMPTY_SENTINEL : value
-    } else {
-      result[key] = value
-    }
+// Map "" ↔ sentinel in both props and emits so reka-ui never sees value="".
+// We keep useForwardPropsEmits (which relies on getCurrentInstance()) intact
+// for correct controlled-vs-uncontrolled prop detection.
+const mappedProps = computed(() => ({
+  ...props,
+  modelValue: props.modelValue === '' ? EMPTY_SENTINEL : props.modelValue,
+  defaultValue: props.defaultValue === '' ? EMPTY_SENTINEL : props.defaultValue,
+}))
+
+const wrappedEmit = ((name: string, ...args: any[]) => {
+  if (name === 'update:modelValue') {
+    emits('update:modelValue', args[0] === EMPTY_SENTINEL ? '' : args[0])
+  } else {
+    (emits as any)(name, ...args)
   }
-  return result
-})
+}) as typeof emits
 
-function onModelValueUpdate(value: AcceptableValue) {
-  emits('update:modelValue', value === EMPTY_SENTINEL ? '' : value)
-}
-
-function onOpenUpdate(value: boolean) {
-  emits('update:open', value)
-}
+const forwarded = useForwardPropsEmits(mappedProps, wrappedEmit)
 </script>
 
 <template>
-  <SelectRoot
-    v-bind="mappedProps"
-    @update:model-value="onModelValueUpdate"
-    @update:open="onOpenUpdate"
-  >
+  <SelectRoot v-bind="forwarded">
     <slot />
   </SelectRoot>
 </template>
