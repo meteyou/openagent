@@ -14,6 +14,7 @@ vi.mock('grammy', () => {
       first_name: 'TestBot',
       username: 'test_bot',
     }),
+    sendMessage: vi.fn().mockResolvedValue({ message_id: 1 }),
   }
 
   const MockBot = vi.fn().mockImplementation(() => ({
@@ -554,7 +555,8 @@ describe('TelegramBot', () => {
         'telegram',
         undefined
       )
-      expect(ctx.reply).toHaveBeenCalledWith('Hello human!', { parse_mode: 'HTML' })
+      const botApi = (bot.getBot() as any).api
+      expect(botApi.sendMessage).toHaveBeenCalledWith(67890, 'Hello human!', { parse_mode: 'HTML' })
     })
 
     it('handles empty responses gracefully', async () => {
@@ -676,9 +678,10 @@ describe('TelegramBot', () => {
       await handler(ctx)
       await vi.advanceTimersByTimeAsync(2500)
 
-      expect(ctx.reply.mock.calls.length).toBeGreaterThanOrEqual(2)
+      const botApi = (bot.getBot() as any).api
+      expect(botApi.sendMessage.mock.calls.length).toBeGreaterThanOrEqual(2)
 
-      const allText = ctx.reply.mock.calls.map((c: unknown[]) => c[0] as string).join('')
+      const allText = botApi.sendMessage.mock.calls.map((c: unknown[]) => c[1] as string).join('')
       expect(allText.length).toBe(5000)
     })
   })
