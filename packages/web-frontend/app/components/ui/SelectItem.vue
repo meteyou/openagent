@@ -3,6 +3,7 @@ import { type HTMLAttributes, computed } from 'vue'
 import { SelectItem, SelectItemIndicator, SelectItemText, type SelectItemProps } from 'reka-ui'
 import { Check } from 'lucide-vue-next'
 import { cn } from '~/lib/utils'
+import { EMPTY_SENTINEL } from '~/lib/selectUtils'
 
 interface Props extends SelectItemProps {
   class?: HTMLAttributes['class']
@@ -12,7 +13,11 @@ const props = defineProps<Props>()
 
 const delegatedProps = computed(() => {
   const { class: _, ...delegated } = props
-  return delegated
+  return {
+    ...delegated,
+    // Map empty string to sentinel so reka-ui doesn't throw
+    value: delegated.value === '' ? EMPTY_SENTINEL : delegated.value,
+  }
 })
 </script>
 
