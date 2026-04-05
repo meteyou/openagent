@@ -15,6 +15,7 @@ import {
   getConfigDir,
   encrypt,
   maskApiKey,
+  listAgentSkills,
 } from '@openagent/core'
 import type { AgentCore, SkillConfig, BuiltinToolsConfig } from '@openagent/core'
 import { jwtMiddleware } from '../auth.js'
@@ -156,6 +157,20 @@ export function createSkillsRouter(options: SkillsRouterOptions = {}): Router {
       res.status(201).json({ skill: sanitizeSkill(skill) })
     } catch (err) {
       res.status(400).json({ error: `Failed to install skill from file: ${(err as Error).message}` })
+    }
+  })
+
+  // ─── Agent Skills (self-created, read-only listing) ─────────────────────────
+
+  /**
+   * GET /api/skills/agent — List all agent-created skills
+   */
+  router.get('/agent', (_req, res) => {
+    try {
+      const skills = listAgentSkills()
+      res.json({ skills })
+    } catch (err) {
+      res.status(500).json({ error: `Failed to list agent skills: ${(err as Error).message}` })
     }
   })
 
