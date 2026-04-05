@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { getWorkspaceDir } from './workspace.js'
 
 const SOUL_TEMPLATE = `# Soul
 
@@ -108,15 +109,7 @@ Be efficient — if nothing needs attention, complete silently.
 (Add periodic checks, reminders, or monitoring tasks here)
 `
 
-/**
- * Resolve the workspace directory (same logic as agent.ts getWorkspaceDir).
- * Duplicated here to avoid circular imports.
- */
-function resolveWorkspaceDir(): string {
-  if (process.env.WORKSPACE_DIR) return process.env.WORKSPACE_DIR
-  if (process.env.DATA_DIR) return path.join(process.env.DATA_DIR, 'workspace')
-  return '/workspace'
-}
+
 
 export function getMemoryDir(): string {
   return path.join(process.env.DATA_DIR ?? '/data', 'memory')
@@ -523,7 +516,7 @@ Do not promise that a reminder or cronjob will fetch fresh data unless the confi
 </task_system>`)
 
   // 11. Workspace directory
-  const workspaceDir = resolveWorkspaceDir()
+  const workspaceDir = getWorkspaceDir()
   sections.push(`<workspace>\nYour working directory is ${workspaceDir}. All shell commands execute in this directory by default.\nAll relative paths in read_file, write_file, and list_files resolve against this directory.\nUse this directory for cloning repos, creating files, and all file operations.\n</workspace>`)
 
   // 12. Current date & time
