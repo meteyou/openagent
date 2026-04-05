@@ -304,7 +304,7 @@ describe('agent-skills', () => {
       expect(prompt).toContain('<available_skills>')
     })
 
-    it('includes overflow note when agentSkillsOverflowCount > 10', () => {
+    it('includes list_agent_skills tool and overflow note when agentSkillsOverflowCount > 10', () => {
       const memoryDir = path.join(tmpDir, 'memory')
       const skills: SkillPromptEntry[] = [
         { name: 'test-skill', description: 'Test', location: '/data/skills_agent/test-skill' },
@@ -316,11 +316,12 @@ describe('agent-skills', () => {
         agentSkillsOverflowCount: 15,
       })
 
+      // list_agent_skills appears in both <available_tools> and <available_skills> overflow note
       expect(prompt).toContain('15 self-created agent skills')
       expect(prompt).toContain('list_agent_skills')
     })
 
-    it('does not include overflow note when agentSkillsOverflowCount is undefined', () => {
+    it('does not include list_agent_skills tool when agentSkillsOverflowCount is undefined', () => {
       const memoryDir = path.join(tmpDir, 'memory')
       const skills: SkillPromptEntry[] = [
         { name: 'test-skill', description: 'Test', location: '/data/skills_agent/test-skill' },
@@ -328,11 +329,11 @@ describe('agent-skills', () => {
 
       const prompt = assembleSystemPrompt({ memoryDir, skills })
 
-      expect(prompt).not.toContain('self-created agent skills')
+      // No overflow → list_agent_skills should not appear at all
       expect(prompt).not.toContain('list_agent_skills')
     })
 
-    it('does not include overflow note when count <= 10', () => {
+    it('does not include list_agent_skills tool when count <= 10', () => {
       const memoryDir = path.join(tmpDir, 'memory')
       const skills: SkillPromptEntry[] = [
         { name: 'test-skill', description: 'Test', location: '/data/skills_agent/test-skill' },
@@ -346,7 +347,7 @@ describe('agent-skills', () => {
         agentSkillsOverflowCount: 10,
       })
 
-      expect(prompt).not.toContain('self-created agent skills')
+      expect(prompt).not.toContain('list_agent_skills')
     })
   })
 
