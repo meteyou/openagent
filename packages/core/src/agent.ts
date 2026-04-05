@@ -22,7 +22,7 @@ import type { BuiltinToolsConfig } from './web-tools.js'
 import { SessionManager } from './session-manager.js'
 import type { SessionInfo } from './session-manager.js'
 import { MessageQueue } from './message-queue.js'
-import { createAgentSkillTools, getAgentSkillsForPrompt, getAgentSkillsCount, trackAgentSkillUsage } from './agent-skills.js'
+import { createAgentSkillTools, getAgentSkillsForPrompt, getAgentSkillsCount, getAgentSkillsDir, trackAgentSkillUsage } from './agent-skills.js'
 
 /**
  * A chunk yielded from the agent's response stream
@@ -432,6 +432,7 @@ export class AgentCore {
       skills: allSkills,
       agentSkillsOverflowCount: totalAgentSkills > 10 ? totalAgentSkills : undefined,
       builtinTools: builtinToolsConfig,
+      agentSkillsDir: getAgentSkillsDir(),
     })
 
     const tools: AgentTool[] = [
@@ -972,6 +973,7 @@ export class AgentCore {
       agentSkillsOverflowCount: totalAgentSkills > 10 ? totalAgentSkills : undefined,
       currentUser,
       builtinTools: builtinToolsConfig,
+      agentSkillsDir: getAgentSkillsDir(),
     })
     this.agent.setSystemPrompt(prompt)
   }

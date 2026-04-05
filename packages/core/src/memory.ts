@@ -50,6 +50,7 @@ Both the user and the agent can edit this file. The agent reads it on every conv
 - Prefer small, verifiable changes over large rewrites
 - If a task is ambiguous, ask one clarifying question rather than guessing
 - When multiple approaches exist, state the tradeoff and recommend one
+- When you notice a reusable pattern across conversations, suggest creating a skill for it — but ask the user first
 
 ## Memory Rules
 
@@ -388,6 +389,7 @@ export function assembleSystemPrompt(options?: {
   agentSkillsOverflowCount?: number
   currentUser?: { username: string }
   builtinTools?: BuiltinToolsPromptConfig
+  agentSkillsDir?: string
 }): string {
   const memoryDir = options?.memoryDir
   const recentDays = options?.recentDays ?? 3
@@ -485,7 +487,35 @@ When modifying existing files, prefer edit_file (targeted oldText/newText replac
 - User profiles directory: ${path.join(dir, 'users/')}
 </memory_paths>`)
 
-  // 9. Language setting
+  // 9. Agent skill creation
+  if (options?.agentSkillsDir) {
+    sections.push(`<agent_skills>
+You can create your own reusable skills to extend your capabilities. A skill is a SKILL.md file
+that contains instructions, workflows, or tool integrations you can load later with read_file.
+
+Skills directory: ${options.agentSkillsDir}
+
+To create a skill, write a SKILL.md file to ${options.agentSkillsDir}/<skill-name>/SKILL.md with this format:
+
+\`\`\`markdown
+---
+name: my-skill
+description: Short description of what this skill does (shown in skill listings)
+---
+
+# Skill Title
+
+Detailed instructions, workflows, tool usage patterns, or reference material.
+Use {baseDir} as placeholder for the skill's own directory path.
+\`\`\`
+
+The name must be lowercase alphanumeric with hyphens (e.g. "code-reviewer", "api-docs-fetcher").
+Keep the description concise — it is used for skill routing.
+Created skills automatically appear in <available_skills> for future conversations.
+</agent_skills>`)
+  }
+
+  // 10. Language setting
   if (options?.language) {
     const lang = options.language.trim()
     if (lang.toLowerCase() === 'match' || lang.toLowerCase() === "match user's language") {
@@ -495,7 +525,7 @@ When modifying existing files, prefer edit_file (targeted oldText/newText replac
     }
   }
 
-  // 10. Available skills (progressive disclosure)
+  // 11. Available skills (progressive disclosure)
   if (options?.skills && options.skills.length > 0) {
     const skillEntries = options.skills.map(s =>
       `  <skill>\n    <name>${s.name}</name>\n    <description>${s.description}</description>\n    <location>${s.location}</location>\n  </skill>`
@@ -516,7 +546,7 @@ ${skillEntries}${overflowNote}
 </available_skills>`)
   }
 
-  // 11. Task system instructions
+  // 12. Task system instructions
   sections.push(`<task_system>
 You have access to a background task system. You can start background tasks for complex,
 long-running work using the create_task tool.
@@ -566,18 +596,18 @@ Use create_reminder only for static reminder text delivered verbatim later. If t
 Do not promise that a reminder or cronjob will fetch fresh data unless the configured action type actually supports that.
 </task_system>`)
 
-  // 12. Workspace directory
+  // 13. Workspace directory
   const workspaceDir = getWorkspaceDir()
   sections.push(`<workspace>\nYour working directory is ${workspaceDir}. All shell commands execute in this directory by default.\nAll relative paths in read_file, write_file, and list_files resolve against this directory.\nUse this directory for cloning repos, creating files, and all file operations.\n</workspace>`)
 
-  // 13. Current date & time
+  // 14. Current date & time
   const tz = options?.timezone || 'UTC'
   const now = new Date()
   const date = now.toLocaleDateString('en-CA', { timeZone: tz })
   const time = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: tz })
   sections.push(`<current_datetime>\nCurrent date: ${date}\nCurrent time: ${time} (${tz})\n</current_datetime>`)
 
-  // 14. Channel context
+  // 15. Channel context
   if (options?.channel === 'telegram') {
     sections.push(`<channel_context>
 You are communicating with the user through Telegram. You ARE the Telegram bot — messages the user sends arrive directly to you, and your responses are sent back to the user automatically. Do not tell the user to use the Telegram Bot API, curl commands, or any external tools to communicate. Just respond naturally to their messages.
