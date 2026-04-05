@@ -36,7 +36,7 @@ import type { ProviderConfig, LoopDetectionConfig, BuiltinToolsConfig } from '@o
 import { setupWebSocketChat } from './ws-chat.js'
 import { setupWebSocketLogs } from './ws-logs.js'
 import { setupWebSocketTask } from './ws-task.js'
-import { HeartbeatService } from './heartbeat.js'
+import { HealthMonitorService } from './health-monitor.js'
 import { RuntimeMetrics } from './runtime-metrics.js'
 import { MemoryConsolidationScheduler } from './memory-consolidation-scheduler.js'
 import { createTelegramBot } from '@openagent/telegram'
@@ -428,8 +428,8 @@ let providerManager: ProviderManager | null = null
 let telegramBot: TelegramBot | null = null
 
 // Initialize services early (updated via setters when agentCore/providerManager become available)
-const heartbeatService = new HeartbeatService({ db, providerManager: null })
-heartbeatService.start()
+const healthMonitorService = new HealthMonitorService({ db, providerManager: null })
+healthMonitorService.start()
 
 const consolidationScheduler = new MemoryConsolidationScheduler({ db, agentCore: null })
 consolidationScheduler.start()
@@ -627,7 +627,7 @@ async function initOrUpdateAgentCore(): Promise<void> {
     })
 
     // Update dependent services with new references
-    heartbeatService.setProviderManager(providerManager)
+    healthMonitorService.setProviderManager(providerManager)
     consolidationScheduler.setAgentCore(agentCore)
 
     // Wire agent core events (session end, task injection)
@@ -652,7 +652,7 @@ await initOrUpdateAgentCore()
 const app = createApp({
   db,
   getAgentCore: () => agentCore,
-  heartbeatService,
+  healthMonitorService,
   runtimeMetrics,
   consolidationScheduler,
   agentHeartbeatService,
@@ -701,7 +701,7 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
     shuttingDown = true
 
     console.log(`\n[openagent] Received ${signal}, shutting down...`)
-    heartbeatService.stop()
+    healthMonitorService.stop()
     consolidationScheduler.stop()
     agentHeartbeatService.stop()
 

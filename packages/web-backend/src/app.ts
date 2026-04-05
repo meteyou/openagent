@@ -21,7 +21,7 @@ import { createCronjobsRouter } from './routes/cronjobs.js'
 import { createSecretsRouter } from './routes/secrets.js'
 import type { TaskRunner, TaskScheduler, TaskEventBus, AgentHeartbeatService } from '@openagent/core'
 import { ensureAdminUser } from './auth.js'
-import type { HeartbeatService } from './heartbeat.js'
+import type { HealthMonitorService } from './health-monitor.js'
 import type { RuntimeMetrics } from './runtime-metrics.js'
 import type { MemoryConsolidationScheduler } from './memory-consolidation-scheduler.js'
 import { createUploadsRouter } from './routes/uploads.js'
@@ -32,7 +32,7 @@ export interface AppOptions {
   db: Database
   agentCore?: AgentCore | null
   getAgentCore?: () => AgentCore | null
-  heartbeatService?: HeartbeatService | null
+  healthMonitorService?: HealthMonitorService | null
   runtimeMetrics?: RuntimeMetrics | null
   consolidationScheduler?: MemoryConsolidationScheduler | null
   agentHeartbeatService?: AgentHeartbeatService | null
@@ -88,15 +88,15 @@ export function createApp(options?: AppOptions): express.Express {
     app.use('/api/logs', createLogsRouter(options.db))
     app.use('/api/providers', createProvidersRouter({
       onActiveProviderChanged: () => {
-        options.heartbeatService?.restart({ resetState: true })
+        options.healthMonitorService?.restart({ resetState: true })
         options.onActiveProviderChanged?.()
       },
     }))
     app.use('/api/memory', createMemoryRouter(getAgentCore, options.consolidationScheduler ?? null))
     app.use('/api/settings', createSettingsRouter({
       getAgentCore,
-      onHeartbeatSettingsChanged: () => {
-        options.heartbeatService?.restart()
+      onHealthMonitorSettingsChanged: () => {
+        options.healthMonitorService?.restart()
       },
       onConsolidationSettingsChanged: () => {
         options.consolidationScheduler?.restart()
@@ -127,10 +127,10 @@ export function createApp(options?: AppOptions): express.Express {
     }))
     app.use('/api/secrets', createSecretsRouter())
 
-    if (options.heartbeatService && options.runtimeMetrics) {
+    if (options.healthMonitorService && options.runtimeMetrics) {
       app.use('/api/health', createHealthRouter({
         db: options.db,
-        heartbeatService: options.heartbeatService,
+        healthMonitorService: options.healthMonitorService,
         runtimeMetrics: options.runtimeMetrics,
       }))
     }
