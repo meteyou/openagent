@@ -43,7 +43,6 @@ export interface Settings {
   language: string
   timezone: string
   healthMonitorIntervalMinutes: number
-  yoloMode: boolean
   batchingDelayMs: number
   uploadRetentionDays: number
   telegramEnabled: boolean
@@ -89,7 +88,6 @@ export function useSettings() {
         language: result.language,
         timezone: result.timezone,
         healthMonitorIntervalMinutes: result.healthMonitorIntervalMinutes,
-        yoloMode: result.yoloMode,
         batchingDelayMs: result.batchingDelayMs,
         uploadRetentionDays: result.uploadRetentionDays,
         telegramEnabled: result.telegramEnabled,

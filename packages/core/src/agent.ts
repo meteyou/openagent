@@ -44,7 +44,6 @@ export interface AgentCoreOptions {
   db: Database
   systemPrompt?: string
   tools?: AgentTool[]
-  yoloMode?: boolean
   memoryDir?: string
   sessionTimeoutMinutes?: number
   baseInstructions?: string
@@ -438,7 +437,7 @@ export class AgentCore {
       ...(options.tools ?? []),
       ...createBuiltinWebTools(builtinToolsConfig),
       ...createAgentSkillTools(),
-      ...(options.yoloMode !== false ? createYoloTools() : []),
+      ...createYoloTools(),
     ]
 
     this.agent = new PiAgent({

@@ -1017,7 +1017,6 @@ describe('stats API', () => {
         sessionTimeoutMinutes: 15,
         language: 'en',
         healthMonitorIntervalMinutes: 5,
-        yoloMode: true,
         tokenPriceTable: {
           'custom-model': { input: 1.25, output: 2.5 },
           'gpt-4o': { input: 2.5, output: 10 },

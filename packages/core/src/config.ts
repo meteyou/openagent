@@ -27,7 +27,6 @@ const TEMPLATES: Record<string, object> = {
     },
     batchingDelayMs: 2500,
     uploadRetentionDays: 30,
-    yoloMode: true,
     tokenPriceTable: {
       'gpt-4o': { input: 2.5, output: 10 },
       'gpt-4o-mini': { input: 0.15, output: 0.6 },

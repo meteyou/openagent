@@ -592,7 +592,6 @@ async function initOrUpdateAgentCore(): Promise<void> {
       model,
       apiKey,
       db,
-      yoloMode: true,
       tools: agentTools,
       providerConfig: provider,
       providerManager,
