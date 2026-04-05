@@ -61,7 +61,6 @@ async function main() {
     model,
     apiKey: provider.apiKey,
     db,
-    yoloMode: true,
     systemPrompt: 'You are openagent, a helpful AI assistant. Keep responses concise.',
   })
 

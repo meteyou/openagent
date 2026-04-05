@@ -73,7 +73,6 @@ describe('AgentCore.swapProvider', () => {
       model: makeModel(),
       apiKey: 'sk-primary',
       db,
-      yoloMode: false,
       tools: [],
       providerConfig: primary,
     })
@@ -93,7 +92,6 @@ describe('AgentCore.swapProvider', () => {
       model: makeModel(),
       apiKey: 'sk-primary',
       db,
-      yoloMode: false,
       tools: [],
     })
 
@@ -113,7 +111,6 @@ describe('AgentCore.swapProvider', () => {
       model: makeModel(),
       apiKey: 'sk-primary',
       db,
-      yoloMode: false,
       tools: [],
     })
 
@@ -136,7 +133,6 @@ describe('AgentCore.swapProvider', () => {
       model: makeModel(),
       apiKey: 'sk-primary',
       db,
-      yoloMode: false,
       tools: [],
       providerManager: pm,
     })
@@ -149,7 +145,6 @@ describe('AgentCore.swapProvider', () => {
       model: makeModel(),
       apiKey: 'sk-primary',
       db,
-      yoloMode: false,
       tools: [],
     })
 
@@ -170,7 +165,6 @@ describe('AgentCore.isRetryablePreStreamError', () => {
       model: makeModel(),
       apiKey: 'sk-primary',
       db,
-      yoloMode: false,
       tools: [],
     })
   })
