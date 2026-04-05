@@ -48,9 +48,14 @@
         <!-- Action Type -->
         <div class="space-y-2">
           <Label for="cronjob-action-type">{{ $t('cronjobs.form.actionType') }}</Label>
-          <Select id="cronjob-action-type" v-model="form.actionType">
-            <option value="task">{{ $t('cronjobs.form.actionTypeTask') }}</option>
-            <option value="injection">{{ $t('cronjobs.form.actionTypeInjection') }}</option>
+          <Select v-model="form.actionType">
+            <SelectTrigger id="cronjob-action-type">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="task">{{ $t('cronjobs.form.actionTypeTask') }}</SelectItem>
+              <SelectItem value="injection">{{ $t('cronjobs.form.actionTypeInjection') }}</SelectItem>
+            </SelectContent>
           </Select>
           <p class="text-xs text-muted-foreground">
             {{ form.actionType === 'injection' ? $t('cronjobs.form.actionTypeInjectionHelp') : $t('cronjobs.form.actionTypeTaskHelp') }}
@@ -60,15 +65,20 @@
         <!-- Provider (only for task type) -->
         <div v-if="form.actionType !== 'injection'" class="space-y-2">
           <Label for="cronjob-provider">{{ $t('cronjobs.form.provider') }}</Label>
-          <Select id="cronjob-provider" v-model="form.provider">
-            <option value="">{{ $t('cronjobs.form.defaultProvider') }}</option>
-            <option
-              v-for="p in providers"
-              :key="p.id"
-              :value="p.name"
-            >
-              {{ p.name }}
-            </option>
+          <Select v-model="form.provider">
+            <SelectTrigger id="cronjob-provider">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">{{ $t('cronjobs.form.defaultProvider') }}</SelectItem>
+              <SelectItem
+                v-for="p in providers"
+                :key="p.id"
+                :value="p.name"
+              >
+                {{ p.name }}
+              </SelectItem>
+            </SelectContent>
           </Select>
         </div>
 
@@ -108,8 +118,8 @@
                 >
                   <span class="text-sm font-mono">{{ tool }}</span>
                   <Switch
-                    :model-value="!disabledTools.includes(tool)"
-                    @update:model-value="(val: boolean) => toggleTool(tool, val)"
+                    :checked="!disabledTools.includes(tool)"
+                    @update:checked="(val: boolean) => toggleTool(tool, val)"
                   />
                 </div>
               </div>
@@ -131,8 +141,8 @@
                 >
                   <span class="text-sm">{{ skill }}</span>
                   <Switch
-                    :model-value="!disabledSkills.includes(skill)"
-                    @update:model-value="(val: boolean) => toggleSkill(skill, val)"
+                    :checked="!disabledSkills.includes(skill)"
+                    @update:checked="(val: boolean) => toggleSkill(skill, val)"
                   />
                 </div>
               </div>

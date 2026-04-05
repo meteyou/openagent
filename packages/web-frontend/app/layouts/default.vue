@@ -154,8 +154,8 @@
 
         <!-- Sidebar footer — user menu -->
         <div class="border-t border-sidebar-border/60">
-          <DropdownMenu class="block w-full">
-            <DropdownMenuTrigger>
+          <DropdownMenu>
+            <DropdownMenuTrigger as-child>
               <div
                 class="flex w-full cursor-pointer items-center gap-2.5 px-4 py-[15px] hover:bg-sidebar-accent transition-colors"
                 :aria-label="$t('aria.userMenu')"
@@ -191,10 +191,11 @@
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuSub>
-                <template #trigger>
+                <DropdownMenuSubTrigger>
                   <AppIcon name="globe" size="sm" />
                   {{ $t('common.language') }}
-                </template>
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
                 <DropdownMenuItem
                   v-for="loc in localeList"
                   :key="loc.code"
@@ -203,6 +204,7 @@
                   {{ loc.name }}
                   <AppIcon v-if="locale === loc.code" name="check" size="sm" class="ml-auto" />
                 </DropdownMenuItem>
+                </DropdownMenuSubContent>
               </DropdownMenuSub>
               <DropdownMenuSeparator />
               <DropdownMenuItem destructive @click="handleLogout">
@@ -241,7 +243,7 @@
 
         <!-- Fallback mode indicator -->
         <Tooltip v-if="isInFallbackMode">
-          <TooltipTrigger>
+          <TooltipTrigger as-child>
             <div class="flex items-center gap-1.5 rounded-md bg-warning/10 px-2.5 py-1 ring-1 ring-warning/30">
               <span class="h-2 w-2 shrink-0 rounded-full bg-warning shadow-[0_0_6px_hsl(var(--warning))]" />
               <span class="text-xs font-medium text-warning">{{ t('status.fallback') }}</span>
@@ -260,7 +262,7 @@
 
         <!-- Theme toggle -->
         <Tooltip>
-          <TooltipTrigger>
+          <TooltipTrigger as-child>
             <button
               type="button"
               class="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"

@@ -91,7 +91,7 @@
                 <div class="flex shrink-0 items-center gap-2">
                   <!-- Settings -->
                   <Tooltip>
-                    <TooltipTrigger>
+                    <TooltipTrigger as-child>
                       <Button variant="ghost" size="icon-sm" :aria-label="$t('skills.settings')" @click.stop="openSettings(skill)">
                         <AppIcon name="settings" class="h-4 w-4" />
                       </Button>
@@ -101,7 +101,7 @@
 
                   <!-- Delete -->
                   <Tooltip>
-                    <TooltipTrigger>
+                    <TooltipTrigger as-child>
                       <Button variant="ghost" size="icon-sm" :aria-label="$t('skills.delete')" @click.stop="openDeleteConfirm(skill)">
                         <AppIcon name="trash" class="h-4 w-4 text-muted-foreground hover:text-destructive transition-colors" />
                       </Button>
@@ -111,9 +111,9 @@
 
                   <!-- Toggle -->
                   <Switch
-                    :model-value="skill.enabled"
+                    :checked="skill.enabled"
                     :aria-label="$t('skills.toggleEnabled')"
-                    @change="handleToggleSkill(skill)"
+                    @update:checked="handleToggleSkill(skill)"
                   />
                 </div>
               </div>
@@ -142,9 +142,9 @@
                     </div>
                   </div>
                   <Switch
-                    :model-value="localWebFetch.enabled"
+                    :checked="localWebFetch.enabled"
                     :aria-label="$t('skills.toggleEnabled')"
-                    @change="handleToggleWebFetch"
+                    @update:checked="handleToggleWebFetch"
                   />
                 </div>
               </CardHeader>
@@ -164,9 +164,9 @@
                     </div>
                   </div>
                   <Switch
-                    :model-value="localWebSearch.enabled"
+                    :checked="localWebSearch.enabled"
                     :aria-label="$t('skills.toggleEnabled')"
-                    @change="localWebSearch.enabled = !localWebSearch.enabled"
+                    @update:checked="(val: boolean) => localWebSearch.enabled = val"
                   />
                 </div>
               </CardHeader>
@@ -175,13 +175,17 @@
                 <div class="space-y-2">
                   <Label :for="'web-search-provider'">{{ $t('skills.webSearchProvider') }}</Label>
                   <Select
-                    id="web-search-provider"
                     :model-value="localWebSearch.provider"
                     @update:model-value="localWebSearch.provider = $event as 'duckduckgo' | 'brave' | 'searxng'"
                   >
-                    <option value="duckduckgo">DuckDuckGo</option>
-                    <option value="brave">Brave Search</option>
-                    <option value="searxng">SearXNG</option>
+                    <SelectTrigger id="web-search-provider">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="duckduckgo">DuckDuckGo</SelectItem>
+                      <SelectItem value="brave">Brave Search</SelectItem>
+                      <SelectItem value="searxng">SearXNG</SelectItem>
+                    </SelectContent>
                   </Select>
                 </div>
 

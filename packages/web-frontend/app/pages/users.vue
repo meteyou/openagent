@@ -121,7 +121,7 @@
                 <!-- Row actions (dropdown) -->
                 <TableCell class="text-right" @click.stop>
                   <DropdownMenu>
-                    <DropdownMenuTrigger>
+                    <DropdownMenuTrigger as-child>
                       <Button variant="ghost" size="icon-sm" :aria-label="$t('aria.userMenu')">
                         <AppIcon name="moreVertical" class="h-4 w-4" />
                       </Button>

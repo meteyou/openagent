@@ -28,14 +28,24 @@
           @change="loadStats"
         />
 
-        <Select v-model="filters.provider" class="w-[160px]" @change="onProviderChange">
-          <option value="">{{ $t('usage.filters.allProviders') }}</option>
-          <option v-for="p in availableProviders" :key="p" :value="p">{{ p }}</option>
+        <Select v-model="filters.provider" @update:model-value="onProviderChange">
+          <SelectTrigger class="w-[160px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="">{{ $t('usage.filters.allProviders') }}</SelectItem>
+            <SelectItem v-for="p in availableProviders" :key="p" :value="p">{{ p }}</SelectItem>
+          </SelectContent>
         </Select>
 
-        <Select v-model="filters.model" class="w-[200px]" @change="loadStats">
-          <option value="">{{ $t('usage.filters.allModels') }}</option>
-          <option v-for="m in availableModels" :key="m" :value="m">{{ m }}</option>
+        <Select v-model="filters.model" @update:model-value="loadStats">
+          <SelectTrigger class="w-[200px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="">{{ $t('usage.filters.allModels') }}</SelectItem>
+            <SelectItem v-for="m in availableModels" :key="m" :value="m">{{ m }}</SelectItem>
+          </SelectContent>
         </Select>
       </div>
     </div>

@@ -124,8 +124,8 @@
               </TableCell>
               <TableCell @click.stop>
                 <Switch
-                  :model-value="cj.enabled"
-                  @update:model-value="(val: boolean) => handleToggle(cj.id, val)"
+                  :checked="cj.enabled"
+                  @update:checked="(val: boolean) => handleToggle(cj.id, val)"
                 />
               </TableCell>
               <TableCell>

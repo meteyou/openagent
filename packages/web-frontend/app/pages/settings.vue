@@ -122,19 +122,24 @@
                 <!-- Language -->
                 <div class="flex flex-col gap-2">
                   <Label for="language-select">{{ $t('settings.language') }}</Label>
-                  <Select id="language-select" v-model="form.language">
-                    <option value="match">{{ $t('settings.languageMatch') }}</option>
-                    <option value="English">{{ $t('settings.languages.english') }}</option>
-                    <option value="German">{{ $t('settings.languages.german') }}</option>
-                    <option value="French">{{ $t('settings.languages.french') }}</option>
-                    <option value="Spanish">{{ $t('settings.languages.spanish') }}</option>
-                    <option value="Italian">{{ $t('settings.languages.italian') }}</option>
-                    <option value="Portuguese">{{ $t('settings.languages.portuguese') }}</option>
-                    <option value="Dutch">{{ $t('settings.languages.dutch') }}</option>
-                    <option value="Russian">{{ $t('settings.languages.russian') }}</option>
-                    <option value="Chinese">{{ $t('settings.languages.chinese') }}</option>
-                    <option value="Japanese">{{ $t('settings.languages.japanese') }}</option>
-                    <option value="Korean">{{ $t('settings.languages.korean') }}</option>
+                  <Select v-model="form.language">
+                    <SelectTrigger id="language-select">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="match">{{ $t('settings.languageMatch') }}</SelectItem>
+                      <SelectItem value="English">{{ $t('settings.languages.english') }}</SelectItem>
+                      <SelectItem value="German">{{ $t('settings.languages.german') }}</SelectItem>
+                      <SelectItem value="French">{{ $t('settings.languages.french') }}</SelectItem>
+                      <SelectItem value="Spanish">{{ $t('settings.languages.spanish') }}</SelectItem>
+                      <SelectItem value="Italian">{{ $t('settings.languages.italian') }}</SelectItem>
+                      <SelectItem value="Portuguese">{{ $t('settings.languages.portuguese') }}</SelectItem>
+                      <SelectItem value="Dutch">{{ $t('settings.languages.dutch') }}</SelectItem>
+                      <SelectItem value="Russian">{{ $t('settings.languages.russian') }}</SelectItem>
+                      <SelectItem value="Chinese">{{ $t('settings.languages.chinese') }}</SelectItem>
+                      <SelectItem value="Japanese">{{ $t('settings.languages.japanese') }}</SelectItem>
+                      <SelectItem value="Korean">{{ $t('settings.languages.korean') }}</SelectItem>
+                    </SelectContent>
                   </Select>
                   <p class="text-xs text-muted-foreground">{{ $t('settings.languageHint') }}</p>
                 </div>
@@ -142,8 +147,13 @@
                 <!-- Timezone -->
                 <div class="flex flex-col gap-2">
                   <Label for="timezone-select">{{ $t('settings.timezone') }}</Label>
-                  <Select id="timezone-select" v-model="form.timezone">
-                    <option v-for="tz in timezones" :key="tz" :value="tz">{{ tz }}</option>
+                  <Select v-model="form.timezone">
+                    <SelectTrigger id="timezone-select">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem v-for="tz in timezones" :key="tz" :value="tz">{{ tz }}</SelectItem>
+                    </SelectContent>
                   </Select>
                   <p class="text-xs text-muted-foreground">{{ $t('settings.timezoneHint') }}</p>
                 </div>
@@ -209,7 +219,7 @@
                   </div>
                   <Switch
                     id="consolidation-enabled"
-                    v-model="form.memoryConsolidation.enabled"
+                    v-model:checked="form.memoryConsolidation.enabled"
                   />
                 </div>
 
@@ -250,11 +260,16 @@
 
                     <div class="flex flex-col gap-2">
                       <Label for="consolidation-provider">{{ $t('settings.consolidationProvider') }}</Label>
-                      <Select id="consolidation-provider" v-model="form.memoryConsolidation.providerId">
-                        <option value="">{{ $t('settings.consolidationProviderDefault') }}</option>
-                        <option v-for="p in providers" :key="p.id" :value="p.id">
-                          {{ p.name }} ({{ p.defaultModel }})
-                        </option>
+                      <Select v-model="form.memoryConsolidation.providerId">
+                        <SelectTrigger id="consolidation-provider">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="">{{ $t('settings.consolidationProviderDefault') }}</SelectItem>
+                          <SelectItem v-for="p in providers" :key="p.id" :value="p.id">
+                            {{ p.name }} ({{ p.defaultModel }})
+                          </SelectItem>
+                        </SelectContent>
                       </Select>
                       <p class="text-xs text-muted-foreground">{{ $t('settings.consolidationProviderHint') }}</p>
                     </div>
@@ -315,7 +330,7 @@
                   </div>
                   <Switch
                     id="heartbeat-enabled"
-                    v-model="form.agentHeartbeat.enabled"
+                    v-model:checked="form.agentHeartbeat.enabled"
                   />
                 </div>
 
@@ -362,7 +377,7 @@
                     </div>
                     <Switch
                       id="heartbeat-night-enabled"
-                      v-model="form.agentHeartbeat.nightMode.enabled"
+                      v-model:checked="form.agentHeartbeat.nightMode.enabled"
                     />
                   </div>
 
@@ -436,9 +451,14 @@
                 <!-- Fallback trigger -->
                 <div class="flex flex-col gap-2">
                   <Label for="fallback-trigger">{{ $t('settings.healthMonitorFallbackTrigger') }}</Label>
-                  <Select id="fallback-trigger" v-model="form.healthMonitor.fallbackTrigger">
-                    <option value="down">{{ $t('settings.healthMonitorFallbackTriggerDown') }}</option>
-                    <option value="degraded">{{ $t('settings.healthMonitorFallbackTriggerDegraded') }}</option>
+                  <Select v-model="form.healthMonitor.fallbackTrigger">
+                    <SelectTrigger id="fallback-trigger">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="down">{{ $t('settings.healthMonitorFallbackTriggerDown') }}</SelectItem>
+                      <SelectItem value="degraded">{{ $t('settings.healthMonitorFallbackTriggerDegraded') }}</SelectItem>
+                    </SelectContent>
                   </Select>
                   <p class="text-xs text-muted-foreground">{{ $t('settings.healthMonitorFallbackTriggerHint') }}</p>
                 </div>
@@ -510,7 +530,7 @@
                     </div>
                     <Switch
                       :id="`notify-${toggle.key}`"
-                      v-model="form.healthMonitor.notifications[toggle.key]"
+                      v-model:checked="form.healthMonitor.notifications[toggle.key]"
                     />
                   </div>
                 </div>
@@ -541,7 +561,7 @@
                   </div>
                   <Switch
                     id="telegram-enabled"
-                    v-model="form.telegramEnabled"
+                    v-model:checked="form.telegramEnabled"
                   />
                 </div>
 
@@ -689,7 +709,7 @@
 
                     <!-- Row actions dropdown -->
                     <DropdownMenu>
-                      <DropdownMenuTrigger>
+                      <DropdownMenuTrigger as-child>
                         <Button variant="ghost" size="icon-sm" :aria-label="$t('aria.userMenu')">
                           <AppIcon name="moreVertical" class="h-4 w-4" />
                         </Button>
@@ -762,11 +782,16 @@
                 <!-- Default provider -->
                 <div class="flex flex-col gap-2">
                   <Label for="tasks-default-provider">{{ $t('settings.tasksDefaultProvider') }}</Label>
-                  <Select id="tasks-default-provider" v-model="form.tasks.defaultProvider">
-                    <option value="">{{ $t('settings.tasksDefaultProviderActive') }}</option>
-                    <option v-for="p in providers" :key="p.id" :value="p.id">
-                      {{ p.name }} ({{ p.defaultModel }})
-                    </option>
+                  <Select v-model="form.tasks.defaultProvider">
+                    <SelectTrigger id="tasks-default-provider">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">{{ $t('settings.tasksDefaultProviderActive') }}</SelectItem>
+                      <SelectItem v-for="p in providers" :key="p.id" :value="p.id">
+                        {{ p.name }} ({{ p.defaultModel }})
+                      </SelectItem>
+                    </SelectContent>
                   </Select>
                   <p class="text-xs text-muted-foreground">{{ $t('settings.tasksDefaultProviderHint') }}</p>
                 </div>
@@ -791,9 +816,14 @@
                 <!-- Telegram delivery mode -->
                 <div class="flex flex-col gap-2">
                   <Label for="tasks-telegram-delivery">{{ $t('settings.tasksTelegramDelivery') }}</Label>
-                  <Select id="tasks-telegram-delivery" v-model="form.tasks.telegramDelivery">
-                    <option value="auto">{{ $t('settings.tasksTelegramDeliveryAuto') }}</option>
-                    <option value="always">{{ $t('settings.tasksTelegramDeliveryAlways') }}</option>
+                  <Select v-model="form.tasks.telegramDelivery">
+                    <SelectTrigger id="tasks-telegram-delivery">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="auto">{{ $t('settings.tasksTelegramDeliveryAuto') }}</SelectItem>
+                      <SelectItem value="always">{{ $t('settings.tasksTelegramDeliveryAlways') }}</SelectItem>
+                    </SelectContent>
                   </Select>
                   <p class="text-xs text-muted-foreground">{{ $t('settings.tasksTelegramDeliveryHint') }}</p>
                 </div>
@@ -822,7 +852,7 @@
                   </div>
                   <Switch
                     id="loop-detection-enabled"
-                    v-model="form.tasks.loopDetection.enabled"
+                    v-model:checked="form.tasks.loopDetection.enabled"
                   />
                 </div>
 
@@ -830,10 +860,15 @@
                   <!-- Detection method -->
                   <div class="flex flex-col gap-2">
                     <Label for="loop-detection-method">{{ $t('settings.tasksLoopDetectionMethod') }}</Label>
-                    <Select id="loop-detection-method" v-model="form.tasks.loopDetection.method">
-                      <option value="systematic">{{ $t('settings.tasksLoopDetectionMethodSystematic') }}</option>
-                      <option value="smart">{{ $t('settings.tasksLoopDetectionMethodSmart') }}</option>
-                      <option value="auto">{{ $t('settings.tasksLoopDetectionMethodAuto') }}</option>
+                    <Select v-model="form.tasks.loopDetection.method">
+                      <SelectTrigger id="loop-detection-method">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="systematic">{{ $t('settings.tasksLoopDetectionMethodSystematic') }}</SelectItem>
+                        <SelectItem value="smart">{{ $t('settings.tasksLoopDetectionMethodSmart') }}</SelectItem>
+                        <SelectItem value="auto">{{ $t('settings.tasksLoopDetectionMethodAuto') }}</SelectItem>
+                      </SelectContent>
                     </Select>
                     <p class="text-xs text-muted-foreground">{{ $t('settings.tasksLoopDetectionMethodHint') }}</p>
                   </div>
@@ -856,11 +891,16 @@
                   <template v-if="form.tasks.loopDetection.method !== 'systematic'">
                     <div class="flex flex-col gap-2">
                       <Label for="loop-smart-provider">{{ $t('settings.tasksLoopDetectionSmartProvider') }}</Label>
-                      <Select id="loop-smart-provider" v-model="form.tasks.loopDetection.smartProvider">
-                        <option value="">{{ $t('settings.tasksLoopDetectionSmartProviderDefault') }}</option>
-                        <option v-for="p in providers" :key="p.id" :value="p.id">
-                          {{ p.name }} ({{ p.defaultModel }})
-                        </option>
+                      <Select v-model="form.tasks.loopDetection.smartProvider">
+                        <SelectTrigger id="loop-smart-provider">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="">{{ $t('settings.tasksLoopDetectionSmartProviderDefault') }}</SelectItem>
+                          <SelectItem v-for="p in providers" :key="p.id" :value="p.id">
+                            {{ p.name }} ({{ p.defaultModel }})
+                          </SelectItem>
+                        </SelectContent>
                       </Select>
                       <p class="text-xs text-muted-foreground">{{ $t('settings.tasksLoopDetectionSmartProviderHint') }}</p>
                     </div>

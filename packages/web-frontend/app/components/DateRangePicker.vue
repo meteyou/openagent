@@ -75,8 +75,8 @@ function setPreset(preset: string) {
 </script>
 
 <template>
-  <Popover v-model:open="open" align="end">
-    <template #trigger>
+  <Popover v-model:open="open">
+    <PopoverTrigger as-child>
       <div class="flex items-center gap-1">
         <Button variant="outline" :class="'gap-2 font-normal' + (!hasRange ? ' text-muted-foreground' : '')">
           <AppIcon name="calendar" size="sm" />
@@ -93,9 +93,9 @@ function setPreset(preset: string) {
           <AppIcon name="close" size="sm" />
         </Button>
       </div>
-    </template>
+    </PopoverTrigger>
 
-    <div class="flex w-[280px] flex-col gap-3">
+    <PopoverContent align="end" class="w-[280px]">
       <!-- Presets -->
       <div class="flex flex-wrap gap-1.5">
         <Button
@@ -142,6 +142,6 @@ function setPreset(preset: string) {
       >
         {{ t('logs.clearDateRange') }}
       </Button>
-    </div>
+    </PopoverContent>
   </Popover>
 </template>

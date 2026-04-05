@@ -24,23 +24,29 @@
         <div class="flex flex-col gap-1.5">
           <Label for="provider-type">{{ $t('providers.type') }}</Label>
           <Select
-            id="provider-type"
             v-model="form.providerType"
             :disabled="oauthInProgress"
-            required
-            @change="onTypeChange"
+            :required="true"
+            @update:model-value="onTypeChange"
           >
-            <option value="" disabled>{{ $t('providers.selectType') }}</option>
-            <optgroup :label="$t('providers.groupApiKey')">
-              <option v-for="(preset, key) in apiKeyPresets" :key="key" :value="key">
-                {{ preset.label }}
-              </option>
-            </optgroup>
-            <optgroup :label="$t('providers.groupSubscription')">
-              <option v-for="(preset, key) in oauthPresets" :key="key" :value="key">
-                {{ preset.label }}
-              </option>
-            </optgroup>
+            <SelectTrigger id="provider-type">
+              <SelectValue :placeholder="$t('providers.selectType')" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectLabel>{{ $t('providers.groupApiKey') }}</SelectLabel>
+                <SelectItem v-for="(preset, key) in apiKeyPresets" :key="key" :value="String(key)">
+                  {{ preset.label }}
+                </SelectItem>
+              </SelectGroup>
+              <SelectSeparator />
+              <SelectGroup>
+                <SelectLabel>{{ $t('providers.groupSubscription') }}</SelectLabel>
+                <SelectItem v-for="(preset, key) in oauthPresets" :key="key" :value="String(key)">
+                  {{ preset.label }}
+                </SelectItem>
+              </SelectGroup>
+            </SelectContent>
           </Select>
         </div>
 
@@ -48,17 +54,18 @@
         <div v-if="form.providerType && hasKnownModels" class="flex flex-col gap-1.5">
           <Label for="provider-model">{{ $t('providers.model') }}</Label>
           <Select
-            id="provider-model"
             v-model="form.defaultModel"
             :disabled="loadingModels || oauthInProgress"
-            required
+            :required="true"
           >
-            <option value="" disabled>
-              {{ loadingModels ? $t('providers.loadingModels') : $t('providers.selectModel') }}
-            </option>
-            <option v-for="model in availableModels" :key="model.id" :value="model.id">
-              {{ model.name }} ({{ model.id }})
-            </option>
+            <SelectTrigger id="provider-model">
+              <SelectValue :placeholder="loadingModels ? $t('providers.loadingModels') : $t('providers.selectModel')" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem v-for="model in availableModels" :key="model.id" :value="model.id">
+                {{ model.name }} ({{ model.id }})
+              </SelectItem>
+            </SelectContent>
           </Select>
         </div>
 

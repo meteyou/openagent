@@ -23,19 +23,29 @@
     <div class="flex-shrink-0 border-b border-border px-5 py-3">
       <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
         <div class="flex flex-1 items-center gap-2">
-          <Select v-model="filters.status" class="w-full sm:w-[160px]" @change="onFilterChange">
-            <option value="">{{ $t('tasks.filters.allStatuses') }}</option>
-            <option value="running">{{ $t('tasks.status.running') }}</option>
-            <option value="paused">{{ $t('tasks.status.paused') }}</option>
-            <option value="completed">{{ $t('tasks.status.completed') }}</option>
-            <option value="failed">{{ $t('tasks.status.failed') }}</option>
+          <Select v-model="filters.status" @update:model-value="onFilterChange">
+            <SelectTrigger class="w-full sm:w-[160px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">{{ $t('tasks.filters.allStatuses') }}</SelectItem>
+              <SelectItem value="running">{{ $t('tasks.status.running') }}</SelectItem>
+              <SelectItem value="paused">{{ $t('tasks.status.paused') }}</SelectItem>
+              <SelectItem value="completed">{{ $t('tasks.status.completed') }}</SelectItem>
+              <SelectItem value="failed">{{ $t('tasks.status.failed') }}</SelectItem>
+            </SelectContent>
           </Select>
 
-          <Select v-model="filters.triggerType" class="w-full sm:w-[160px]" @change="onFilterChange">
-            <option value="">{{ $t('tasks.filters.allTriggers') }}</option>
-            <option value="user">{{ $t('tasks.trigger.user') }}</option>
-            <option value="agent">{{ $t('tasks.trigger.agent') }}</option>
-            <option value="cronjob">{{ $t('tasks.trigger.cronjob') }}</option>
+          <Select v-model="filters.triggerType" @update:model-value="onFilterChange">
+            <SelectTrigger class="w-full sm:w-[160px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">{{ $t('tasks.filters.allTriggers') }}</SelectItem>
+              <SelectItem value="user">{{ $t('tasks.trigger.user') }}</SelectItem>
+              <SelectItem value="agent">{{ $t('tasks.trigger.agent') }}</SelectItem>
+              <SelectItem value="cronjob">{{ $t('tasks.trigger.cronjob') }}</SelectItem>
+            </SelectContent>
           </Select>
         </div>
 

@@ -22,9 +22,14 @@
         <!-- Role -->
         <div class="flex flex-col gap-1.5">
           <Label for="modal-role">{{ $t('users.role') }}</Label>
-          <Select id="modal-role" v-model="form.role">
-            <option value="user">{{ $t('roles.user') }}</option>
-            <option value="admin">{{ $t('roles.admin') }}</option>
+          <Select v-model="form.role">
+            <SelectTrigger id="modal-role">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="user">{{ $t('roles.user') }}</SelectItem>
+              <SelectItem value="admin">{{ $t('roles.admin') }}</SelectItem>
+            </SelectContent>
           </Select>
         </div>
 

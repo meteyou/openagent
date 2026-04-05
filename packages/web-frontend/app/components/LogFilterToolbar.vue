@@ -28,15 +28,25 @@ const emit = defineEmits<{
         @input="emit('search')"
       />
 
-      <Select v-model="selectedSourceFilter" class="w-[150px]" @change="emit('apply')">
-        <option value="">{{ t('logs.allSources') }}</option>
-        <option value="main">{{ t('logs.sourceMainAgent') }}</option>
-        <option value="task">{{ t('logs.sourceTasks') }}</option>
+      <Select v-model="selectedSourceFilter" @update:model-value="emit('apply')">
+        <SelectTrigger class="w-[150px]">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="">{{ t('logs.allSources') }}</SelectItem>
+          <SelectItem value="main">{{ t('logs.sourceMainAgent') }}</SelectItem>
+          <SelectItem value="task">{{ t('logs.sourceTasks') }}</SelectItem>
+        </SelectContent>
       </Select>
 
-      <Select v-model="selectedToolName" class="w-[150px]" @change="emit('apply')">
-        <option value="">{{ t('logs.allTools') }}</option>
-        <option v-for="name in toolNames" :key="name" :value="name">{{ name }}</option>
+      <Select v-model="selectedToolName" @update:model-value="emit('apply')">
+        <SelectTrigger class="w-[150px]">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="">{{ t('logs.allTools') }}</SelectItem>
+          <SelectItem v-for="name in toolNames" :key="name" :value="name">{{ name }}</SelectItem>
+        </SelectContent>
       </Select>
 
       <DateRangePicker

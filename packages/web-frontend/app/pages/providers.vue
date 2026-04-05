@@ -129,7 +129,7 @@
                 <!-- Row actions -->
                 <TableCell class="text-right" @click.stop>
                   <DropdownMenu>
-                    <DropdownMenuTrigger>
+                    <DropdownMenuTrigger as-child>
                       <Button variant="ghost" size="icon-sm" :aria-label="$t('providers.columns.actions')">
                         <AppIcon name="moreVertical" class="h-4 w-4" />
                       </Button>
