@@ -213,7 +213,7 @@ export function listTasksTool(options: Pick<TaskToolsOptions, 'taskStore'>): Age
       ),
       trigger_type: Type.Optional(
         Type.String({
-          description: 'Filter by trigger type: "user", "agent", or "cronjob". Omit to show all.',
+          description: 'Filter by trigger type: "user", "agent", "cronjob", or "heartbeat". Omit to show all.',
         })
       ),
       limit: Type.Optional(

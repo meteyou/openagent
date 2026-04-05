@@ -170,7 +170,7 @@ describe('AgentHeartbeatService', () => {
         expect.objectContaining({
           name: 'Agent Heartbeat',
           prompt: expect.stringContaining('HEARTBEAT.md'),
-          triggerType: 'agent',
+          triggerType: 'heartbeat',
           triggerSourceId: 'agent-heartbeat',
           provider: 'Test Provider',
           model: 'gpt-4o',

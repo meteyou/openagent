@@ -160,7 +160,7 @@ export class AgentHeartbeatService {
     const task: Task = this.taskStore.create({
       name: 'Agent Heartbeat',
       prompt: HEARTBEAT_PROMPT,
-      triggerType: 'agent',
+      triggerType: 'heartbeat',
       triggerSourceId: 'agent-heartbeat',
       provider: provider.name,
       model: provider.defaultModel,

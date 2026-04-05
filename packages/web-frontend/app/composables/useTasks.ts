@@ -3,7 +3,7 @@ export interface Task {
   name: string
   prompt: string
   status: 'running' | 'paused' | 'completed' | 'failed'
-  triggerType: 'user' | 'agent' | 'cronjob'
+  triggerType: 'user' | 'agent' | 'cronjob' | 'heartbeat'
   triggerSourceId: string | null
   provider: string | null
   model: string | null

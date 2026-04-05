@@ -45,6 +45,7 @@
               <SelectItem value="user">{{ $t('tasks.trigger.user') }}</SelectItem>
               <SelectItem value="agent">{{ $t('tasks.trigger.agent') }}</SelectItem>
               <SelectItem value="cronjob">{{ $t('tasks.trigger.cronjob') }}</SelectItem>
+              <SelectItem value="heartbeat">{{ $t('tasks.trigger.heartbeat') }}</SelectItem>
             </SelectContent>
           </Select>
         </div>

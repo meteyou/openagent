@@ -635,7 +635,8 @@
     "trigger": {
       "user": "Benutzer",
       "agent": "Agent",
-      "cronjob": "Cronjob"
+      "cronjob": "Cronjob",
+      "heartbeat": "Heartbeat"
     }
   },
   "cronjobs": {

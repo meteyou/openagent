@@ -8,7 +8,7 @@ import { jwtMiddleware } from '../auth.js'
 import type { AuthenticatedRequest } from '../auth.js'
 
 const VALID_STATUSES: TaskStatus[] = ['running', 'paused', 'completed', 'failed']
-const VALID_TRIGGER_TYPES: TaskTriggerType[] = ['user', 'agent', 'cronjob']
+const VALID_TRIGGER_TYPES: TaskTriggerType[] = ['user', 'agent', 'cronjob', 'heartbeat']
 
 export interface TasksRouterOptions {
   db: Database
