@@ -12,6 +12,7 @@ import type { ProviderConfig } from './provider-config.js'
 import type { ProviderManager } from './provider-manager.js'
 import { assembleSystemPrompt, ensureMemoryStructure, getMemoryDir } from './memory.js'
 import type { SkillPromptEntry } from './memory.js'
+import { getWorkspaceDir } from './workspace.js'
 import { loadConfig, ensureConfigTemplates } from './config.js'
 import { loadSkills, getSkillDecrypted } from './skill-config.js'
 import { getUploadsDir } from './uploads.js'
@@ -53,19 +54,8 @@ export interface AgentCoreOptions {
   onSessionEnd?: (userId: string, summary: string | null) => void
 }
 
-/**
- * Get the workspace directory for agent file operations.
- * Falls back to DATA_DIR/workspace, then /workspace (Docker default).
- */
-export function getWorkspaceDir(): string {
-  if (process.env.WORKSPACE_DIR) return process.env.WORKSPACE_DIR
-  if (process.env.DATA_DIR) {
-    const wsDir = nodePath.join(process.env.DATA_DIR, 'workspace')
-    if (!fs.existsSync(wsDir)) fs.mkdirSync(wsDir, { recursive: true })
-    return wsDir
-  }
-  return '/workspace'
-}
+// Re-export for backward compatibility
+export { getWorkspaceDir } from './workspace.js'
 
 /**
  * Resolve a path relative to WORKSPACE_DIR (consistent across all tools)
@@ -310,10 +300,17 @@ export function createYoloTools(): AgentTool[] {
           }
         }
 
+        // Capture before/after for memory files (enables diff view in UI)
+        let memoryDiff: { before: string; after: string } | undefined
+        const memoryDir = getMemoryDir()
+        if (resolved.startsWith(memoryDir)) {
+          memoryDiff = { before: originalContent, after: content }
+        }
+
         fs.writeFileSync(resolved, content, 'utf-8')
         return {
           content: [{ type: 'text' as const, text: `Successfully replaced ${edits.length} block(s) in ${filePath}.` }],
-          details: { path: resolved, editsApplied: edits.length },
+          details: { path: resolved, editsApplied: edits.length, memoryDiff },
         }
       } catch (err: unknown) {
         return {
