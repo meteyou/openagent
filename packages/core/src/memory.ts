@@ -368,6 +368,15 @@ export interface SkillPromptEntry {
   location: string
 }
 
+/**
+ * Which builtin web tools are enabled (mirrors BuiltinToolsConfig from web-tools).
+ * Only the `enabled` flag is needed for prompt generation.
+ */
+export interface BuiltinToolsPromptConfig {
+  webSearch?: { enabled?: boolean }
+  webFetch?: { enabled?: boolean }
+}
+
 export function assembleSystemPrompt(options?: {
   memoryDir?: string
   baseInstructions?: string
@@ -378,6 +387,7 @@ export function assembleSystemPrompt(options?: {
   skills?: SkillPromptEntry[]
   agentSkillsOverflowCount?: number
   currentUser?: { username: string }
+  builtinTools?: BuiltinToolsPromptConfig
 }): string {
   const memoryDir = options?.memoryDir
   const recentDays = options?.recentDays ?? 3
@@ -419,7 +429,48 @@ export function assembleSystemPrompt(options?: {
     sections.push(`<user_profiles_path>${usersPath}</user_profiles_path>`)
   }
 
-  // 7. Memory file paths for agent self-access
+  // 7. Available tools overview
+  {
+    const toolLines: string[] = [
+      '- **shell**: Execute shell commands and return stdout/stderr. Use sudo for privileged operations.',
+      '- **read_file**: Read the contents of a file at a given path.',
+      '- **write_file**: Write content to a file. Creates parent directories if needed.',
+      '- **edit_file**: Edit a file using exact oldText→newText replacements. Prefer this over write_file for partial changes — it saves tokens and reduces errors.',
+      '- **list_files**: List files and directories at a given path.',
+    ]
+
+    // Web tools (enabled by default unless explicitly disabled)
+    if (options?.builtinTools?.webSearch?.enabled !== false) {
+      toolLines.push('- **web_search**: Search the web for information. Returns results with title, URL, and snippet.')
+    }
+    if (options?.builtinTools?.webFetch?.enabled !== false) {
+      toolLines.push('- **web_fetch**: Fetch a web page and extract its text content. Use after web_search to read actual page contents.')
+    }
+
+    // Task & scheduling tools
+    toolLines.push(
+      '- **create_task**: Start a background task for complex, long-running work.',
+      '- **resume_task**: Resume a paused task by sending it a message.',
+      '- **list_tasks**: List background tasks with their status.',
+      '- **create_cronjob**: Create a recurring scheduled task.',
+      '- **edit_cronjob**: Edit an existing cronjob.',
+      '- **remove_cronjob**: Remove a cronjob.',
+      '- **list_cronjobs**: List all cronjobs.',
+      '- **create_reminder**: Create a one-time reminder delivered at a specific time.',
+    )
+
+    // Chat history
+    toolLines.push('- **read_chat_history**: Read past chat messages from the database with datetime/source/role filters.')
+
+    // Agent skills tool (only useful when there are more skills than shown in the prompt)
+    if (options?.agentSkillsOverflowCount && options.agentSkillsOverflowCount > 10) {
+      toolLines.push(`- **list_agent_skills**: Browse all ${options.agentSkillsOverflowCount} self-created agent skills (only the 10 most recent are shown in <available_skills>).`)
+    }
+
+    sections.push(`<available_tools>\nYou have the following tools available. Use the right tool for the job.\n\n${toolLines.join('\n')}\n</available_tools>`)
+  }
+
+  // 8. Memory file paths for agent self-access
   const dir = memoryDir ?? getMemoryDir()
   const today = new Date().toISOString().split('T')[0]
   sections.push(`<memory_paths>
@@ -434,7 +485,7 @@ When modifying existing files, prefer edit_file (targeted oldText/newText replac
 - User profiles directory: ${path.join(dir, 'users/')}
 </memory_paths>`)
 
-  // 8. Language setting
+  // 9. Language setting
   if (options?.language) {
     const lang = options.language.trim()
     if (lang.toLowerCase() === 'match' || lang.toLowerCase() === "match user's language") {
@@ -444,7 +495,7 @@ When modifying existing files, prefer edit_file (targeted oldText/newText replac
     }
   }
 
-  // 9. Available skills (progressive disclosure)
+  // 10. Available skills (progressive disclosure)
   if (options?.skills && options.skills.length > 0) {
     const skillEntries = options.skills.map(s =>
       `  <skill>\n    <name>${s.name}</name>\n    <description>${s.description}</description>\n    <location>${s.location}</location>\n  </skill>`
@@ -465,7 +516,7 @@ ${skillEntries}${overflowNote}
 </available_skills>`)
   }
 
-  // 10. Task system instructions
+  // 11. Task system instructions
   sections.push(`<task_system>
 You have access to a background task system. You can start background tasks for complex,
 long-running work using the create_task tool.
@@ -515,18 +566,18 @@ Use create_reminder only for static reminder text delivered verbatim later. If t
 Do not promise that a reminder or cronjob will fetch fresh data unless the configured action type actually supports that.
 </task_system>`)
 
-  // 11. Workspace directory
+  // 12. Workspace directory
   const workspaceDir = getWorkspaceDir()
   sections.push(`<workspace>\nYour working directory is ${workspaceDir}. All shell commands execute in this directory by default.\nAll relative paths in read_file, write_file, and list_files resolve against this directory.\nUse this directory for cloning repos, creating files, and all file operations.\n</workspace>`)
 
-  // 12. Current date & time
+  // 13. Current date & time
   const tz = options?.timezone || 'UTC'
   const now = new Date()
   const date = now.toLocaleDateString('en-CA', { timeZone: tz })
   const time = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: tz })
   sections.push(`<current_datetime>\nCurrent date: ${date}\nCurrent time: ${time} (${tz})\n</current_datetime>`)
 
-  // 13. Channel context
+  // 14. Channel context
   if (options?.channel === 'telegram') {
     sections.push(`<channel_context>
 You are communicating with the user through Telegram. You ARE the Telegram bot — messages the user sends arrive directly to you, and your responses are sent back to the user automatically. Do not tell the user to use the Telegram Bot API, curl commands, or any external tools to communicate. Just respond naturally to their messages.

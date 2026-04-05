@@ -431,6 +431,7 @@ export class AgentCore {
       timezone,
       skills: allSkills,
       agentSkillsOverflowCount: totalAgentSkills > 10 ? totalAgentSkills : undefined,
+      builtinTools: builtinToolsConfig,
     })
 
     const tools: AgentTool[] = [
@@ -945,11 +946,13 @@ export class AgentCore {
   refreshSystemPrompt(channel?: string, currentUser?: { username: string }): void {
     let language: string | undefined
     let timezone: string | undefined
+    let builtinToolsConfig: BuiltinToolsConfig | undefined
     try {
       ensureConfigTemplates()
-      const settings = loadConfig<{ language?: string; timezone?: string }>('settings.json')
+      const settings = loadConfig<{ language?: string; timezone?: string; builtinTools?: BuiltinToolsConfig }>('settings.json')
       language = settings.language
       timezone = settings.timezone
+      builtinToolsConfig = settings.builtinTools
     } catch {
       // Config not available
     }
@@ -968,6 +971,7 @@ export class AgentCore {
       skills: allSkills,
       agentSkillsOverflowCount: totalAgentSkills > 10 ? totalAgentSkills : undefined,
       currentUser,
+      builtinTools: builtinToolsConfig,
     })
     this.agent.setSystemPrompt(prompt)
   }
