@@ -15,7 +15,8 @@
     "users": "Users",
     "skills": "Skills",
     "tasks": "Tasks",
-    "cronjobs": "Cronjobs"
+    "cronjobs": "Cronjobs",
+    "plugins": "Plugins"
   },
   "roles": {
     "admin": "Admin",
@@ -557,6 +558,14 @@
     "agentEmpty": "No agent-created skills yet",
     "agentEmptyDescription": "The agent can create its own skills during conversations. They will appear here.",
     "agentLoading": "Loading agent skills..."
+  },
+  "plugins": {
+    "title": "Plugins",
+    "subtitle": "Manage installed plugins",
+    "enabled": "Active",
+    "disabled": "Inactive",
+    "comingSoon": "Plugin management via API coming soon",
+    "noPlugins": "No plugins installed"
   },
   "usage": {
     "kicker": "Consumption analytics",

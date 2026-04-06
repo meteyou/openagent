@@ -142,6 +142,15 @@
             </NuxtLink>
 
             <NuxtLink
+              to="/plugins"
+              :class="navItemClass('/plugins')"
+              @click="closeSidebarOnMobile"
+            >
+              <AppIcon name="blocks" class="shrink-0" />
+              <span>{{ $t('nav.plugins') }}</span>
+            </NuxtLink>
+
+            <NuxtLink
               to="/settings"
               :class="navItemClass('/settings')"
               @click="closeSidebarOnMobile"
