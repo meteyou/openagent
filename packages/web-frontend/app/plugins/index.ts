@@ -1,15 +1,9 @@
-import { registerPlugin } from './registry'
+import { registerPlugin } from '~/utils/pluginRegistry'
 import voiceInputPlugin from './voice-input/index'
 
 /**
- * Register all frontend plugins.
- * Called once during app initialization.
+ * Nuxt plugin: registers all frontend plugins at app startup.
  */
-export function initPlugins(): void {
-  registerPlugin(voiceInputPlugin)
-}
-
-// Nuxt requires a default export for files in the plugins/ directory
 export default defineNuxtPlugin(() => {
-  initPlugins()
+  registerPlugin(voiceInputPlugin)
 })

@@ -1,5 +1,5 @@
 import type { Component } from 'vue'
-import type { OpenAgentFrontendPlugin } from './types'
+import type { OpenAgentFrontendPlugin } from './pluginTypes'
 
 /** Registered plugin components per slot */
 const slots: Record<string, Component[]> = {}

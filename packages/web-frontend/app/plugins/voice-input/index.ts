@@ -1,4 +1,4 @@
-import type { OpenAgentFrontendPlugin } from '../types'
+import type { OpenAgentFrontendPlugin } from '~/utils/pluginTypes'
 import VoiceInput from './VoiceInput.vue'
 
 export default {

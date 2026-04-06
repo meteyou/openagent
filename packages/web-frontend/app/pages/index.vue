@@ -184,7 +184,7 @@
 
 <script setup lang="ts">
 import type { ChatMessage, ToolCallData } from '~/composables/useChat'
-import { getSlot } from '~/plugins/registry'
+import { getSlot } from '~/utils/pluginRegistry'
 const { t } = useI18n()
 const { apiFetch } = useApi()
 const { user } = useAuth()
