@@ -14,6 +14,9 @@ import {
   getUserProfileDir,
   ensureUserProfile,
   readUserProfile,
+  ensureProjectsDir,
+  parseProjectAliases,
+  listProjectNotes,
 } from './memory.js'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -34,13 +37,14 @@ describe('memory', () => {
   }
 
   describe('ensureMemoryStructure', () => {
-    it('creates memory directory structure including users/', () => {
+    it('creates memory directory structure including users/ and projects/', () => {
       const dir = makeTmpDir()
       ensureMemoryStructure(dir)
 
       expect(fs.existsSync(dir)).toBe(true)
       expect(fs.existsSync(path.join(dir, 'daily'))).toBe(true)
       expect(fs.existsSync(path.join(dir, 'users'))).toBe(true)
+      expect(fs.existsSync(path.join(dir, 'projects'))).toBe(true)
       expect(fs.existsSync(path.join(dir, 'SOUL.md'))).toBe(true)
       expect(fs.existsSync(path.join(dir, 'MEMORY.md'))).toBe(true)
       expect(fs.existsSync(path.join(dir, 'AGENTS.md'))).toBe(true)
@@ -354,7 +358,7 @@ describe('memory', () => {
       expect(prompt).toContain('</agent_rules>')
     })
 
-    it('includes memory_paths section with all file paths', () => {
+    it('includes memory_paths section with all file paths including projects/', () => {
       const dir = makeTmpDir()
       ensureMemoryStructure(dir)
 
@@ -366,8 +370,36 @@ describe('memory', () => {
       expect(prompt).toContain('AGENTS.md')
       expect(prompt).toContain('HEARTBEAT.md')
       expect(prompt).toContain('daily/')
+      expect(prompt).toContain('projects/')
       expect(prompt).toContain('read_file, write_file, and edit_file')
       expect(prompt).toContain('</memory_paths>')
+    })
+
+    it('includes project_notes section when project notes exist', () => {
+      const dir = makeTmpDir()
+      ensureMemoryStructure(dir)
+
+      // Create a project note
+      const projectsDir = path.join(dir, 'projects')
+      fs.writeFileSync(path.join(projectsDir, 'openagent.md'), '---\naliases: [OpenAgent, open-agent]\n---\n# Project: OpenAgent\n', 'utf-8')
+
+      const prompt = assembleSystemPrompt({ memoryDir: dir })
+
+      expect(prompt).toContain('<project_notes>')
+      expect(prompt).toContain('openagent.md')
+      expect(prompt).toContain('OpenAgent')
+      expect(prompt).toContain('open-agent')
+      expect(prompt).toContain('load it with read_file')
+      expect(prompt).toContain('</project_notes>')
+    })
+
+    it('excludes project_notes section when no project notes exist', () => {
+      const dir = makeTmpDir()
+      ensureMemoryStructure(dir)
+
+      const prompt = assembleSystemPrompt({ memoryDir: dir })
+
+      expect(prompt).not.toContain('<project_notes>')
     })
 
     it('includes custom AGENTS.md content in agent_rules', () => {
@@ -408,6 +440,125 @@ describe('memory', () => {
       expect(prompt).toContain(path.join(dir, 'users'))
       expect(prompt).toContain('</user_profiles_path>')
       expect(prompt).not.toContain('<user_profile>')
+    })
+  })
+
+  describe('parseProjectAliases', () => {
+    it('extracts aliases from valid YAML frontmatter', () => {
+      const content = '---\naliases: [OpenAgent, open-agent, openagent]\n---\n# Project\n'
+      expect(parseProjectAliases(content)).toEqual(['OpenAgent', 'open-agent', 'openagent'])
+    })
+
+    it('returns empty array when no frontmatter', () => {
+      const content = '# Project\n\nSome content'
+      expect(parseProjectAliases(content)).toEqual([])
+    })
+
+    it('returns empty array for empty content', () => {
+      expect(parseProjectAliases('')).toEqual([])
+    })
+
+    it('returns empty array for frontmatter without aliases', () => {
+      const content = '---\ntitle: My Project\n---\n# Project\n'
+      expect(parseProjectAliases(content)).toEqual([])
+    })
+
+    it('handles empty aliases array', () => {
+      const content = '---\naliases: []\n---\n# Project\n'
+      expect(parseProjectAliases(content)).toEqual([])
+    })
+
+    it('handles single alias value', () => {
+      const content = '---\naliases: MyProject\n---\n# Project\n'
+      expect(parseProjectAliases(content)).toEqual(['MyProject'])
+    })
+
+    it('handles malformed frontmatter (no closing ---)', () => {
+      const content = '---\naliases: [Foo]\n# No closing delimiter\n'
+      expect(parseProjectAliases(content)).toEqual([])
+    })
+
+    it('handles aliases with extra spaces', () => {
+      const content = '---\naliases: [  Foo ,  Bar  , Baz ]\n---\n# Project\n'
+      expect(parseProjectAliases(content)).toEqual(['Foo', 'Bar', 'Baz'])
+    })
+  })
+
+  describe('listProjectNotes', () => {
+    it('returns empty array for empty projects directory', () => {
+      const dir = makeTmpDir()
+      ensureMemoryStructure(dir)
+
+      const notes = listProjectNotes(dir)
+      expect(notes).toEqual([])
+    })
+
+    it('lists multiple project note files with aliases', () => {
+      const dir = makeTmpDir()
+      ensureMemoryStructure(dir)
+
+      const projectsDir = path.join(dir, 'projects')
+      fs.writeFileSync(path.join(projectsDir, 'alpha.md'), '---\naliases: [Alpha, alpha-project]\n---\n# Alpha\n', 'utf-8')
+      fs.writeFileSync(path.join(projectsDir, 'beta.md'), '---\naliases: [Beta]\n---\n# Beta\n', 'utf-8')
+
+      const notes = listProjectNotes(dir)
+      expect(notes).toHaveLength(2)
+      expect(notes[0]).toEqual({ filename: 'alpha.md', aliases: ['Alpha', 'alpha-project'] })
+      expect(notes[1]).toEqual({ filename: 'beta.md', aliases: ['Beta'] })
+    })
+
+    it('handles files without frontmatter', () => {
+      const dir = makeTmpDir()
+      ensureMemoryStructure(dir)
+
+      const projectsDir = path.join(dir, 'projects')
+      fs.writeFileSync(path.join(projectsDir, 'noaliases.md'), '# No Aliases Project\n', 'utf-8')
+
+      const notes = listProjectNotes(dir)
+      expect(notes).toHaveLength(1)
+      expect(notes[0]).toEqual({ filename: 'noaliases.md', aliases: [] })
+    })
+
+    it('ignores non-md files', () => {
+      const dir = makeTmpDir()
+      ensureMemoryStructure(dir)
+
+      const projectsDir = path.join(dir, 'projects')
+      fs.writeFileSync(path.join(projectsDir, 'project.md'), '---\naliases: [P]\n---\n', 'utf-8')
+      fs.writeFileSync(path.join(projectsDir, 'readme.txt'), 'not a note', 'utf-8')
+
+      const notes = listProjectNotes(dir)
+      expect(notes).toHaveLength(1)
+      expect(notes[0].filename).toBe('project.md')
+    })
+
+    it('creates projects directory if it does not exist', () => {
+      const dir = makeTmpDir()
+      fs.mkdirSync(dir, { recursive: true })
+
+      const notes = listProjectNotes(dir)
+      expect(notes).toEqual([])
+      expect(fs.existsSync(path.join(dir, 'projects'))).toBe(true)
+    })
+  })
+
+  describe('ensureProjectsDir', () => {
+    it('creates projects directory and returns path', () => {
+      const dir = makeTmpDir()
+      fs.mkdirSync(dir, { recursive: true })
+
+      const projectsDir = ensureProjectsDir(dir)
+      expect(projectsDir).toBe(path.join(dir, 'projects'))
+      expect(fs.existsSync(projectsDir)).toBe(true)
+    })
+
+    it('is idempotent', () => {
+      const dir = makeTmpDir()
+      fs.mkdirSync(dir, { recursive: true })
+
+      ensureProjectsDir(dir)
+      ensureProjectsDir(dir)
+      expect(fs.existsSync(path.join(dir, 'projects'))).toBe(true)
     })
   })
 
