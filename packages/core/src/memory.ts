@@ -157,6 +157,7 @@ export function ensureMemoryStructure(memoryDir?: string): void {
   const dir = memoryDir ?? getMemoryDir()
   const dailyDir = path.join(dir, 'daily')
   const usersDir = path.join(dir, 'users')
+  const projectsDir = path.join(dir, 'projects')
 
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true })
@@ -168,6 +169,10 @@ export function ensureMemoryStructure(memoryDir?: string): void {
 
   if (!fs.existsSync(usersDir)) {
     fs.mkdirSync(usersDir, { recursive: true })
+  }
+
+  if (!fs.existsSync(projectsDir)) {
+    fs.mkdirSync(projectsDir, { recursive: true })
   }
 
   const soulPath = path.join(dir, 'SOUL.md')
@@ -196,6 +201,66 @@ export function ensureMemoryStructure(memoryDir?: string): void {
   if (!fs.existsSync(heartbeatPath)) {
     fs.writeFileSync(heartbeatPath, HEARTBEAT_TEMPLATE, 'utf-8')
   }
+}
+
+/**
+ * Ensure the projects directory exists, creating it if needed.
+ */
+export function ensureProjectsDir(memoryDir?: string): string {
+  const dir = memoryDir ?? getMemoryDir()
+  const projectsDir = path.join(dir, 'projects')
+  if (!fs.existsSync(projectsDir)) {
+    fs.mkdirSync(projectsDir, { recursive: true })
+  }
+  return projectsDir
+}
+
+/**
+ * Parse aliases from YAML frontmatter in a project note.
+ * Expects format:
+ * ```
+ * ---
+ * aliases: [Alias1, alias-2]
+ * ---
+ * ```
+ */
+export function parseProjectAliases(content: string): string[] {
+  const fmMatch = content.match(/^---\s*\n([\s\S]*?)\n---/)
+  if (!fmMatch) return []
+
+  const frontmatter = fmMatch[1]
+  // Match aliases: [val1, val2, ...] or aliases: val
+  const aliasMatch = frontmatter.match(/^aliases:\s*\[([^\]]*)\]/m)
+  if (aliasMatch) {
+    return aliasMatch[1]
+      .split(',')
+      .map(s => s.trim())
+      .filter(s => s.length > 0)
+  }
+
+  // Single value: aliases: something
+  const singleMatch = frontmatter.match(/^aliases:\s*(.+)$/m)
+  if (singleMatch) {
+    const val = singleMatch[1].trim()
+    return val.length > 0 ? [val] : []
+  }
+
+  return []
+}
+
+/**
+ * List all project notes in the projects/ directory with their aliases.
+ */
+export function listProjectNotes(memoryDir?: string): Array<{ filename: string; aliases: string[] }> {
+  const projectsDir = ensureProjectsDir(memoryDir)
+
+  if (!fs.existsSync(projectsDir)) return []
+
+  const files = fs.readdirSync(projectsDir).filter(f => f.endsWith('.md')).sort()
+  return files.map(filename => {
+    const content = fs.readFileSync(path.join(projectsDir, filename), 'utf-8')
+    return { filename, aliases: parseProjectAliases(content) }
+  })
 }
 
 /**
@@ -472,7 +537,21 @@ export function assembleSystemPrompt(options?: {
     sections.push(`<available_tools>\nYou have the following tools available. Use the right tool for the job.\n\n${toolLines.join('\n')}\n</available_tools>`)
   }
 
-  // 8. Memory file paths for agent self-access
+  // 8. Project notes (Zettelkasten)
+  const projectNotes = listProjectNotes(memoryDir)
+  if (projectNotes.length > 0) {
+    const noteLines = projectNotes.map(n => {
+      const aliasStr = n.aliases.length > 0 ? ` (aliases: ${n.aliases.join(', ')})` : ''
+      return `- ${n.filename}${aliasStr}`
+    }).join('\n')
+    sections.push(`<project_notes>
+The following project notes are available. When discussing a project, check if a relevant project note exists and load it with read_file.
+
+${noteLines}
+</project_notes>`)
+  }
+
+  // 9. Memory file paths for agent self-access
   const dir = memoryDir ?? getMemoryDir()
   const today = new Date().toISOString().split('T')[0]
   sections.push(`<memory_paths>
@@ -485,9 +564,10 @@ When modifying existing files, prefer edit_file (targeted oldText/newText replac
 - Daily memory directory: ${path.join(dir, 'daily/')}
 - Today's daily file: ${path.join(dir, 'daily', `${today}.md`)}
 - User profiles directory: ${path.join(dir, 'users/')}
+- Project notes directory: ${path.join(dir, 'projects/')}
 </memory_paths>`)
 
-  // 9. Agent skill creation
+  // 10. Agent skill creation
   if (options?.agentSkillsDir) {
     sections.push(`<agent_skills>
 You can create your own reusable skills to extend your capabilities. A skill is a SKILL.md file
@@ -515,7 +595,7 @@ Created skills automatically appear in <available_skills> for future conversatio
 </agent_skills>`)
   }
 
-  // 10. Language setting
+  // 11. Language setting
   if (options?.language) {
     const lang = options.language.trim()
     if (lang.toLowerCase() === 'match' || lang.toLowerCase() === "match user's language") {
@@ -525,7 +605,7 @@ Created skills automatically appear in <available_skills> for future conversatio
     }
   }
 
-  // 11. Available skills (progressive disclosure)
+  // 12. Available skills (progressive disclosure)
   if (options?.skills && options.skills.length > 0) {
     const skillEntries = options.skills.map(s =>
       `  <skill>\n    <name>${s.name}</name>\n    <description>${s.description}</description>\n    <location>${s.location}</location>\n  </skill>`
@@ -546,7 +626,7 @@ ${skillEntries}${overflowNote}
 </available_skills>`)
   }
 
-  // 12. Task system instructions
+  // 13. Task system instructions
   sections.push(`<task_system>
 You have access to a background task system. You can start background tasks for complex,
 long-running work using the create_task tool.
@@ -596,18 +676,18 @@ Use create_reminder only for static reminder text delivered verbatim later. If t
 Do not promise that a reminder or cronjob will fetch fresh data unless the configured action type actually supports that.
 </task_system>`)
 
-  // 13. Workspace directory
+  // 14. Workspace directory
   const workspaceDir = getWorkspaceDir()
   sections.push(`<workspace>\nYour working directory is ${workspaceDir}. All shell commands execute in this directory by default.\nAll relative paths in read_file, write_file, and list_files resolve against this directory.\nUse this directory for cloning repos, creating files, and all file operations.\n</workspace>`)
 
-  // 14. Current date & time
+  // 15. Current date & time
   const tz = options?.timezone || 'UTC'
   const now = new Date()
   const date = now.toLocaleDateString('en-CA', { timeZone: tz })
   const time = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: tz })
   sections.push(`<current_datetime>\nCurrent date: ${date}\nCurrent time: ${time} (${tz})\n</current_datetime>`)
 
-  // 15. Channel context
+  // 16. Channel context
   if (options?.channel === 'telegram') {
     sections.push(`<channel_context>
 You are communicating with the user through Telegram. You ARE the Telegram bot — messages the user sends arrive directly to you, and your responses are sent back to the user automatically. Do not tell the user to use the Telegram Bot API, curl commands, or any external tools to communicate. Just respond naturally to their messages.
