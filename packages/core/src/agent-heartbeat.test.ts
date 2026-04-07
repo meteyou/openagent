@@ -92,6 +92,18 @@ describe('isHeartbeatContentEffectivelyEmpty', () => {
   it('returns false for numbered list items', () => {
     expect(isHeartbeatContentEffectivelyEmpty('1. First item')).toBe(false)
   })
+
+  it('returns true for HTML comments only', () => {
+    expect(isHeartbeatContentEffectivelyEmpty('<!-- This is a comment -->')).toBe(true)
+  })
+
+  it('returns true for headings and HTML comments', () => {
+    expect(isHeartbeatContentEffectivelyEmpty('# Heartbeat Tasks\n\n<!-- Define tasks here -->\n<!-- Another comment -->\n')).toBe(true)
+  })
+
+  it('returns false for multi-line HTML comments (not single-line)', () => {
+    expect(isHeartbeatContentEffectivelyEmpty('<!-- start\nstill comment\n-->')).toBe(false)
+  })
 })
 
 describe('AgentHeartbeatService', () => {
@@ -235,15 +247,18 @@ describe('AgentHeartbeatService', () => {
       )
     })
 
-    it('prompt instructs to use task injection', async () => {
+    it('prompt is a minimal delegation prompt', async () => {
       service = createService()
 
       await service.executeHeartbeat()
 
       const createCall = (mocks.mockTaskStore.create as ReturnType<typeof vi.fn>).mock.calls[0][0]
+      expect(createCall.prompt).toContain('HEARTBEAT.md')
       expect(createCall.prompt).toContain('task injection')
-      expect(createCall.prompt).toContain('read_file')
-      expect(createCall.prompt).toContain('write_file')
+      // Should NOT contain old memory-maintenance instructions
+      expect(createCall.prompt).not.toContain('Daily Memory Update')
+      expect(createCall.prompt).not.toContain('Memory Hygiene')
+      expect(createCall.prompt).not.toContain('read_chat_history')
     })
 
     it('skips when HEARTBEAT.md is effectively empty', async () => {

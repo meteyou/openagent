@@ -68,8 +68,9 @@ describe('memory', () => {
 
       const content = fs.readFileSync(path.join(dir, 'HEARTBEAT.md'), 'utf-8')
       expect(content).toContain('# Heartbeat Tasks')
-      expect(content).toContain('## Daily Memory Update')
-      expect(content).toContain('## Memory Hygiene')
+      // Template should be effectively empty — no active task content
+      expect(content).not.toContain('## Daily Memory Update')
+      expect(content).not.toContain('## Memory Hygiene')
     })
 
     it('does not overwrite existing AGENTS.md', () => {
@@ -271,7 +272,7 @@ describe('memory', () => {
 
       const content = readHeartbeatFile(dir)
       expect(content).toContain('# Heartbeat Tasks')
-      expect(content).toContain('Daily Memory Update')
+      expect(content).not.toContain('Daily Memory Update')
     })
 
     it('creates HEARTBEAT.md if missing', () => {
