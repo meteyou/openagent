@@ -77,12 +77,14 @@
 <script setup lang="ts">
 import { Mic, Square, Loader2 } from 'lucide-vue-next'
 import { onClickOutside } from '@vueuse/core'
+import { useVoicePluginSettings } from '~/composables/useVoicePluginSettings'
 
 // ── i18n & shared state ───────────────────────────────────────────────────────
 
 const { t } = useI18n()
 const { apiFetch } = useApi()
 const { setText } = useChatInput()
+const { settings: voiceSettings } = useVoicePluginSettings()
 
 // ── State machine ─────────────────────────────────────────────────────────────
 
@@ -198,12 +200,20 @@ function stopRecording() {
 async function processAudio(blob: Blob, mimeType: string) {
   state.value = 'processing'
 
-  // Step 1: Transcribe
+  // Step 1: Transcribe — pass frontend settings as JSON alongside the audio
   let transcript: string
   try {
     const formData = new FormData()
     const extension = mimeType.includes('ogg') ? 'ogg' : 'webm'
     formData.append('audio', blob, `recording.${extension}`)
+
+    // Pass user-configured settings so the backend can use them instead of env defaults
+    const s = voiceSettings.value
+    formData.append('whisperUrl', s.whisperUrl)
+    formData.append('rewriteEnabled', String(s.rewriteEnabled))
+    formData.append('ollamaUrl', s.ollamaUrl)
+    formData.append('ollamaModel', s.ollamaModel)
+    formData.append('rewritePrompt', s.rewritePrompt)
 
     const result = await apiFetch<{ transcript: string; rewriteEnabled: boolean }>('/api/plugins/voice/transcribe', {
       method: 'POST',
@@ -227,14 +237,19 @@ async function processAudio(blob: Blob, mimeType: string) {
     return
   }
 
-  // Optional rewrite flow (only when VOICE_REWRITE_ENABLED=true on the server)
-  // Step 2: Rewrite (Ollama) — graceful fallback to raw transcript only
+  // Optional rewrite flow — pass settings so Ollama URL/model/prompt can be overridden
   try {
+    const s = voiceSettings.value
     const result = await apiFetch<{ corrected: string; rewritten: string; formal: string; short: string }>(
       '/api/plugins/voice/rewrite',
       {
         method: 'POST',
-        body: JSON.stringify({ transcript }),
+        body: JSON.stringify({
+          transcript,
+          ollamaUrl: s.ollamaUrl,
+          ollamaModel: s.ollamaModel,
+          rewritePrompt: s.rewritePrompt,
+        }),
       },
     )
     variants.value = result

@@ -565,7 +565,8 @@
     "enabled": "Aktiv",
     "disabled": "Inaktiv",
     "comingSoon": "Plugin-Verwaltung via API demnächst verfügbar",
-    "noPlugins": "Keine Plugins installiert"
+    "noPlugins": "Keine Plugins installiert",
+    "settings": "Plugin-Einstellungen"
   },
   "usage": {
     "kicker": "Verbrauchsanalysen",
@@ -724,6 +725,23 @@
       "formal": "Formal",
       "short": "Kurz",
       "raw": "Roh-Transkript"
+    },
+    "settings": {
+      "title": "Voice-Plugin-Einstellungen",
+      "description": "Transkriptions- und Umschreibe-Optionen für das Voice-Input-Plugin konfigurieren.",
+      "transcriptionModel": "Transkriptionsmodell",
+      "transcriptionModelHint": "Der Dienst, der Audio in Text umwandelt.",
+      "whisperUrl": "Whisper-URL",
+      "whisperUrlHint": "Die URL deines Whisper-Inferenz-Endpunkts.",
+      "rewriteEnabled": "Vorverarbeitung aktivieren (Ollama Rewrite)",
+      "rewriteEnabledHint": "Wenn aktiviert, werden Transkripte an Ollama gesendet und in mehrere Varianten umgeschrieben.",
+      "ollamaSection": "Ollama-Einstellungen",
+      "ollamaUrl": "Ollama-Basis-URL",
+      "ollamaModel": "Ollama-Modell",
+      "rewritePrompt": "Umschreibe-Prompt",
+      "rewritePromptPlaceholder": "Prompt-Vorlage eingeben. {transcript} wird durch den transkribierten Text ersetzt.",
+      "rewritePromptHint": "Verwende {transcript} als Platzhalter – er wird durch den tatsächlichen transkribierten Text ersetzt.",
+      "reset": "Auf Standardwerte zurücksetzen"
     }
   },
   "taskViewer": {

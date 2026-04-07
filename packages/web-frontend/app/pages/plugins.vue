@@ -52,6 +52,17 @@
               </p>
             </div>
 
+            <!-- Settings gear icon (only shown for configurable plugins) -->
+            <button
+              v-if="plugin.configurable"
+              type="button"
+              :title="$t('plugins.settings')"
+              class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-input bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              @click="openSettings(plugin.id)"
+            >
+              <AppIcon name="settings" class="h-4 w-4" />
+            </button>
+
             <!-- Toggle switch -->
             <Switch
               :checked="pluginEnabled(plugin.id)"
@@ -63,6 +74,12 @@
       </div>
     </div>
   </div>
+
+  <!-- Voice Plugin Settings Modal -->
+  <VoicePluginSettingsModal
+    :open="activeSettingsPlugin === 'voice-input'"
+    @close="activeSettingsPlugin = null"
+  />
 </template>
 
 <script setup lang="ts">
@@ -78,8 +95,16 @@ const plugins = [
     name: 'Voice Input',
     version: '1.0.0',
     description: 'Record audio and transcribe it via Whisper. Inserts transcription with [Diktat] prefix into the chat input.',
+    configurable: true,
   },
 ]
+
+/** Which plugin's settings modal is currently open (null = none) */
+const activeSettingsPlugin = ref<string | null>(null)
+
+function openSettings(pluginId: string) {
+  activeSettingsPlugin.value = pluginId
+}
 
 /** Read the current enabled state for a plugin from the reactive registry */
 function pluginEnabled(id: string): boolean {

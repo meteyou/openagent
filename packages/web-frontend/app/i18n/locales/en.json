@@ -565,7 +565,8 @@
     "enabled": "Active",
     "disabled": "Inactive",
     "comingSoon": "Plugin management via API coming soon",
-    "noPlugins": "No plugins installed"
+    "noPlugins": "No plugins installed",
+    "settings": "Plugin Settings"
   },
   "usage": {
     "kicker": "Consumption analytics",
@@ -724,6 +725,23 @@
       "formal": "Formal",
       "short": "Short",
       "raw": "Raw transcript"
+    },
+    "settings": {
+      "title": "Voice Plugin Settings",
+      "description": "Configure transcription and rewrite options for the Voice Input plugin.",
+      "transcriptionModel": "Transcription Model",
+      "transcriptionModelHint": "The service used to convert audio to text.",
+      "whisperUrl": "Whisper URL",
+      "whisperUrlHint": "The URL of your Whisper inference endpoint.",
+      "rewriteEnabled": "Enable Pre-Processing (Ollama Rewrite)",
+      "rewriteEnabledHint": "When enabled, transcripts are sent to Ollama for rewriting into multiple variants.",
+      "ollamaSection": "Ollama Settings",
+      "ollamaUrl": "Ollama Base URL",
+      "ollamaModel": "Ollama Model",
+      "rewritePrompt": "Rewrite Prompt",
+      "rewritePromptPlaceholder": "Enter the prompt template. Use {transcript} as placeholder for the transcribed text.",
+      "rewritePromptHint": "Use {transcript} as a placeholder — it will be replaced with the actual transcribed text.",
+      "reset": "Reset to Defaults"
     }
   },
   "taskViewer": {

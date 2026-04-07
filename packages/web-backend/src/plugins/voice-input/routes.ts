@@ -3,11 +3,23 @@ import { jwtMiddleware } from '../../auth.js'
 import type { AuthenticatedRequest } from '../../auth.js'
 import { uploadMiddleware } from '../../uploads.js'
 
-// ── Config (can be overridden via environment variables) ───────────────────────
-const WHISPER_URL = process.env.WHISPER_URL ?? 'https://whisper.jansohn.xyz/inference'
-const OLLAMA_URL = process.env.OLLAMA_URL ?? 'http://192.168.10.222:11434/api/generate'
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? 'qwen3:32b'
-const VOICE_REWRITE_ENABLED = process.env.VOICE_REWRITE_ENABLED === 'true'
+// ── Config defaults (can be overridden via environment variables or per-request settings) ──
+const DEFAULT_WHISPER_URL = process.env.WHISPER_URL ?? 'https://whisper.jansohn.xyz/inference'
+const DEFAULT_OLLAMA_URL = process.env.OLLAMA_URL ?? 'http://192.168.10.222:11434/api/generate'
+const DEFAULT_OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? 'qwen3:32b'
+const DEFAULT_VOICE_REWRITE_ENABLED = process.env.VOICE_REWRITE_ENABLED === 'true'
+const DEFAULT_REWRITE_PROMPT = `Du bearbeitest diktierten Text in mehrere Varianten. Antworte NUR mit validem JSON, keine Erklärung, kein Markdown.
+
+Regeln pro Variante:
+- corrected: Nur Rechtschreibung, Grammatik, Satzzeichen korrigieren. Füllwörter entfernen. Stil EXAKT beibehalten.
+- rewritten: Natürlich und flüssig umformulieren. Gleiche Bedeutung, gleiche Tonalität.
+- formal: Professioneller Ton. Siezen statt Duzen. Geschäftstauglich.
+- short: Auf das Wesentliche kürzen. So knapp wie möglich.
+
+Input: {{transcript}}
+
+Antwort als JSON:
+{"corrected": "...", "rewritten": "...", "formal": "...", "short": "..."}`
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -23,7 +35,29 @@ interface OllamaGenerateResponse {
   done: boolean
 }
 
+/**
+ * Per-request settings that the frontend can pass to override env defaults.
+ * All fields are optional — missing fields fall back to the env/default values.
+ */
+interface RequestSettings {
+  whisperUrl?: string
+  rewriteEnabled?: boolean
+  ollamaUrl?: string
+  ollamaModel?: string
+  rewritePrompt?: string
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+/**
+ * Normalises the Ollama base URL so it always ends with /api/generate.
+ * Accepts either a bare host ("http://host:11434") or the full path.
+ */
+function resolveOllamaUrl(raw: string): string {
+  const trimmed = raw.trim().replace(/\/+$/, '')
+  if (trimmed.endsWith('/api/generate')) return trimmed
+  return `${trimmed}/api/generate`
+}
 
 /**
  * Forwards an audio buffer to the Whisper inference endpoint and returns the
@@ -33,13 +67,14 @@ async function transcribeAudio(
   audioBuffer: Buffer,
   originalName: string,
   mimeType: string,
+  whisperUrl: string,
 ): Promise<string> {
   const formData = new FormData()
   const blob = new Blob([audioBuffer], { type: mimeType })
   formData.append('file', blob, originalName)
   formData.append('response_format', 'text')
 
-  const response = await fetch(WHISPER_URL, {
+  const response = await fetch(whisperUrl, {
     method: 'POST',
     body: formData,
   })
@@ -58,25 +93,22 @@ async function transcribeAudio(
  * Sends a transcript to Ollama for rewriting and returns the four variants.
  * Throws when Ollama is unreachable or returns invalid JSON.
  */
-async function rewriteTranscript(transcript: string): Promise<RewriteVariants> {
-  const prompt = `Du bearbeitest diktierten Text in mehrere Varianten. Antworte NUR mit validem JSON, keine Erklärung, kein Markdown.
+async function rewriteTranscript(
+  transcript: string,
+  ollamaUrl: string,
+  ollamaModel: string,
+  promptTemplate: string,
+): Promise<RewriteVariants> {
+  // Replace the {{transcript}} placeholder in the prompt template
+  const prompt = promptTemplate.includes('{{transcript}}')
+    ? promptTemplate.replace('{{transcript}}', transcript)
+    : `${promptTemplate}\n\nInput: ${transcript}`
 
-Regeln pro Variante:
-- corrected: Nur Rechtschreibung, Grammatik, Satzzeichen korrigieren. Füllwörter entfernen. Stil EXAKT beibehalten.
-- rewritten: Natürlich und flüssig umformulieren. Gleiche Bedeutung, gleiche Tonalität.
-- formal: Professioneller Ton. Siezen statt Duzen. Geschäftstauglich.
-- short: Auf das Wesentliche kürzen. So knapp wie möglich.
-
-Input: ${transcript}
-
-Antwort als JSON:
-{"corrected": "...", "rewritten": "...", "formal": "...", "short": "..."}`
-
-  const response = await fetch(OLLAMA_URL, {
+  const response = await fetch(ollamaUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: OLLAMA_MODEL,
+      model: ollamaModel,
       prompt,
       stream: false,
       options: {
@@ -128,10 +160,15 @@ export function createVoiceRouter(): Router {
   /**
    * POST /api/voice/transcribe
    *
-   * Accepts a single audio file via multipart/form-data (field name: "audio")
-   * and forwards it to the Whisper inference endpoint.
+   * Accepts a single audio file via multipart/form-data (field name: "audio").
+   * Optional form fields can override backend defaults:
+   *   - whisperUrl      (string)  — Whisper inference endpoint
+   *   - rewriteEnabled  (string "true"/"false") — whether to run Ollama rewrite
+   *   - ollamaUrl       (string)  — Ollama base URL
+   *   - ollamaModel     (string)  — Ollama model name
+   *   - rewritePrompt   (string)  — Prompt template (use {{transcript}} as placeholder)
    *
-   * Response: { transcript: string }
+   * Response: { transcript: string, rewriteEnabled: boolean }
    */
   router.post(
     '/transcribe',
@@ -143,9 +180,21 @@ export function createVoiceRouter(): Router {
         return
       }
 
+      // Read per-request overrides from form fields (sent alongside the audio file)
+      const body = req.body as Record<string, string>
+      const settings: RequestSettings = {
+        whisperUrl: body.whisperUrl?.trim() || undefined,
+        rewriteEnabled: body.rewriteEnabled !== undefined
+          ? body.rewriteEnabled === 'true'
+          : undefined,
+      }
+
+      const whisperUrl = settings.whisperUrl ?? DEFAULT_WHISPER_URL
+      const rewriteEnabled = settings.rewriteEnabled ?? DEFAULT_VOICE_REWRITE_ENABLED
+
       try {
-        const transcript = await transcribeAudio(file.buffer, file.originalname, file.mimetype)
-        res.json({ transcript, rewriteEnabled: VOICE_REWRITE_ENABLED })
+        const transcript = await transcribeAudio(file.buffer, file.originalname, file.mimetype, whisperUrl)
+        res.json({ transcript, rewriteEnabled })
       } catch (err) {
         const message = (err as Error).message
         console.error('[voice/transcribe] Error:', message)
@@ -157,19 +206,47 @@ export function createVoiceRouter(): Router {
   /**
    * POST /api/voice/rewrite
    *
-   * Accepts { transcript: string } and returns four rewritten variants via Ollama.
+   * Accepts JSON body:
+   *   {
+   *     transcript:    string  (required)
+   *     ollamaUrl?:    string  — override Ollama base URL
+   *     ollamaModel?:  string  — override Ollama model
+   *     rewritePrompt?: string — override prompt template (use {{transcript}} placeholder)
+   *   }
    *
    * Response: { corrected: string, rewritten: string, formal: string, short: string }
    */
   router.post('/rewrite', async (req: AuthenticatedRequest, res) => {
-    const { transcript } = req.body as { transcript?: unknown }
+    const body = req.body as {
+      transcript?: unknown
+      ollamaUrl?: unknown
+      ollamaModel?: unknown
+      rewritePrompt?: unknown
+    }
+
+    const { transcript } = body
     if (typeof transcript !== 'string' || !transcript.trim()) {
       res.status(400).json({ error: 'transcript must be a non-empty string' })
       return
     }
 
+    // Per-request overrides (fall back to env defaults if not provided)
+    const ollamaUrl = resolveOllamaUrl(
+      typeof body.ollamaUrl === 'string' && body.ollamaUrl.trim()
+        ? body.ollamaUrl.trim()
+        : DEFAULT_OLLAMA_URL,
+    )
+    const ollamaModel =
+      typeof body.ollamaModel === 'string' && body.ollamaModel.trim()
+        ? body.ollamaModel.trim()
+        : DEFAULT_OLLAMA_MODEL
+    const rewritePrompt =
+      typeof body.rewritePrompt === 'string' && body.rewritePrompt.trim()
+        ? body.rewritePrompt.trim()
+        : DEFAULT_REWRITE_PROMPT
+
     try {
-      const variants = await rewriteTranscript(transcript.trim())
+      const variants = await rewriteTranscript(transcript.trim(), ollamaUrl, ollamaModel, rewritePrompt)
       res.json(variants)
     } catch (err) {
       const message = (err as Error).message
