@@ -158,6 +158,26 @@
                   <p class="text-xs text-muted-foreground">{{ $t('settings.timezoneHint') }}</p>
                 </div>
 
+                <Separator />
+
+                <!-- Agent Rules (AGENTS.md) -->
+                <div>
+                  <h3 class="text-base font-semibold tracking-tight text-foreground">
+                    {{ $t('settings.agentRulesTitle') }}
+                  </h3>
+                  <p class="mt-1 text-sm text-muted-foreground">
+                    {{ $t('settings.agentRulesDescription') }}
+                  </p>
+                </div>
+
+                <div class="flex h-[400px] flex-col">
+                  <MarkdownEditor
+                    v-model="agentRulesContent"
+                    :saving="configFileSaving"
+                    file-path="/data/config/AGENTS.md"
+                    @save="handleSaveAgentRules"
+                  />
+                </div>
               </div>
             </div>
 
@@ -302,6 +322,27 @@
                       </Button>
                     </div>
                   </div>
+
+                  <Separator />
+
+                  <!-- Consolidation Rules (CONSOLIDATION.md) -->
+                  <div>
+                    <h3 class="text-base font-semibold tracking-tight text-foreground">
+                      {{ $t('settings.consolidationRulesTitle') }}
+                    </h3>
+                    <p class="mt-1 text-sm text-muted-foreground">
+                      {{ $t('settings.consolidationRulesDescription') }}
+                    </p>
+                  </div>
+
+                  <div class="flex h-[400px] flex-col">
+                    <MarkdownEditor
+                      v-model="consolidationRulesContent"
+                      :saving="configFileSaving"
+                      file-path="/data/config/CONSOLIDATION.md"
+                      @save="handleSaveConsolidationRules"
+                    />
+                  </div>
                 </template>
               </div>
             </div>
@@ -415,6 +456,27 @@
                       <p class="text-xs text-muted-foreground">{{ $t('settings.agentHeartbeatNightModeHoursHint') }}</p>
                     </div>
                   </template>
+
+                  <Separator />
+
+                  <!-- Heartbeat Tasks (HEARTBEAT.md) -->
+                  <div>
+                    <h3 class="text-base font-semibold tracking-tight text-foreground">
+                      {{ $t('settings.heartbeatTasksTitle') }}
+                    </h3>
+                    <p class="mt-1 text-sm text-muted-foreground">
+                      {{ $t('settings.heartbeatTasksDescription') }}
+                    </p>
+                  </div>
+
+                  <div class="flex h-[400px] flex-col">
+                    <MarkdownEditor
+                      v-model="heartbeatContent"
+                      :saving="configFileSaving"
+                      file-path="/data/config/HEARTBEAT.md"
+                      @save="handleSaveHeartbeat"
+                    />
+                  </div>
                 </template>
               </div>
             </div>
@@ -1433,6 +1495,40 @@ const {
   clearMessages,
 } = useSettings()
 
+/* ── Config file editors (AGENTS.md, HEARTBEAT.md, CONSOLIDATION.md) ── */
+const {
+  loading: configFileLoading,
+  saving: configFileSaving,
+  error: configFileError,
+  successMessage: configFileSuccess,
+  loadAgentRules,
+  saveAgentRules,
+  loadHeartbeat,
+  saveHeartbeat,
+  loadConsolidationRules,
+  saveConsolidationRules,
+  clearMessages: clearConfigMessages,
+} = useMemory()
+
+const agentRulesContent = ref('')
+const heartbeatContent = ref('')
+const consolidationRulesContent = ref('')
+
+async function handleSaveAgentRules() {
+  await saveAgentRules(agentRulesContent.value)
+  setTimeout(() => { configFileSuccess.value = null }, 3000)
+}
+
+async function handleSaveHeartbeat() {
+  await saveHeartbeat(heartbeatContent.value)
+  setTimeout(() => { configFileSuccess.value = null }, 3000)
+}
+
+async function handleSaveConsolidationRules() {
+  await saveConsolidationRules(consolidationRulesContent.value)
+  setTimeout(() => { configFileSuccess.value = null }, 3000)
+}
+
 /* ── Providers (consolidation dropdown) ── */
 const { providers, fetchProviders } = useProviders()
 
@@ -1935,6 +2031,30 @@ async function handleSave() {
 }
 
 /* ── Init ── */
+/* ── Lazy-load config files when their tab is shown ── */
+const configFilesLoaded = ref<Set<string>>(new Set())
+
+watch(activeTab, async (tab) => {
+  if (tab === 'agent' && !configFilesLoaded.value.has('agent')) {
+    agentRulesContent.value = await loadAgentRules()
+    configFilesLoaded.value.add('agent')
+  } else if (tab === 'agentHeartbeat' && !configFilesLoaded.value.has('heartbeat') && form.value?.agentHeartbeat.enabled) {
+    heartbeatContent.value = await loadHeartbeat()
+    configFilesLoaded.value.add('heartbeat')
+  } else if (tab === 'memory' && !configFilesLoaded.value.has('consolidation')) {
+    consolidationRulesContent.value = await loadConsolidationRules()
+    configFilesLoaded.value.add('consolidation')
+  }
+}, { immediate: true })
+
+// Load heartbeat file when heartbeat is toggled on
+watch(() => form.value?.agentHeartbeat.enabled, async (enabled) => {
+  if (enabled && activeTab.value === 'agentHeartbeat' && !configFilesLoaded.value.has('heartbeat')) {
+    heartbeatContent.value = await loadHeartbeat()
+    configFilesLoaded.value.add('heartbeat')
+  }
+})
+
 onMounted(async () => {
   if (!isAdmin.value) return
   await Promise.all([

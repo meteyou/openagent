@@ -192,6 +192,39 @@ export function useMemory() {
     }
   }
 
+  async function loadConsolidationRules(): Promise<string> {
+    loading.value = true
+    error.value = null
+    try {
+      const data = await apiFetch<{ content: string }>('/api/memory/consolidation-rules')
+      return data.content
+    } catch (err) {
+      error.value = (err as Error).message
+      return ''
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function saveConsolidationRules(content: string): Promise<boolean> {
+    saving.value = true
+    error.value = null
+    successMessage.value = null
+    try {
+      await apiFetch('/api/memory/consolidation-rules', {
+        method: 'PUT',
+        body: JSON.stringify({ content }),
+      })
+      successMessage.value = 'saved'
+      return true
+    } catch (err) {
+      error.value = (err as Error).message
+      return false
+    } finally {
+      saving.value = false
+    }
+  }
+
   async function loadProfile(): Promise<{ content: string; username: string }> {
     loading.value = true
     error.value = null
@@ -243,6 +276,8 @@ export function useMemory() {
     saveAgentRules,
     loadHeartbeat,
     saveHeartbeat,
+    loadConsolidationRules,
+    saveConsolidationRules,
     loadProfile,
     saveProfile,
     loadDailyFiles,

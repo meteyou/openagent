@@ -36,8 +36,6 @@
         <TabsList class="self-start">
           <TabsTrigger value="soul" @click="switchTab('soul')">{{ $t('memory.soulTab') }}</TabsTrigger>
           <TabsTrigger value="core" @click="switchTab('core')">{{ $t('memory.coreMemoryTab') }}</TabsTrigger>
-          <TabsTrigger value="agents" @click="switchTab('agents')">{{ $t('memory.agentRulesTab') }}</TabsTrigger>
-          <TabsTrigger value="heartbeat" @click="switchTab('heartbeat')">{{ $t('memory.heartbeatTab') }}</TabsTrigger>
           <TabsTrigger value="profile" @click="switchTab('profile')">{{ $t('memory.profileTab') }}</TabsTrigger>
           <TabsTrigger value="daily" @click="switchTab('daily')">{{ $t('memory.dailyTab') }}</TabsTrigger>
         </TabsList>
@@ -76,36 +74,6 @@
             :saving="saving"
             file-path=".data/memory/MEMORY.md"
             @save="handleSaveCoreMemory"
-          />
-        </div>
-      </TabsContent>
-
-      <!-- Agent Rules tab -->
-      <TabsContent value="agents" class="flex flex-1 flex-col overflow-hidden min-h-0 mt-0">
-        <div v-if="loading" class="flex flex-1 items-center justify-center py-20 text-sm text-muted-foreground">
-          {{ $t('memory.loading') }}
-        </div>
-        <div v-else class="flex flex-1 flex-col overflow-hidden min-h-0">
-          <MarkdownEditor
-            v-model="agentRulesContent"
-            :saving="saving"
-            file-path=".data/memory/AGENTS.md"
-            @save="handleSaveAgentRules"
-          />
-        </div>
-      </TabsContent>
-
-      <!-- Heartbeat tab -->
-      <TabsContent value="heartbeat" class="flex flex-1 flex-col overflow-hidden min-h-0 mt-0">
-        <div v-if="loading" class="flex flex-1 items-center justify-center py-20 text-sm text-muted-foreground">
-          {{ $t('memory.loading') }}
-        </div>
-        <div v-else class="flex flex-1 flex-col overflow-hidden min-h-0">
-          <MarkdownEditor
-            v-model="heartbeatContent"
-            :saving="saving"
-            file-path=".data/memory/HEARTBEAT.md"
-            @save="handleSaveHeartbeat"
           />
         </div>
       </TabsContent>
@@ -239,10 +207,6 @@ const {
   saveSoul,
   loadCoreMemory,
   saveCoreMemory,
-  loadAgentRules,
-  saveAgentRules,
-  loadHeartbeat,
-  saveHeartbeat,
   loadProfile,
   saveProfile,
   loadDailyFiles,
@@ -251,12 +215,10 @@ const {
   clearMessages,
 } = useMemory()
 
-const activeTab = ref<'soul' | 'core' | 'agents' | 'heartbeat' | 'profile' | 'daily'>('soul')
+const activeTab = ref<'soul' | 'core' | 'profile' | 'daily'>('soul')
 
 const soulContent = ref('')
 const coreMemoryContent = ref('')
-const agentRulesContent = ref('')
-const heartbeatContent = ref('')
 const profileContent = ref('')
 const profileUsername = ref('')
 const dailyContent = ref('')
@@ -318,10 +280,6 @@ async function switchTab(tab: typeof activeTab.value) {
     soulContent.value = await loadSoul()
   } else if (tab === 'core') {
     coreMemoryContent.value = await loadCoreMemory()
-  } else if (tab === 'agents') {
-    agentRulesContent.value = await loadAgentRules()
-  } else if (tab === 'heartbeat') {
-    heartbeatContent.value = await loadHeartbeat()
   } else if (tab === 'profile') {
     const profile = await loadProfile()
     profileContent.value = profile.content
@@ -348,16 +306,6 @@ async function handleSaveSoul() {
 
 async function handleSaveCoreMemory() {
   await saveCoreMemory(coreMemoryContent.value)
-  autoHideSuccess()
-}
-
-async function handleSaveAgentRules() {
-  await saveAgentRules(agentRulesContent.value)
-  autoHideSuccess()
-}
-
-async function handleSaveHeartbeat() {
-  await saveHeartbeat(heartbeatContent.value)
   autoHideSuccess()
 }
 
