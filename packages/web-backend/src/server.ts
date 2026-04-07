@@ -433,7 +433,13 @@ let telegramBot: TelegramBot | null = null
 const healthMonitorService = new HealthMonitorService({ db, providerManager: null })
 healthMonitorService.start()
 
-const consolidationScheduler = new MemoryConsolidationScheduler({ db, agentCore: null })
+const consolidationScheduler = new MemoryConsolidationScheduler({
+  db,
+  agentCore: null,
+  taskStore,
+  taskRunner,
+  getDefaultProvider: getTaskDefaultProvider,
+})
 consolidationScheduler.start()
 
 // Initialize agent heartbeat service (periodic background tasks via HEARTBEAT.md)
