@@ -27,7 +27,7 @@ export const DEFAULT_AGENT_HEARTBEAT_SETTINGS: AgentHeartbeatSettings = {
   },
 }
 
-const HEARTBEAT_PROMPT = `Read /data/memory/HEARTBEAT.md. Execute the tasks defined there.
+const HEARTBEAT_PROMPT = `Read /data/config/HEARTBEAT.md. Execute the tasks defined there.
 If you have something important to report to the user, use task injection.
 If nothing needs attention, complete silently.`
 
@@ -160,7 +160,7 @@ export class AgentHeartbeatService {
     }
 
     // Pre-flight: read HEARTBEAT.md and skip if no actionable content
-    const heartbeatPath = path.join(process.env.DATA_DIR ?? '/data', 'memory', 'HEARTBEAT.md')
+    const heartbeatPath = path.join(process.env.DATA_DIR ?? '/data', 'config', 'HEARTBEAT.md')
     try {
       const content = fs.readFileSync(heartbeatPath, 'utf-8')
       if (isHeartbeatContentEffectivelyEmpty(content)) {

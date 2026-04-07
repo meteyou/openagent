@@ -16,6 +16,7 @@ export type { UploadDescriptor, SaveUploadInput, UploadSettings } from './upload
 export { loadConfig, getConfigDir, ensureConfigTemplates } from './config.js'
 export {
   ensureMemoryStructure,
+  ensureConfigStructure,
   getMemoryDir,
   readSoulFile,
   readMemoryFile,
@@ -26,6 +27,8 @@ export {
   writeAgentsRulesFile,
   readHeartbeatFile,
   writeHeartbeatFile,
+  readConsolidationFile,
+  writeConsolidationFile,
   getDailyFilePath,
   ensureDailyFile,
   readDailyFile,

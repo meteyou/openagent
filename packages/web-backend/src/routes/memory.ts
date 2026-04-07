@@ -11,6 +11,8 @@ import {
   writeAgentsRulesFile,
   readHeartbeatFile,
   writeHeartbeatFile,
+  readConsolidationFile,
+  writeConsolidationFile,
   readUserProfile,
   ensureUserProfile,
 } from '@openagent/core'
@@ -273,6 +275,31 @@ export function createMemoryRouter(getAgentCore: () => AgentCore | null = () => 
       res.json({ message: `Profile for ${username} updated`, username, content })
     } catch (err) {
       res.status(500).json({ error: `Failed to write user profile: ${(err as Error).message}` })
+    }
+  })
+
+  // Consolidation rules endpoints (CONSOLIDATION.md)
+  router.get('/consolidation-rules', (_req, res) => {
+    try {
+      const content = readConsolidationFile()
+      res.json({ content })
+    } catch (err) {
+      res.status(500).json({ error: `Failed to read CONSOLIDATION.md: ${(err as Error).message}` })
+    }
+  })
+
+  router.put('/consolidation-rules', (req: AuthenticatedRequest, res) => {
+    const { content } = req.body as { content?: string }
+    if (content === undefined || content === null) {
+      res.status(400).json({ error: 'Content is required' })
+      return
+    }
+
+    try {
+      writeConsolidationFile(content)
+      res.json({ message: 'CONSOLIDATION.md updated', content })
+    } catch (err) {
+      res.status(500).json({ error: `Failed to write CONSOLIDATION.md: ${(err as Error).message}` })
     }
   })
 

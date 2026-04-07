@@ -1,11 +1,13 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import {
   ensureMemoryStructure,
+  ensureConfigStructure,
   readSoulFile,
   readMemoryFile,
   writeMemoryFile,
   readAgentsRulesFile,
   readHeartbeatFile,
+  readConsolidationFile,
   ensureDailyFile,
   readDailyFile,
   appendToDailyFile,
@@ -47,53 +49,9 @@ describe('memory', () => {
       expect(fs.existsSync(path.join(dir, 'projects'))).toBe(true)
       expect(fs.existsSync(path.join(dir, 'SOUL.md'))).toBe(true)
       expect(fs.existsSync(path.join(dir, 'MEMORY.md'))).toBe(true)
-      expect(fs.existsSync(path.join(dir, 'AGENTS.md'))).toBe(true)
-      expect(fs.existsSync(path.join(dir, 'HEARTBEAT.md'))).toBe(true)
-    })
-
-    it('creates AGENTS.md with default template', () => {
-      const dir = makeTmpDir()
-      ensureMemoryStructure(dir)
-
-      const content = fs.readFileSync(path.join(dir, 'AGENTS.md'), 'utf-8')
-      expect(content).toContain('# Agent Contract')
-      expect(content).toContain('## Communication Style')
-      expect(content).toContain('## Execution Rules')
-      expect(content).toContain('## Red Lines')
-    })
-
-    it('creates HEARTBEAT.md with default template', () => {
-      const dir = makeTmpDir()
-      ensureMemoryStructure(dir)
-
-      const content = fs.readFileSync(path.join(dir, 'HEARTBEAT.md'), 'utf-8')
-      expect(content).toContain('# Heartbeat Tasks')
-      // Template should be effectively empty — no active task content
-      expect(content).not.toContain('## Daily Memory Update')
-      expect(content).not.toContain('## Memory Hygiene')
-    })
-
-    it('does not overwrite existing AGENTS.md', () => {
-      const dir = makeTmpDir()
-      fs.mkdirSync(dir, { recursive: true })
-      fs.writeFileSync(path.join(dir, 'MEMORY.md'), '# Memory', 'utf-8')
-      fs.writeFileSync(path.join(dir, 'AGENTS.md'), '# Custom Rules', 'utf-8')
-
-      ensureMemoryStructure(dir)
-
-      const content = fs.readFileSync(path.join(dir, 'AGENTS.md'), 'utf-8')
-      expect(content).toBe('# Custom Rules')
-    })
-
-    it('does not overwrite existing HEARTBEAT.md', () => {
-      const dir = makeTmpDir()
-      fs.mkdirSync(dir, { recursive: true })
-      fs.writeFileSync(path.join(dir, 'HEARTBEAT.md'), '# Custom Heartbeat', 'utf-8')
-
-      ensureMemoryStructure(dir)
-
-      const content = fs.readFileSync(path.join(dir, 'HEARTBEAT.md'), 'utf-8')
-      expect(content).toBe('# Custom Heartbeat')
+      // AGENTS.md and HEARTBEAT.md are now in config dir, not memory dir
+      expect(fs.existsSync(path.join(dir, 'AGENTS.md'))).toBe(false)
+      expect(fs.existsSync(path.join(dir, 'HEARTBEAT.md'))).toBe(false)
     })
 
     it('does not overwrite existing files', () => {
@@ -159,10 +117,8 @@ describe('memory', () => {
       expect(fs.existsSync(path.join(dir, 'MEMORY.md'))).toBe(true)
       const content = readMemoryFile(dir)
       expect(content).toBe('# Legacy Content\n')
-      // After migration, AGENTS.md should be recreated with new template
-      expect(fs.existsSync(path.join(dir, 'AGENTS.md'))).toBe(true)
-      const agentsContent = fs.readFileSync(path.join(dir, 'AGENTS.md'), 'utf-8')
-      expect(agentsContent).toContain('# Agent Contract')
+      // After migration, AGENTS.md was renamed to MEMORY.md and no longer exists in memory dir
+      expect(fs.existsSync(path.join(dir, 'AGENTS.md'))).toBe(false)
     })
   })
 

@@ -74,8 +74,9 @@ function isMemoryPath(filePath: string): boolean {
     filePath.includes('/data/memory/') ||
     filePath.includes('/memory/SOUL.md') ||
     filePath.includes('/memory/MEMORY.md') ||
-    filePath.includes('/memory/AGENTS.md') ||
-    filePath.includes('/memory/HEARTBEAT.md') ||
+    filePath.includes('/config/AGENTS.md') ||
+    filePath.includes('/config/HEARTBEAT.md') ||
+    filePath.includes('/config/CONSOLIDATION.md') ||
     filePath.includes('/memory/daily/') ||
     filePath.includes('/memory/users/')
   )

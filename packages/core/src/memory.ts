@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { getWorkspaceDir } from './workspace.js'
+import { getConfigDir } from './config.js'
 
 const SOUL_TEMPLATE = `# Soul
 
@@ -90,6 +91,34 @@ const HEARTBEAT_TEMPLATE = `# Heartbeat Tasks
 <!-- If this file has no actionable content, the heartbeat will skip automatically. -->
 `
 
+const CONSOLIDATION_TEMPLATE = `# Memory Consolidation Rules
+
+<!-- Define what the nightly memory consolidation should focus on. -->
+<!-- The consolidation agent reads this file to understand your priorities. -->
+
+## What to promote to MEMORY.md
+- Recurring patterns and lessons learned
+- Technical decisions and their rationale
+- Project architecture insights
+- Important facts that should persist across sessions
+
+## What to update in user profiles
+- Discovered preferences and communication style
+- Work context changes
+- Personal details the user has shared
+
+## What to update in project notes
+- New project discoveries
+- Architecture changes
+- Key dependencies or integration points
+
+## What to ignore
+- One-off questions with no lasting value
+- Casual small talk
+- Temporary debugging sessions
+- Information that is already captured elsewhere
+`
+
 
 
 export function getMemoryDir(): string {
@@ -163,7 +192,6 @@ export function ensureMemoryStructure(memoryDir?: string): void {
   const memoryPath = path.join(dir, 'MEMORY.md')
   if (!fs.existsSync(memoryPath)) {
     // Migrate legacy AGENTS.md to MEMORY.md if it exists
-    // (only if new AGENTS.md doesn't exist yet — avoid conflict)
     const legacyPath = path.join(dir, 'AGENTS.md')
     if (fs.existsSync(legacyPath)) {
       fs.renameSync(legacyPath, memoryPath)
@@ -171,15 +199,47 @@ export function ensureMemoryStructure(memoryDir?: string): void {
       fs.writeFileSync(memoryPath, MEMORY_TEMPLATE, 'utf-8')
     }
   }
+}
 
-  const agentsPath = path.join(dir, 'AGENTS.md')
-  if (!fs.existsSync(agentsPath)) {
-    fs.writeFileSync(agentsPath, AGENTS_TEMPLATE, 'utf-8')
+/**
+ * Ensure the config directory structure exists with all default files.
+ * Migrates files from /data/memory/ to /data/config/ if they exist in the old location.
+ */
+export function ensureConfigStructure(configDir?: string): void {
+  const dir = configDir ?? getConfigDir()
+
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true })
   }
 
+  // Migrate AGENTS.md from memory dir to config dir if needed
+  const agentsPath = path.join(dir, 'AGENTS.md')
+  if (!fs.existsSync(agentsPath)) {
+    const legacyPath = path.join(getMemoryDir(), 'AGENTS.md')
+    if (fs.existsSync(legacyPath)) {
+      fs.renameSync(legacyPath, agentsPath)
+      console.log('[config] Migrated AGENTS.md from memory/ to config/')
+    } else {
+      fs.writeFileSync(agentsPath, AGENTS_TEMPLATE, 'utf-8')
+    }
+  }
+
+  // Migrate HEARTBEAT.md from memory dir to config dir if needed
   const heartbeatPath = path.join(dir, 'HEARTBEAT.md')
   if (!fs.existsSync(heartbeatPath)) {
-    fs.writeFileSync(heartbeatPath, HEARTBEAT_TEMPLATE, 'utf-8')
+    const legacyPath = path.join(getMemoryDir(), 'HEARTBEAT.md')
+    if (fs.existsSync(legacyPath)) {
+      fs.renameSync(legacyPath, heartbeatPath)
+      console.log('[config] Migrated HEARTBEAT.md from memory/ to config/')
+    } else {
+      fs.writeFileSync(heartbeatPath, HEARTBEAT_TEMPLATE, 'utf-8')
+    }
+  }
+
+  // Create CONSOLIDATION.md if missing
+  const consolidationPath = path.join(dir, 'CONSOLIDATION.md')
+  if (!fs.existsSync(consolidationPath)) {
+    fs.writeFileSync(consolidationPath, CONSOLIDATION_TEMPLATE, 'utf-8')
   }
 }
 
@@ -282,47 +342,84 @@ export const readAgentsFile = readMemoryFile
 export const writeAgentsFile = writeMemoryFile
 
 /**
- * Read the AGENTS.md rules file
+ * Read the AGENTS.md rules file (from config directory).
+ * Falls back to template if the file/directory cannot be created.
  */
-export function readAgentsRulesFile(memoryDir?: string): string {
-  const dir = memoryDir ?? getMemoryDir()
+export function readAgentsRulesFile(configDir?: string): string {
+  const dir = configDir ?? getConfigDir()
   const agentsPath = path.join(dir, 'AGENTS.md')
-  if (!fs.existsSync(agentsPath)) {
-    ensureMemoryStructure(dir)
+  try {
+    if (!fs.existsSync(agentsPath)) {
+      ensureConfigStructure(dir)
+    }
+    return fs.readFileSync(agentsPath, 'utf-8')
+  } catch {
+    return AGENTS_TEMPLATE
   }
-  return fs.readFileSync(agentsPath, 'utf-8')
 }
 
 /**
- * Write the AGENTS.md rules file
+ * Write the AGENTS.md rules file (to config directory)
  */
-export function writeAgentsRulesFile(content: string, memoryDir?: string): void {
-  const dir = memoryDir ?? getMemoryDir()
-  ensureMemoryStructure(dir)
+export function writeAgentsRulesFile(content: string, configDir?: string): void {
+  const dir = configDir ?? getConfigDir()
+  ensureConfigStructure(dir)
   const agentsPath = path.join(dir, 'AGENTS.md')
   fs.writeFileSync(agentsPath, content, 'utf-8')
 }
 
 /**
- * Read the HEARTBEAT.md file
+ * Read the HEARTBEAT.md file (from config directory).
+ * Falls back to template if the file/directory cannot be created.
  */
-export function readHeartbeatFile(memoryDir?: string): string {
-  const dir = memoryDir ?? getMemoryDir()
+export function readHeartbeatFile(configDir?: string): string {
+  const dir = configDir ?? getConfigDir()
   const heartbeatPath = path.join(dir, 'HEARTBEAT.md')
-  if (!fs.existsSync(heartbeatPath)) {
-    ensureMemoryStructure(dir)
+  try {
+    if (!fs.existsSync(heartbeatPath)) {
+      ensureConfigStructure(dir)
+    }
+    return fs.readFileSync(heartbeatPath, 'utf-8')
+  } catch {
+    return HEARTBEAT_TEMPLATE
   }
-  return fs.readFileSync(heartbeatPath, 'utf-8')
 }
 
 /**
- * Write the HEARTBEAT.md file
+ * Write the HEARTBEAT.md file (to config directory)
  */
-export function writeHeartbeatFile(content: string, memoryDir?: string): void {
-  const dir = memoryDir ?? getMemoryDir()
-  ensureMemoryStructure(dir)
+export function writeHeartbeatFile(content: string, configDir?: string): void {
+  const dir = configDir ?? getConfigDir()
+  ensureConfigStructure(dir)
   const heartbeatPath = path.join(dir, 'HEARTBEAT.md')
   fs.writeFileSync(heartbeatPath, content, 'utf-8')
+}
+
+/**
+ * Read the CONSOLIDATION.md file (from config directory).
+ * Falls back to template if the file/directory cannot be created.
+ */
+export function readConsolidationFile(configDir?: string): string {
+  const dir = configDir ?? getConfigDir()
+  const consolidationPath = path.join(dir, 'CONSOLIDATION.md')
+  try {
+    if (!fs.existsSync(consolidationPath)) {
+      ensureConfigStructure(dir)
+    }
+    return fs.readFileSync(consolidationPath, 'utf-8')
+  } catch {
+    return CONSOLIDATION_TEMPLATE
+  }
+}
+
+/**
+ * Write the CONSOLIDATION.md file (to config directory)
+ */
+export function writeConsolidationFile(content: string, configDir?: string): void {
+  const dir = configDir ?? getConfigDir()
+  ensureConfigStructure(dir)
+  const consolidationPath = path.join(dir, 'CONSOLIDATION.md')
+  fs.writeFileSync(consolidationPath, content, 'utf-8')
 }
 
 /**
@@ -425,6 +522,7 @@ export interface BuiltinToolsPromptConfig {
 
 export function assembleSystemPrompt(options?: {
   memoryDir?: string
+  configDir?: string
   baseInstructions?: string
   recentDays?: number
   language?: string
@@ -453,8 +551,8 @@ export function assembleSystemPrompt(options?: {
     sections.push(`<instructions>\n${options.baseInstructions.trim()}\n</instructions>`)
   }
 
-  // 3. Agent rules from AGENTS.md
-  const agentsRules = readAgentsRulesFile(memoryDir)
+  // 3. Agent rules from AGENTS.md (in config directory)
+  const agentsRules = readAgentsRulesFile(options?.configDir)
   sections.push(`<agent_rules>\n${agentsRules.trim()}\n</agent_rules>`)
 
   // 4. Core memory from MEMORY.md
@@ -531,20 +629,26 @@ ${noteLines}
 </project_notes>`)
   }
 
-  // 9. Memory file paths for agent self-access
+  // 9. Memory and config file paths for agent self-access
   const dir = memoryDir ?? getMemoryDir()
+  const cfgDir = options?.configDir ?? getConfigDir()
   const today = new Date().toISOString().split('T')[0]
   sections.push(`<memory_paths>
-You can read and write your memory files directly using read_file, write_file, and edit_file tools.
+You can read and write your memory and config files directly using read_file, write_file, and edit_file tools.
 When modifying existing files, prefer edit_file (targeted oldText/newText replacements) over write_file (full rewrite) to save tokens and reduce errors.
+
+Memory files:
 - SOUL.md: ${path.join(dir, 'SOUL.md')}
 - MEMORY.md: ${path.join(dir, 'MEMORY.md')}
-- AGENTS.md: ${path.join(dir, 'AGENTS.md')}
-- HEARTBEAT.md: ${path.join(dir, 'HEARTBEAT.md')}
 - Daily memory directory: ${path.join(dir, 'daily/')}
 - Today's daily file: ${path.join(dir, 'daily', `${today}.md`)}
 - User profiles directory: ${path.join(dir, 'users/')}
 - Project notes directory: ${path.join(dir, 'projects/')}
+
+Config files:
+- AGENTS.md (agent rules): ${path.join(cfgDir, 'AGENTS.md')}
+- HEARTBEAT.md (heartbeat tasks): ${path.join(cfgDir, 'HEARTBEAT.md')}
+- CONSOLIDATION.md (consolidation rules): ${path.join(cfgDir, 'CONSOLIDATION.md')}
 </memory_paths>`)
 
   // 10. Agent skill creation

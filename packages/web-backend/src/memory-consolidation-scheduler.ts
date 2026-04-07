@@ -37,24 +37,26 @@ function buildConsolidationTaskPrompt(lookbackDays: number): string {
 
 ## Steps
 
-1. **Read recent daily files**: Use \`list_files\` on the \`daily/\` directory, then \`read_file\` to read the last ${lookbackDays} days of daily files (files named YYYY-MM-DD.md, sorted by date). Skip files that only contain a header and no content.
+1. **Read consolidation rules**: Use \`read_file\` to read /data/config/CONSOLIDATION.md. This file contains user-defined rules for what to promote, update, or ignore. Follow these rules throughout the process.
 
-2. **Read MEMORY.md**: Use \`read_file\` to read the current MEMORY.md. This is the long-term memory file.
+2. **Read recent daily files**: Use \`list_files\` on the \`daily/\` directory, then \`read_file\` to read the last ${lookbackDays} days of daily files (files named YYYY-MM-DD.md, sorted by date). Skip files that only contain a header and no content.
 
-3. **Read project notes**: Use \`list_files\` on the \`projects/\` directory, then \`read_file\` to read each project note. These contain per-project context.
+3. **Read MEMORY.md**: Use \`read_file\` to read the current MEMORY.md. This is the long-term memory file.
 
-4. **Read user profiles**: Use \`list_files\` on the \`users/\` directory, then \`read_file\` to read each user profile.
+4. **Read project notes**: Use \`list_files\` on the \`projects/\` directory, then \`read_file\` to read each project note. These contain per-project context.
 
-5. **Optionally read chat history**: If daily files reference conversations that need more detail, use \`read_chat_history\` to get the full context.
+5. **Read user profiles**: Use \`list_files\` on the \`users/\` directory, then \`read_file\` to read each user profile.
 
-6. **Decide what to promote/update**:
+6. **Optionally read chat history**: If daily files reference conversations that need more detail, use \`read_chat_history\` to get the full context.
+
+7. **Decide what to promote/update** (guided by CONSOLIDATION.md rules):
    - If you find recurring patterns, learned lessons, or important facts in daily files, add them to MEMORY.md using \`edit_file\` or \`write_file\`.
    - If you find project-specific information, update the relevant project note in \`projects/\` or create a new one if a new project is detected.
    - If you find user-specific information (preferences, context), update the relevant user profile in \`users/\`.
    - Remove outdated or superseded information from MEMORY.md.
    - Do NOT duplicate information across files — each fact should live in exactly one place.
 
-7. **Complete silently**: When done, finish with STATUS: silent. Only use STATUS: completed if you made significant changes that the user should know about.
+8. **Complete silently**: When done, finish with STATUS: silent. Only use STATUS: completed if you made significant changes that the user should know about.
 
 ## Important Rules
 

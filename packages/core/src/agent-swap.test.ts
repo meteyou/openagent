@@ -8,6 +8,7 @@ import type { Database } from './database.js'
 // Mock the memory, config, and provider-config modules to avoid filesystem access
 vi.mock('./memory.js', () => ({
   ensureMemoryStructure: vi.fn(),
+  ensureConfigStructure: vi.fn(),
   assembleSystemPrompt: vi.fn(() => 'test system prompt'),
 }))
 
