@@ -77,12 +77,24 @@ import type { TelegramConfig } from './bot.js'
 import { loadConfig } from '@openagent/core'
 
 function createMockAgentCore(): AgentCore {
+  const mockSessionManager = {
+    getOrCreateSession: vi.fn((_userId: string, _source?: string) => ({
+      id: `session-mock-${Date.now()}`,
+      userId: _userId,
+      source: _source ?? 'telegram',
+      startedAt: Date.now(),
+      lastActivity: Date.now(),
+      messageCount: 0,
+      summaryWritten: false,
+      restored: false,
+    })),
+  }
   return {
     sendMessage: vi.fn(),
     handleNewCommand: vi.fn(),
     resetSession: vi.fn(),
     abort: vi.fn(),
-    getSessionManager: vi.fn(),
+    getSessionManager: vi.fn(() => mockSessionManager),
     refreshSystemPrompt: vi.fn(),
     getAgent: vi.fn(),
     dispose: vi.fn(),

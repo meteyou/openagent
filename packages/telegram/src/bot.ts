@@ -580,7 +580,9 @@ export class TelegramBot {
     const userId = this.resolveUserId(ctx)
     const numericUserId = this.resolveNumericUserId(ctx)
     const caption = ctx.msg?.caption?.trim() ?? ''
-    const sessionId = `telegram-${userId}-${Date.now()}`
+    // Resolve session ID from SessionManager (aligns chat_messages with session tracking)
+    const smSession = this.agentCore.getSessionManager().getOrCreateSession(userId, 'telegram')
+    const sessionId = smSession.id
 
     try {
       let upload
@@ -773,8 +775,9 @@ export class TelegramBot {
     const isDM = this.isDMChat(ctx)
     const username = isDM ? this.resolveUsername(ctx) : null
 
-    // Generate a session ID for chat_messages storage
-    const sessionId = `telegram-${userId}-${Date.now()}`
+    // Resolve session ID from SessionManager (aligns chat_messages with session tracking)
+    const smSession = this.agentCore.getSessionManager().getOrCreateSession(userId, 'telegram')
+    const sessionId = smSession.id
 
     // Save user message to chat_messages (if linked to a web user)
     // Skip if this came from handleIncomingAttachment (already saved)
@@ -1082,7 +1085,9 @@ export class TelegramBot {
     const userId = row?.user_id ?? null
     if (!userId) return
 
-    const sessionId = `telegram-outbound-${userId}-${Date.now()}`
+    // Resolve session ID from SessionManager (aligns chat_messages with session tracking)
+    const smSession = this.agentCore.getSessionManager().getOrCreateSession(String(userId), 'telegram')
+    const sessionId = smSession.id
 
     try {
       this.db.prepare(
