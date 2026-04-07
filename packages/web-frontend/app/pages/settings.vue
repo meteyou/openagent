@@ -687,14 +687,30 @@
                         <span v-else>{{ $t('settings.telegramUsersNoUsername') }}</span>
                         <span class="text-border">·</span>
                         <span class="font-mono">{{ tgUser.telegramId }}</span>
-                        <template v-if="tgUser.linkedUsername">
-                          <span class="text-border">·</span>
-                          <span class="inline-flex items-center gap-1">
-                            <AppIcon name="user" size="sm" />
-                            {{ tgUser.linkedUsername }}
-                          </span>
-                        </template>
                       </div>
+                    </div>
+
+                    <!-- Inline web-user link selector -->
+                    <div class="flex shrink-0 items-center gap-1.5">
+                      <AppIcon name="link" size="sm" class="text-muted-foreground" />
+                      <Select
+                        :model-value="tgUser.userId !== null ? String(tgUser.userId) : ''"
+                        @update:model-value="(val: string) => handleAssignUser(tgUser.id, val)"
+                      >
+                        <SelectTrigger class="h-7 w-32 text-xs">
+                          <SelectValue :placeholder="$t('settings.telegramUsersUnlinked')" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="">{{ $t('settings.telegramUsersUnlinked') }}</SelectItem>
+                          <SelectItem
+                            v-for="u in users"
+                            :key="u.id"
+                            :value="String(u.id)"
+                          >
+                            🔗 {{ u.username }}
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
 
                     <!-- Primary action: Approve for pending users -->
@@ -722,26 +738,6 @@
                         <DropdownMenuItem v-if="tgUser.status !== 'rejected'" @click="handleRejectTelegramUser(tgUser.id)">
                           <AppIcon name="close" class="h-4 w-4" />
                           {{ $t('settings.telegramUsersReject') }}
-                        </DropdownMenuItem>
-
-                        <!-- User assignment submenu -->
-                        <DropdownMenuSeparator />
-                        <DropdownMenuLabel>{{ $t('settings.telegramUsersAssignUser') }}</DropdownMenuLabel>
-                        <DropdownMenuItem
-                          :class="tgUser.userId === null ? 'font-medium' : ''"
-                          @click="handleAssignUser(tgUser.id, '')"
-                        >
-                          {{ $t('settings.telegramUsersUnassigned') }}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          v-for="u in users"
-                          :key="u.id"
-                          :class="tgUser.userId === u.id ? 'font-medium' : ''"
-                          @click="handleAssignUser(tgUser.id, String(u.id))"
-                        >
-                          <AppIcon name="user" class="h-4 w-4" />
-                          {{ u.username }}
-                          <AppIcon v-if="tgUser.userId === u.id" name="check" class="ml-auto h-4 w-4" />
                         </DropdownMenuItem>
 
                         <DropdownMenuSeparator />
@@ -1243,6 +1239,7 @@ const {
   fetchTelegramUsers,
   updateTelegramUser,
   deleteTelegramUser,
+  linkTelegramUser,
 } = useTelegramUsers()
 
 /* ── Secrets ── */
@@ -1364,7 +1361,8 @@ async function handleRejectTelegramUser(id: number) {
 
 async function handleAssignUser(telegramUserId: number, userIdStr: string) {
   const userId = userIdStr ? parseInt(userIdStr, 10) : null
-  await updateTelegramUser(telegramUserId, { userId })
+  // Use the dedicated PATCH /api/admin/telegram/users/:id/link endpoint
+  await linkTelegramUser(telegramUserId, userId)
   refreshAvatar()
 }
 

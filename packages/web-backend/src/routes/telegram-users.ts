@@ -233,6 +233,39 @@ export function createTelegramUsersRouter(options: TelegramUsersRouterOptions): 
         db.prepare(
           "UPDATE telegram_users SET status = ?, updated_at = datetime('now') WHERE id = ?"
         ).run(status, id)
+
+        // Auto-link: when approving, try to match by username or pick the only web user
+        if (status === 'approved' && previousStatus !== 'approved' && existing.user_id === null) {
+          const allUsers = db.prepare('SELECT id, username FROM users').all() as UserRow[]
+          let autoUserId: number | null = null
+
+          if (existing.telegram_username) {
+            // Prefer a web user whose username matches the Telegram username (case-insensitive)
+            const match = allUsers.find(
+              u => u.username.toLowerCase() === (existing.telegram_username ?? '').toLowerCase()
+            )
+            if (match) autoUserId = match.id
+          }
+
+          if (autoUserId === null && allUsers.length === 1) {
+            // If only one web user exists, link to them automatically
+            autoUserId = allUsers[0]!.id
+          }
+
+          if (autoUserId !== null) {
+            // Clear any stale links
+            db.prepare(
+              "UPDATE users SET telegram_id = NULL, updated_at = datetime('now') WHERE telegram_id = ?"
+            ).run(existing.telegram_id)
+            // Set the new link in both tables
+            db.prepare(
+              "UPDATE telegram_users SET user_id = ?, updated_at = datetime('now') WHERE id = ?"
+            ).run(autoUserId, id)
+            db.prepare(
+              "UPDATE users SET telegram_id = ?, updated_at = datetime('now') WHERE id = ?"
+            ).run(existing.telegram_id, autoUserId)
+          }
+        }
       }
 
       if (userId !== undefined) {

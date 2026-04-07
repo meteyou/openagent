@@ -19,6 +19,7 @@ import { createHealthRouter } from './routes/health.js'
 import { createTasksRouter } from './routes/tasks.js'
 import { createCronjobsRouter } from './routes/cronjobs.js'
 import { createSecretsRouter } from './routes/secrets.js'
+import { createAdminRouter } from './routes/admin.js'
 import type { TaskRunner, TaskScheduler, TaskEventBus, AgentHeartbeatService } from '@openagent/core'
 import { ensureAdminUser } from './auth.js'
 import type { HealthMonitorService } from './health-monitor.js'
@@ -111,6 +112,7 @@ export function createApp(options?: AppOptions): express.Express {
       },
     }))
     app.use('/api/users', createUsersRouter(options.db))
+    app.use('/api/admin', createAdminRouter(options.db))
     app.use('/api/telegram-users', createTelegramUsersRouter({
       db: options.db,
       getTelegramBot: options.getTelegramBot ?? (() => null),
