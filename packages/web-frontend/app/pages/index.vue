@@ -17,7 +17,7 @@
         <AppIcon name="square" class="h-4 w-4" />
         <span class="hidden sm:inline">{{ $t('chat.stop') }}</span>
       </Button>
-      <Button variant="outline" size="sm" class="gap-2" @click="handleNewSession">
+      <Button variant="outline" size="sm" class="gap-2" :disabled="isStreaming || sessionResetting" @click="handleNewSession">
         <AppIcon name="sparkles" class="h-4 w-4" />
         <span class="hidden sm:inline">{{ $t('chat.newSession') }}</span>
       </Button>
@@ -64,7 +64,25 @@
             },
           ]"
         >
-          <template v-if="msg.role === 'tool' && msg.toolData">
+          <!-- Session divider -->
+          <template v-if="msg.role === 'divider'">
+            <div class="w-full max-w-none px-2">
+              <p v-if="msg.content" class="mx-auto mb-2 max-w-md text-center text-xs leading-relaxed text-muted-foreground/70">
+                {{ msg.content }}
+              </p>
+              <div class="relative flex items-center py-2">
+                <div class="grow border-t border-border" />
+                <div class="mx-4 flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+                  <AppIcon name="sparkles" class="h-3 w-3" />
+                  <span>{{ $t('chat.newSessionDivider') }}</span>
+                </div>
+                <div class="grow border-t border-border" />
+              </div>
+            </div>
+          </template>
+
+          <!-- Tool call card (clickable/expandable) -->
+          <template v-else-if="msg.role === 'tool' && msg.toolData">
             <div class="w-full overflow-hidden rounded-lg border border-border">
               <button class="group flex w-full items-center gap-2 bg-muted/30 px-3 py-1.5 text-left text-xs text-muted-foreground" :class="{ 'border-b border-border': expandedTools.has(msg.toolData!.toolCallId) }" @click="toggleTool(msg.toolData!.toolCallId)">
                 <svg class="h-3 w-3 shrink-0 transition-transform duration-200" :class="{ 'rotate-90': expandedTools.has(msg.toolData!.toolCallId) }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6" /></svg>
@@ -105,6 +123,38 @@
               </div>
             </div>
           </template>
+
+          <!-- Task result notification (collapsible card) -->
+          <template v-else-if="msg.role === 'system' && msg.isTaskResult">
+            <div class="w-full overflow-hidden rounded-lg border border-border">
+              <button
+                class="group flex w-full items-center gap-2 bg-muted/30 px-3 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-muted/60"
+                :class="{ 'border-b border-border': expandedInjections.has(i) }"
+                @click="toggleInjection(i)"
+              >
+                <svg class="h-3 w-3 shrink-0 transition-transform duration-200" :class="{ 'rotate-90': expandedInjections.has(i) }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6" /></svg>
+                <AppIcon name="zap" class="h-3 w-3 shrink-0 opacity-60" />
+                <span class="font-medium">{{ msg.taskResultName ?? 'Background Task' }}</span>
+                <span v-if="msg.taskResultDuration" class="ml-1 text-[10px] text-muted-foreground/60">({{ msg.taskResultDuration }}min)</span>
+                <span
+                  class="ml-auto rounded px-1.5 py-0.5 text-[10px] font-medium"
+                  :class="msg.taskResultStatus === 'failed'
+                    ? 'bg-destructive/10 text-destructive'
+                    : msg.taskResultStatus === 'question'
+                      ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                      : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'"
+                >
+                  {{ msg.taskResultStatus === 'failed' ? 'Failed' : msg.taskResultStatus === 'question' ? 'Question' : 'Completed' }}
+                </span>
+              </button>
+              <div v-if="expandedInjections.has(i)" class="bg-background text-xs">
+                <div class="max-h-60 overflow-y-auto px-3 py-2">
+                  <div class="prose-chat break-words text-xs text-foreground" v-html="renderMarkdown(taskResultBody(msg.content))" />
+                </div>
+              </div>
+            </div>
+          </template>
+
           <template v-else>
             <div class="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border bg-muted text-muted-foreground">
               <template v-if="msg.role === 'user'">
@@ -235,6 +285,14 @@ const filteredMessages = computed(() => {
 })
 const expandedTools = ref<Set<string>>(new Set())
 function toggleTool(toolCallId: string) { const updated = new Set(expandedTools.value); updated.has(toolCallId) ? updated.delete(toolCallId) : updated.add(toolCallId); expandedTools.value = updated }
+const expandedInjections = ref<Set<number>>(new Set())
+function toggleInjection(index: number) { const updated = new Set(expandedInjections.value); updated.has(index) ? updated.delete(index) : updated.add(index); expandedInjections.value = updated }
+function taskResultBody(content: string): string {
+  const lines = (content ?? '').split('\n')
+  const bodyLines = lines.slice(1)
+  while (bodyLines.length > 0 && bodyLines[0]!.trim() === '') bodyLines.shift()
+  return bodyLines.join('\n') || content
+}
 const { messages, connectionStatus, isStreaming, connect, disconnect, sendMessage, newSession, stopTask } = useChat()
 const { playingIndex: ttsPlayingIndex, loading: ttsLoading, ttsEnabled, fetchTtsSettings, play: ttsPlay, stop: ttsStop } = useTts()
 
@@ -253,7 +311,12 @@ function onMessagesScroll() { const el = messagesContainer.value; if (!el) retur
 function jumpToBottom() { isNearBottom.value = true; nextTick(() => scrollToBottom()) }
 onMounted(async () => { connect(); await Promise.all([loadHistory(), fetchTtsSettings()]) })
 onUnmounted(() => { disconnect(); ttsStop() })
-watch(() => messages.value.length, () => { if (isNearBottom.value) nextTick(() => scrollToBottom()) })
+watch(() => messages.value.length, () => {
+  if (isNearBottom.value) nextTick(() => scrollToBottom())
+  // Reset sessionResetting flag when a divider appears (session_end received)
+  const last = messages.value[messages.value.length - 1]
+  if (last?.role === 'divider') sessionResetting.value = false
+})
 watch(() => messages.value[messages.value.length - 1]?.content?.length ?? 0, () => { if (isNearBottom.value) nextTick(() => scrollToBottom()) })
 async function loadHistory() {
   loadingHistory.value = true
@@ -270,6 +333,24 @@ async function loadHistory() {
           return {
             id: m.id, role: 'tool' as const, content: m.content, timestamp: m.timestamp, source,
             toolData: { toolName: meta.toolName, toolCallId: meta.toolCallId ?? '', toolArgs: meta.toolArgs, toolResult: meta.toolResult, toolIsError: meta.toolIsError },
+          } as ChatMessage
+        }
+
+        // Parse system messages with session_divider metadata as dividers
+        if (m.role === 'system' && meta.type === 'session_divider') {
+          return {
+            id: m.id, role: 'divider' as const, content: meta.summary ?? '', timestamp: m.timestamp, source,
+          } as ChatMessage
+        }
+
+        // Parse task result notifications from metadata
+        if (m.role === 'system' && meta.type === 'task_result') {
+          return {
+            id: m.id, role: 'system' as const, content: m.content, timestamp: m.timestamp, source,
+            isTaskResult: true,
+            taskResultName: meta.taskName ?? 'Background Task',
+            taskResultStatus: meta.taskResultStatus ?? meta.taskStatus ?? 'completed',
+            taskResultDuration: meta.durationMinutes,
           } as ChatMessage
         }
 
@@ -295,7 +376,12 @@ async function handleSend() {
   pendingFiles.value = []
   if (inputRef.value) inputRef.value.style.height = 'auto'
 }
-function handleNewSession() { newSession() }
+const sessionResetting = ref(false)
+function handleNewSession() {
+  if (sessionResetting.value) return
+  sessionResetting.value = true
+  newSession()
+}
 function handleStop() { stopTask() }
 function scrollToBottom() { if (messagesContainer.value) messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight }
 function autoResize() { const el = inputRef.value; if (!el) return; el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 150) + 'px' }
