@@ -62,7 +62,10 @@
     "attachments": {
       "openOriginal": "Open original",
       "download": "Download"
-    }
+    },
+    "ttsPlay": "Read aloud",
+    "ttsStop": "Stop reading",
+    "ttsLoading": "Generating speech..."
   },
   "status": {
     "online": "Online",
@@ -109,6 +112,8 @@
     "modelPlaceholderCustom": "e.g. google/gemini-2.5-pro",
     "selectModel": "Select a model",
     "loadingModels": "Loading models...",
+    "modelsLoadError": "Failed to load models",
+    "modelsRetry": "↻ Retry loading models",
     "ollamaUrlHint": "Default: http://localhost:11434/v1",
     "oauthLogin": "Login & Connect",
     "oauthConnecting": "Connecting...",
@@ -396,7 +401,35 @@
     "tasksStatusUpdates": "Periodic Status Updates",
     "tasksStatusUpdatesHint": "Receive periodic updates about running background tasks.",
     "tasksStatusUpdateInterval": "Status update interval",
-    "tasksStatusUpdateIntervalHint": "How often to inject a status update about running tasks into the main agent."
+    "tasksStatusUpdateIntervalHint": "How often to inject a status update about running tasks into the main agent.",
+    "ttsTitle": "Text-to-Speech",
+    "ttsSubtitle": "Read agent responses aloud using AI-powered text-to-speech.",
+    "ttsEnabled": "Enable Text-to-Speech",
+    "ttsEnabledHint": "Show a play button on assistant messages to read them aloud.",
+    "ttsProvider": "TTS Provider",
+    "ttsProviderHint": "Choose which AI provider generates the speech audio.",
+    "ttsOpenaiModel": "OpenAI Model",
+    "ttsOpenaiModelHint": "gpt-4o-mini-tts is the fastest and most expressive. tts-1-hd has higher audio quality.",
+    "ttsOpenaiVoice": "OpenAI Voice",
+    "ttsOpenaiVoiceHint": "Select a voice preset for speech generation.",
+    "ttsOpenaiInstructions": "Voice Instructions",
+    "ttsOpenaiInstructionsHint": "Optional tone/style instructions (e.g. \"Speak in a calm, friendly tone\"). Only supported by gpt-4o-mini-tts.",
+    "ttsOpenaiInstructionsPlaceholder": "e.g. Speak in a calm, friendly tone",
+    "ttsMistralVoice": "Mistral Voice",
+    "ttsMistralVoiceHint": "Select a Voxtral TTS voice preset.",
+    "ttsResponseFormat": "Audio Format",
+    "ttsResponseFormatHint": "MP3 is recommended for general use. WAV has lower latency but larger file sizes.",
+    "ttsProviderOpenaiNone": "OpenAI (no provider configured)",
+    "ttsProviderMistralNone": "Mistral Voxtral (no provider configured)",
+    "ttsVoicesLoading": "Loading voices...",
+    "ttsVoicesEmpty": "No voices available",
+    "ttsMistralSpeakerPlaceholder": "Voice",
+    "ttsMistralMoodPlaceholder": "Mood",
+    "ttsPreview": "Voice Preview",
+    "ttsPreviewPlaceholder": "Type text to preview the voice...",
+    "ttsPreviewPlay": "Play",
+    "ttsPreviewStop": "Stop",
+    "ttsPreviewHint": "Test the selected voice and mood before saving."
   },
   "users": {
     "kicker": "Access control",

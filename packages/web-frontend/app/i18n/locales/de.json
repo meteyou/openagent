@@ -62,7 +62,10 @@
     "attachments": {
       "openOriginal": "Original öffnen",
       "download": "Herunterladen"
-    }
+    },
+    "ttsPlay": "Vorlesen",
+    "ttsStop": "Vorlesen stoppen",
+    "ttsLoading": "Sprache wird generiert..."
   },
   "status": {
     "online": "Online",
@@ -109,6 +112,8 @@
     "modelPlaceholderCustom": "z.B. google/gemini-2.5-pro",
     "selectModel": "Modell auswählen",
     "loadingModels": "Modelle werden geladen...",
+    "modelsLoadError": "Modelle konnten nicht geladen werden",
+    "modelsRetry": "↻ Modelle erneut laden",
     "ollamaUrlHint": "Standard: http://localhost:11434/v1",
     "oauthLogin": "Anmelden & Verbinden",
     "oauthConnecting": "Verbinde...",
@@ -396,7 +401,35 @@
     "tasksStatusUpdates": "Periodische Statusupdates",
     "tasksStatusUpdatesHint": "Regelmäßige Updates über laufende Hintergrundaufgaben erhalten.",
     "tasksStatusUpdateInterval": "Statusupdate-Intervall",
-    "tasksStatusUpdateIntervalHint": "Wie oft ein Statusupdate über laufende Aufgaben in den Haupt-Agenten injiziert werden soll."
+    "tasksStatusUpdateIntervalHint": "Wie oft ein Statusupdate über laufende Aufgaben in den Haupt-Agenten injiziert werden soll.",
+    "ttsTitle": "Text-to-Speech",
+    "ttsSubtitle": "Lasse dir Antworten des Agenten per KI-basierter Sprachsynthese vorlesen.",
+    "ttsEnabled": "Text-to-Speech aktivieren",
+    "ttsEnabledHint": "Zeigt einen Abspielen-Button an Assistenten-Nachrichten, um sie vorzulesen.",
+    "ttsProvider": "TTS-Anbieter",
+    "ttsProviderHint": "Wähle, welcher KI-Anbieter das Sprach-Audio generiert.",
+    "ttsOpenaiModel": "OpenAI-Modell",
+    "ttsOpenaiModelHint": "gpt-4o-mini-tts ist am schnellsten und ausdrucksstärksten. tts-1-hd hat höhere Audioqualität.",
+    "ttsOpenaiVoice": "OpenAI-Stimme",
+    "ttsOpenaiVoiceHint": "Wähle eine Stimme für die Sprachgenerierung.",
+    "ttsOpenaiInstructions": "Stimm-Anweisungen",
+    "ttsOpenaiInstructionsHint": "Optionale Ton-/Stil-Anweisungen (z.B. \"Sprich in einem ruhigen, freundlichen Ton\"). Nur von gpt-4o-mini-tts unterstützt.",
+    "ttsOpenaiInstructionsPlaceholder": "z.B. Sprich in einem ruhigen, freundlichen Ton",
+    "ttsMistralVoice": "Mistral-Stimme",
+    "ttsMistralVoiceHint": "Wähle eine Voxtral TTS Stimme.",
+    "ttsResponseFormat": "Audio-Format",
+    "ttsResponseFormatHint": "MP3 wird für allgemeine Nutzung empfohlen. WAV hat geringere Latenz, aber größere Dateien.",
+    "ttsProviderOpenaiNone": "OpenAI (kein Anbieter konfiguriert)",
+    "ttsProviderMistralNone": "Mistral Voxtral (kein Anbieter konfiguriert)",
+    "ttsVoicesLoading": "Stimmen werden geladen...",
+    "ttsVoicesEmpty": "Keine Stimmen verfügbar",
+    "ttsMistralSpeakerPlaceholder": "Stimme",
+    "ttsMistralMoodPlaceholder": "Stimmung",
+    "ttsPreview": "Stimm-Vorschau",
+    "ttsPreviewPlaceholder": "Text eingeben um die Stimme zu testen...",
+    "ttsPreviewPlay": "Abspielen",
+    "ttsPreviewStop": "Stopp",
+    "ttsPreviewHint": "Teste die gewählte Stimme und Stimmung vor dem Speichern."
   },
   "users": {
     "kicker": "Zugriffssteuerung",
