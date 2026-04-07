@@ -60,6 +60,25 @@ export function useTelegramUsers() {
     }
   }
 
+  /**
+   * Link (or unlink) a Telegram user to a web user via the dedicated PATCH endpoint.
+   * userId = null means unlink.
+   */
+  async function linkTelegramUser(id: number, userId: number | null): Promise<boolean> {
+    error.value = null
+    try {
+      await apiFetch(`/api/admin/telegram/users/${id}/link`, {
+        method: 'PATCH',
+        body: JSON.stringify({ userId }),
+      })
+      await fetchTelegramUsers()
+      return true
+    } catch (err) {
+      error.value = (err as Error).message
+      return false
+    }
+  }
+
   return {
     telegramUsers,
     loading,
@@ -67,5 +86,6 @@ export function useTelegramUsers() {
     fetchTelegramUsers,
     updateTelegramUser,
     deleteTelegramUser,
+    linkTelegramUser,
   }
 }
