@@ -10,7 +10,7 @@ import { logTokenUsage, logToolCall } from './token-logger.js'
 import { estimateCost, getApiKeyForProvider, buildModel } from './provider-config.js'
 import type { ProviderConfig } from './provider-config.js'
 import type { ProviderManager } from './provider-manager.js'
-import { assembleSystemPrompt, ensureMemoryStructure, getMemoryDir } from './memory.js'
+import { assembleSystemPrompt, ensureMemoryStructure, ensureConfigStructure, getMemoryDir } from './memory.js'
 import type { SkillPromptEntry } from './memory.js'
 import { getWorkspaceDir } from './workspace.js'
 import { loadConfig, ensureConfigTemplates } from './config.js'
@@ -400,6 +400,7 @@ export class AgentCore {
 
     // Ensure memory structure exists
     ensureMemoryStructure(options.memoryDir)
+    ensureConfigStructure()
 
     // Load language, timezone, and builtinTools settings from config
     let language: string | undefined
@@ -474,8 +475,8 @@ export class AgentCore {
       db: this.db,
       timeoutMinutes: options.sessionTimeoutMinutes ?? 15,
       memoryDir: options.memoryDir,
-      onSummarize: async (_sessionId: string, userId: string) => {
-        return this.generateSessionSummary(userId)
+      onSummarize: async (_sessionId: string, userId: string, conversationHistory?: string) => {
+        return this.generateSessionSummary(userId, conversationHistory)
       },
       onSessionEnd: (session: SessionInfo, summary: string | null) => {
         // Only clear agent messages for non-system sessions.
@@ -493,6 +494,14 @@ export class AgentCore {
         }
       },
     })
+  }
+
+  /**
+   * Initialize async components (must be called after construction).
+   * Handles orphaned sessions from previous server runs.
+   */
+  async init(): Promise<void> {
+    await this.sessionManager.init()
   }
 
   /**
@@ -764,41 +773,18 @@ export class AgentCore {
   /**
    * Generate a summary of the current conversation using the LLM
    */
-  private async generateSessionSummary(_userId: string): Promise<string> {
-    const messages = this.agent.state.messages
-    if (messages.length === 0) return 'Empty session.'
-
-    // Build a compact representation of the conversation for summarization
-    const conversationLines: string[] = []
-    for (const msg of messages) {
-      if ('role' in msg) {
-        if (msg.role === 'user') {
-          const text = 'content' in msg && typeof msg.content === 'string'
-            ? msg.content
-            : Array.isArray(msg.content)
-              ? msg.content.filter((c: { type: string }) => c.type === 'text').map((c: { type: string; text?: string }) => c.text ?? '').join('')
-              : ''
-          if (text) conversationLines.push(`User: ${text}`)
-        } else if (msg.role === 'assistant') {
-          const text = 'content' in msg && Array.isArray(msg.content)
-            ? msg.content.filter((c: { type: string }) => c.type === 'text').map((c: { type: string; text?: string }) => c.text ?? '').join('')
-            : ''
-          if (text) conversationLines.push(`Assistant: ${text.slice(0, 2000)}`)
-        }
-      }
-    }
-
-    if (conversationLines.length === 0) return 'Empty session.'
-
-    // Truncate to avoid excessive token usage
-    const conversationText = conversationLines.join('\n').slice(0, 12000)
+  private async generateSessionSummary(_userId: string, conversationHistory?: string): Promise<string> {
+    // Always use DB conversation history (single source of truth).
+    // In-memory agent messages can disappear on provider change or restart,
+    // but chat_messages in the DB are always reliable.
+    if (!conversationHistory) return 'Empty session.'
 
     try {
       const response = await completeSimple(this.model, {
         systemPrompt: 'Write a compact paragraph per session capturing topics, decisions, key facts, and anything needed for session continuation. The agent in the next session will see this. Write what they need to know. If nothing noteworthy happened, write \'No significant content.\'',
         messages: [{
           role: 'user' as const,
-          content: conversationText,
+          content: conversationHistory,
           timestamp: Date.now(),
         }],
       }, { apiKey: this.apiKey })

@@ -365,6 +365,15 @@ export function initDatabase(dbPath?: string): Database {
     `)
   }
 
+  // Migration: add last_activity and session_user columns to sessions table
+  const sessionCols = db.prepare("PRAGMA table_info(sessions)").all() as { name: string }[]
+  if (!sessionCols.find(c => c.name === 'last_activity')) {
+    db.exec("ALTER TABLE sessions ADD COLUMN last_activity TEXT")
+  }
+  if (!sessionCols.find(c => c.name === 'session_user')) {
+    db.exec("ALTER TABLE sessions ADD COLUMN session_user TEXT")
+  }
+
   return db
 }
 

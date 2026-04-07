@@ -10,20 +10,28 @@ export interface SessionInfo {
   lastActivity: number // timestamp ms
   messageCount: number
   summaryWritten: boolean
+  /** True if this session was restored from DB after a server restart */
+  restored: boolean
 }
 
 export interface SessionManagerOptions {
   db: Database
   timeoutMinutes?: number
   memoryDir?: string
-  /** Called to generate a summary of the session. Returns the summary text. */
-  onSummarize?: (sessionId: string, userId: string) => Promise<string>
+  /**
+   * Called to generate a summary of the session. Returns the summary text.
+   * conversationHistory is built from chat_messages in the DB (single source of truth).
+   */
+  onSummarize?: (sessionId: string, userId: string, conversationHistory?: string) => Promise<string>
   /** Called when a session is disposed (after summary if applicable) */
   onSessionEnd?: (session: SessionInfo, summary: string | null) => void
 }
 
 /**
- * Manages active sessions per user with timeout and auto-summarization
+ * Manages active sessions per user with timeout and auto-summarization.
+ *
+ * After constructing, call `init()` to handle orphaned sessions from
+ * a previous server run (restore or summarize them).
  */
 export class SessionManager {
   private sessions: Map<string, SessionInfo> = new Map() // userId -> session
@@ -31,7 +39,7 @@ export class SessionManager {
   private db: Database
   private timeoutMs: number
   private memoryDir?: string
-  private onSummarize?: (sessionId: string, userId: string) => Promise<string>
+  private onSummarize?: (sessionId: string, userId: string, conversationHistory?: string) => Promise<string>
   private onSessionEnd?: (session: SessionInfo, summary: string | null) => void
 
   constructor(options: SessionManagerOptions) {
@@ -40,47 +48,210 @@ export class SessionManager {
     this.memoryDir = options.memoryDir
     this.onSummarize = options.onSummarize
     this.onSessionEnd = options.onSessionEnd
-
-    // Close any orphaned sessions from a previous server run
-    this.closeOrphanedSessions()
   }
 
   /**
-   * Close sessions that were left open from a previous server run
-   * (no ended_at). These exist because the server crashed or restarted
-   * without graceful shutdown.
+   * Initialize the session manager. Must be called after construction.
+   * Handles orphaned sessions from a previous server run:
+   * - Sessions whose timeout has elapsed → summarize and close
+   * - Sessions whose timeout has NOT elapsed → restore with remaining timer
    */
-  private closeOrphanedSessions(): void {
+  async init(): Promise<void> {
+    await this.handleOrphanedSessions()
+  }
+
+  /**
+   * Handle sessions left open from a previous server run.
+   */
+  private async handleOrphanedSessions(): Promise<void> {
     const orphaned = this.db.prepare(
-      `SELECT id, message_count, summary_written, source FROM sessions WHERE ended_at IS NULL`
-    ).all() as Array<{ id: string; message_count: number; summary_written: number; source: string }>
+      `SELECT id, session_user, source, started_at, last_activity, message_count, summary_written
+       FROM sessions WHERE ended_at IS NULL`
+    ).all() as Array<{
+      id: string
+      session_user: string | null
+      source: string
+      started_at: string
+      last_activity: string | null
+      message_count: number
+      summary_written: number
+    }>
 
     if (orphaned.length === 0) return
 
-    console.log(`[session] Closing ${orphaned.length} orphaned session(s) from previous run`)
+    console.log(`[session] Found ${orphaned.length} orphaned session(s) from previous run`)
 
-    for (const session of orphaned) {
-      this.db.prepare(
-        `UPDATE sessions SET ended_at = datetime('now'), summary_written = ? WHERE id = ?`
-      ).run(session.summary_written, session.id)
+    for (const row of orphaned) {
+      // Determine last activity time (fall back to started_at for pre-migration sessions)
+      const lastActivityStr = row.last_activity ?? row.started_at
+      const lastActivity = this.parseSqliteTimestamp(lastActivityStr)
+      const elapsed = Date.now() - lastActivity
 
-      // Log to tool_calls so it shows up in the activity log
-      logToolCall(this.db, {
-        sessionId: session.id,
-        toolName: 'session_timeout',
-        input: JSON.stringify({
-          reason: 'server_restart',
-          messageCount: session.message_count,
-        }),
-        output: JSON.stringify({
-          summaryWritten: false,
-          summary: null,
-          note: 'Session closed due to server restart',
-        }),
-        durationMs: 0,
-        status: 'success',
-      })
+      // Recover userId from DB column or parse from session id
+      const userId = row.session_user ?? this.parseUserIdFromSessionId(row.id)
+
+      if (elapsed >= this.timeoutMs) {
+        // Timeout already elapsed → summarize and close
+        await this.summarizeAndCloseOrphanedSession(row, userId, lastActivity)
+      } else {
+        // Timeout not yet elapsed → restore session with remaining time
+        this.restoreSession(row, userId, lastActivity, this.timeoutMs - elapsed)
+      }
     }
+  }
+
+  /**
+   * Parse a SQLite datetime string to a timestamp in ms.
+   * SQLite stores as 'YYYY-MM-DD HH:MM:SS' in UTC without timezone marker.
+   */
+  private parseSqliteTimestamp(str: string): number {
+    // Append 'Z' to treat as UTC if no timezone info present
+    const normalized = str.includes('Z') || str.includes('+') ? str : str + 'Z'
+    return new Date(normalized).getTime()
+  }
+
+  /**
+   * Best-effort extraction of userId from session id format: session-{userId}-{timestamp}-{random}
+   */
+  private parseUserIdFromSessionId(sessionId: string): string {
+    const match = sessionId.match(/^session-(.+?)-\d{13,}-/)
+    return match?.[1] ?? 'unknown'
+  }
+
+  /**
+   * Summarize an orphaned session that has already timed out, then close it.
+   * Uses the lastActivity timestamp to write to the correct daily file.
+   */
+  private async summarizeAndCloseOrphanedSession(
+    row: { id: string; message_count: number; summary_written: number; source: string },
+    userId: string,
+    lastActivity: number,
+  ): Promise<void> {
+    let summary: string | null = null
+    let summaryWritten = !!row.summary_written
+
+    if (row.message_count > 0 && !summaryWritten && this.onSummarize) {
+      try {
+        const history = this.buildConversationHistory(row.id)
+        if (history) {
+          summary = await this.onSummarize(row.id, userId, history)
+          if (summary) {
+            this.writeSummaryToDailyFile(summary, lastActivity)
+            summaryWritten = true
+            console.log(`[session] Summary written for orphaned session ${row.id} (at ${new Date(lastActivity).toISOString()})`)
+          }
+        }
+      } catch (err) {
+        console.error(`[session] Failed to summarize orphaned session ${row.id}:`, err)
+      }
+    }
+
+    // Close session in DB
+    this.db.prepare(
+      `UPDATE sessions SET ended_at = datetime('now'), summary_written = ? WHERE id = ?`
+    ).run(summaryWritten ? 1 : 0, row.id)
+
+    // Log to tool_calls for activity log visibility
+    logToolCall(this.db, {
+      sessionId: row.id,
+      toolName: 'session_timeout',
+      input: JSON.stringify({
+        reason: 'server_restart',
+        messageCount: row.message_count,
+      }),
+      output: JSON.stringify({
+        summaryWritten,
+        summary,
+        note: summary
+          ? 'Orphaned session summarized on startup'
+          : 'Session closed due to server restart',
+      }),
+      durationMs: 0,
+      status: 'success',
+    })
+  }
+
+  /**
+   * Restore an orphaned session whose timeout has not yet elapsed.
+   * Recreates the in-memory session and starts a timer with the remaining time.
+   */
+  private restoreSession(
+    row: {
+      id: string
+      source: string
+      started_at: string
+      message_count: number
+      summary_written: number
+    },
+    userId: string,
+    lastActivity: number,
+    remainingMs: number,
+  ): void {
+    const startedAt = this.parseSqliteTimestamp(row.started_at)
+
+    const session: SessionInfo = {
+      id: row.id,
+      userId,
+      source: row.source,
+      startedAt,
+      lastActivity,
+      messageCount: row.message_count,
+      summaryWritten: !!row.summary_written,
+      restored: true,
+    }
+
+    this.sessions.set(userId, session)
+
+    const remainingMinutes = Math.round(remainingMs / 60000)
+    console.log(`[session] Restored session ${row.id} for user ${userId} (${remainingMinutes}min remaining)`)
+
+    // Start timer with remaining time
+    const timer = setTimeout(() => {
+      console.log(`[session] Timeout fired for restored session of user ${userId}`)
+      this.endSession(userId).catch(err => {
+        console.error(`[session] Timeout error for user ${userId}:`, err)
+      })
+    }, remainingMs)
+
+    if (typeof timer === 'object' && 'unref' in timer) {
+      timer.unref()
+    }
+
+    this.timers.set(userId, timer)
+  }
+
+  /**
+   * Write a summary to the daily memory file at the given timestamp.
+   */
+  private writeSummaryToDailyFile(summary: string, timestamp: number): void {
+    const activityDate = new Date(timestamp)
+    const hh = String(activityDate.getHours()).padStart(2, '0')
+    const mm = String(activityDate.getMinutes()).padStart(2, '0')
+    const formattedSummary = `\n## ${hh}:${mm}\n\n${summary}\n`
+    appendToDailyFile(formattedSummary, activityDate, this.memoryDir)
+  }
+
+  /**
+   * Build a conversation history string from chat_messages in the DB.
+   */
+  private buildConversationHistory(sessionId: string): string | null {
+    const messages = this.db.prepare(
+      `SELECT role, content FROM chat_messages WHERE session_id = ? ORDER BY timestamp ASC`
+    ).all(sessionId) as Array<{ role: string; content: string }>
+
+    if (messages.length === 0) return null
+
+    const lines: string[] = []
+    for (const msg of messages) {
+      if (msg.role === 'user') {
+        lines.push(`User: ${msg.content}`)
+      } else if (msg.role === 'assistant') {
+        lines.push(`Assistant: ${msg.content.slice(0, 2000)}`)
+      }
+    }
+
+    const text = lines.join('\n').slice(0, 12000)
+    return text || null
   }
 
   /**
@@ -89,7 +260,6 @@ export class SessionManager {
   setTimeoutMinutes(minutes: number): void {
     this.timeoutMs = minutes * 60 * 1000
   }
-
 
   /**
    * Get or create a session for a user. Resets the inactivity timer.
@@ -107,14 +277,15 @@ export class SessionManager {
         lastActivity: Date.now(),
         messageCount: 0,
         summaryWritten: false,
+        restored: false,
       }
       this.sessions.set(userId, session)
 
-      // Insert into SQLite
+      // Insert into SQLite (including last_activity and session_user)
       this.db.prepare(
-        `INSERT INTO sessions (id, user_id, source, started_at, message_count, summary_written)
-         VALUES (?, ?, ?, datetime(? / 1000, 'unixepoch'), 0, 0)`
-      ).run(session.id, null, source, session.startedAt)
+        `INSERT INTO sessions (id, user_id, source, started_at, last_activity, session_user, message_count, summary_written)
+         VALUES (?, ?, ?, datetime(? / 1000, 'unixepoch'), datetime(? / 1000, 'unixepoch'), ?, 0, 0)`
+      ).run(session.id, null, source, session.startedAt, session.lastActivity, userId)
 
       // Log session start to tool_calls for activity log visibility
       logToolCall(this.db, {
@@ -125,11 +296,10 @@ export class SessionManager {
         durationMs: 0,
         status: 'success',
       })
-    }
 
-    // Update activity and reset timer
-    session.lastActivity = Date.now()
-    this.resetTimer(userId)
+      // Start inactivity timer for the new session
+      this.resetTimer(userId)
+    }
 
     return session
   }
@@ -144,10 +314,10 @@ export class SessionManager {
       session.lastActivity = Date.now()
       this.resetTimer(userId)
 
-      // Update SQLite
+      // Update SQLite (message count and last activity)
       this.db.prepare(
-        `UPDATE sessions SET message_count = ? WHERE id = ?`
-      ).run(session.messageCount, session.id)
+        `UPDATE sessions SET message_count = ?, last_activity = datetime(? / 1000, 'unixepoch') WHERE id = ?`
+      ).run(session.messageCount, session.lastActivity, session.id)
     }
   }
 
@@ -178,7 +348,8 @@ export class SessionManager {
   }
 
   /**
-   * End a session: summarize and dispose
+   * End a session: summarize and dispose.
+   * Always uses session.lastActivity as the timestamp for the daily file entry.
    */
   private async endSession(userId: string, reason: 'timeout' | 'manual' = 'timeout'): Promise<string | null> {
     const session = this.sessions.get(userId)
@@ -197,14 +368,13 @@ export class SessionManager {
     // Generate summary if there were messages and a summarizer is configured
     if (session.messageCount > 0 && this.onSummarize) {
       try {
-        summary = await this.onSummarize(session.id, userId)
+        // Build conversation history from DB (single source of truth).
+        // In-memory agent messages are unreliable (lost on provider change, restart, etc.)
+        const history = this.buildConversationHistory(session.id) ?? undefined
+
+        summary = await this.onSummarize(session.id, userId, history)
         if (summary) {
-          // Append summary to today's daily file
-          const now = new Date()
-          const hh = String(now.getHours()).padStart(2, '0')
-          const mm = String(now.getMinutes()).padStart(2, '0')
-          const formattedSummary = `\n## ${hh}:${mm}\n\n${summary}\n`
-          appendToDailyFile(formattedSummary, undefined, this.memoryDir)
+          this.writeSummaryToDailyFile(summary, session.lastActivity)
           session.summaryWritten = true
           console.log(`[session] Summary written to daily log for session ${session.id}`)
         }
@@ -316,9 +486,12 @@ export class SessionManager {
     message_count: number
     summary_written: number
     source: string
+    last_activity: string | null
+    session_user: string | null
   } | undefined {
     return this.db.prepare(
-      `SELECT id, started_at, ended_at, message_count, summary_written, source FROM sessions WHERE id = ?`
+      `SELECT id, started_at, ended_at, message_count, summary_written, source, last_activity, session_user
+       FROM sessions WHERE id = ?`
     ).get(sessionId) as {
       id: string
       started_at: string
@@ -326,6 +499,8 @@ export class SessionManager {
       message_count: number
       summary_written: number
       source: string
+      last_activity: string | null
+      session_user: string | null
     } | undefined
   }
 }

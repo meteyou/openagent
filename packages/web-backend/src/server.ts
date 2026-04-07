@@ -2,7 +2,7 @@ import http from 'node:http'
 import { createApp } from './app.js'
 import { initDatabase } from '@openagent/core'
 import { ensureConfigTemplates } from '@openagent/core'
-import { ensureMemoryStructure } from '@openagent/core'
+import { ensureMemoryStructure, ensureConfigStructure } from '@openagent/core'
 import {
   AgentCore,
   AgentHeartbeatService,
@@ -56,6 +56,7 @@ ensureConfigTemplates()
 
 console.log('[openagent] Ensuring memory structure...')
 ensureMemoryStructure()
+ensureConfigStructure()
 
 console.log('[openagent] Injecting global secrets into environment...')
 injectSecretsIntoEnv()
@@ -640,6 +641,9 @@ async function initOrUpdateAgentCore(): Promise<void> {
 
     // Wire agent core events (session end, task injection)
     wireAgentCoreEvents()
+
+    // Initialize async components (handle orphaned sessions from previous run)
+    await agentCore.init()
 
     // Try to start Telegram bot if configured
     await restartTelegramBot()
