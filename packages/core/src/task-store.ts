@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { Database } from './database.js'
 
 export type TaskStatus = 'running' | 'paused' | 'completed' | 'failed'
-export type TaskTriggerType = 'user' | 'agent' | 'cronjob' | 'heartbeat'
+export type TaskTriggerType = 'user' | 'agent' | 'cronjob' | 'heartbeat' | 'consolidation'
 export type TaskResultStatus = 'completed' | 'failed' | 'question' | 'silent'
 
 export interface Task {
@@ -121,7 +121,7 @@ export function initTasksTable(db: Database): void {
       name TEXT NOT NULL,
       prompt TEXT NOT NULL,
       status TEXT NOT NULL CHECK(status IN ('running', 'paused', 'completed', 'failed')),
-      trigger_type TEXT NOT NULL CHECK(trigger_type IN ('user', 'agent', 'cronjob', 'heartbeat')),
+      trigger_type TEXT NOT NULL CHECK(trigger_type IN ('user', 'agent', 'cronjob', 'heartbeat', 'consolidation')),
       trigger_source_id TEXT,
       provider TEXT,
       model TEXT,

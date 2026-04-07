@@ -273,7 +273,7 @@ export class MemoryConsolidationScheduler {
       const task: Task = this.taskStore.create({
         name: 'Nightly Memory Consolidation',
         prompt,
-        triggerType: 'heartbeat',
+        triggerType: 'consolidation',
         triggerSourceId: 'memory-consolidation',
         provider: provider.name,
         model: provider.defaultModel,
