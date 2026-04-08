@@ -193,25 +193,17 @@ export function setupWebSocketChat(
             activeStreams.delete(ws)
           }
 
-          // Reset session (generates summary + writes daily log)
-          let summary: string | null = null
+          // Reset session (generates summary + writes daily log).
+          // The resulting session_end event is emitted centrally via onSessionEnd
+          // and broadcast through the chat event bus to avoid duplicate dividers.
           if (resolveAgentCore()) {
             try {
-              summary = await resolveAgentCore()!.resetSession(String(currentUser.userId))
+              await resolveAgentCore()!.resetSession(String(currentUser.userId))
             } catch (err) {
               console.error('Failed to reset session:', err)
             }
           }
 
-          // Divider is persisted to chat_messages centrally in server.ts onSessionEnd callback.
-
-          // The next getOrCreateSession call will create a fresh session in the SessionManager.
-          // Use a temporary ID until then; it'll be resolved on the next message.
-          const newSessionId = `web-${currentUser.userId}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`
-          clientSessions.set(ws, newSessionId)
-
-          // Send session_end event with summary (frontend shows divider)
-          sendMessage(ws, { type: 'session_end', text: summary ?? undefined, sessionId: newSessionId })
           return
         }
 
