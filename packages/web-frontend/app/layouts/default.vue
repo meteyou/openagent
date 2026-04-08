@@ -142,6 +142,15 @@
             </NuxtLink>
 
             <NuxtLink
+              to="/instructions"
+              :class="navItemClass('/instructions')"
+              @click="closeSidebarOnMobile"
+            >
+              <AppIcon name="file" class="shrink-0" />
+              <span>{{ $t('nav.instructions') }}</span>
+            </NuxtLink>
+
+            <NuxtLink
               to="/settings"
               :class="navItemClass('/settings')"
               @click="closeSidebarOnMobile"
@@ -338,8 +347,9 @@ onUnmounted(() => {
   stopStatusPolling()
 })
 
-function navItemClass(path: string) {
-  const isActive = route.path === path
+function navItemClass(path: string | string[]) {
+  const paths = Array.isArray(path) ? path : [path]
+  const isActive = paths.includes(route.path)
   return [
     'flex items-center gap-3 rounded-lg px-3 py-[11px] text-sm font-medium transition-all duration-150 no-underline',
     isActive

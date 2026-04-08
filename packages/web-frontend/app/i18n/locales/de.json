@@ -14,6 +14,7 @@
     "logs": "Aktivitätsprotokolle",
     "users": "Benutzer",
     "skills": "Skills",
+    "instructions": "Anweisungen",
     "tasks": "Aufgaben",
     "cronjobs": "Cronjobs"
   },
@@ -31,11 +32,21 @@
     "delete": "Löschen",
     "saveFailed": "Änderungen konnten nicht gespeichert werden.",
     "deleteFailed": "Element konnte nicht gelöscht werden.",
-    "language": "Sprache"
+    "language": "Sprache",
+    "back": "Zurück"
   },
   "admin": {
     "title": "Admin-Zugriff erforderlich",
     "description": "Diese Seite ist nur für Administratoren verfügbar."
+  },
+  "instructions": {
+    "title": "Anweisungen",
+    "subtitle": "Bearbeite die Regeldateien des Agenten mit mehr Platz und stelle bei Bedarf die eingebauten Standardinhalte wieder her.",
+    "loading": "Anweisungen werden geladen...",
+    "restoreDefault": "Standard wiederherstellen",
+    "restoringDefault": "Wird wiederhergestellt...",
+    "restoreDefaultConfirmTitle": "Standardinhalt wiederherstellen?",
+    "restoreDefaultConfirmDescription": "Dadurch wird der aktuelle Editor-Inhalt durch die eingebaute Vorlage ersetzt. Gespeichert wird erst, wenn du auf Änderungen speichern klickst."
   },
   "auth": {
     "logout": "Abmelden",
@@ -311,6 +322,7 @@
     "telegramUsersUnassigned": "Nicht zugewiesen",
     "telegramUsersNoUsername": "Kein Benutzername",
     "telegramUsersRefresh": "Telegram-Benutzer aktualisieren",
+    "openEditor": "Editor öffnen",
     "agentRulesTitle": "Agent-Regeln",
     "agentRulesDescription": "Lege fest, wie sich der Agent verhalten, kommunizieren und Aufgaben ausführen soll. Der Agent liest diese Regeln bei jeder Konversation.",
     "heartbeatTasksTitle": "Heartbeat-Aufgaben",

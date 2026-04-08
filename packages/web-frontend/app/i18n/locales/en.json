@@ -14,6 +14,7 @@
     "logs": "Activity Logs",
     "users": "Users",
     "skills": "Skills",
+    "instructions": "Instructions",
     "tasks": "Tasks",
     "cronjobs": "Cronjobs"
   },
@@ -31,11 +32,21 @@
     "delete": "Delete",
     "saveFailed": "Could not save changes.",
     "deleteFailed": "Could not delete item.",
-    "language": "Language"
+    "language": "Language",
+    "back": "Back"
   },
   "admin": {
     "title": "Admin access required",
     "description": "This page is only available to administrators."
+  },
+  "instructions": {
+    "title": "Instructions",
+    "subtitle": "Edit the agent's rule files with more space and restore the built-in defaults when needed.",
+    "loading": "Loading instructions...",
+    "restoreDefault": "Restore default",
+    "restoringDefault": "Restoring...",
+    "restoreDefaultConfirmTitle": "Restore default content?",
+    "restoreDefaultConfirmDescription": "This replaces the current editor content with the built-in template. Nothing is saved until you click Save changes."
   },
   "auth": {
     "logout": "Logout",
@@ -311,6 +322,7 @@
     "telegramUsersUnassigned": "Not assigned",
     "telegramUsersNoUsername": "No username",
     "telegramUsersRefresh": "Refresh Telegram users",
+    "openEditor": "Open editor",
     "agentRulesTitle": "Agent Rules",
     "agentRulesDescription": "Define how the agent should behave, communicate, and execute tasks. The agent reads these rules on every conversation.",
     "heartbeatTasksTitle": "Heartbeat Tasks",

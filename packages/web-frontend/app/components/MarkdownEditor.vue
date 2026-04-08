@@ -39,7 +39,11 @@ const content = computed({
     </div>
 
     <!-- Footer -->
-    <div class="flex shrink-0 justify-end pt-3">
+    <div class="flex shrink-0 items-center justify-between gap-3 pt-3">
+      <div class="flex items-center gap-2">
+        <slot name="footerActions" />
+      </div>
+
       <Button :disabled="saving" @click="$emit('save')">
         <span
           v-if="saving"
