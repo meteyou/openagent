@@ -200,6 +200,18 @@ export function readUserProfile(username: string, memoryDir?: string): string {
   return fs.readFileSync(profilePath, 'utf-8')
 }
 
+export function getDefaultAgentsRulesContent(): string {
+  return AGENTS_TEMPLATE
+}
+
+export function getDefaultHeartbeatContent(): string {
+  return HEARTBEAT_TEMPLATE
+}
+
+export function getDefaultConsolidationContent(): string {
+  return CONSOLIDATION_TEMPLATE
+}
+
 export function ensureMemoryStructure(memoryDir?: string): void {
   const dir = memoryDir ?? getMemoryDir()
   const dailyDir = path.join(dir, 'daily')

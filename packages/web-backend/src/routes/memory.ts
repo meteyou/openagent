@@ -9,10 +9,13 @@ import {
   writeMemoryFile,
   readAgentsRulesFile,
   writeAgentsRulesFile,
+  getDefaultAgentsRulesContent,
   readHeartbeatFile,
   writeHeartbeatFile,
+  getDefaultHeartbeatContent,
   readConsolidationFile,
   writeConsolidationFile,
+  getDefaultConsolidationContent,
   readUserProfile,
   ensureUserProfile,
 } from '@openagent/core'
@@ -122,6 +125,14 @@ export function createMemoryRouter(getAgentCore: () => AgentCore | null = () => 
       res.json({ message: 'AGENTS.md updated', content })
     } catch (err) {
       res.status(500).json({ error: `Failed to write AGENTS.md: ${(err as Error).message}` })
+    }
+  })
+
+  router.get('/agents/default', (_req, res) => {
+    try {
+      res.json({ content: getDefaultAgentsRulesContent() })
+    } catch (err) {
+      res.status(500).json({ error: `Failed to load AGENTS.md default: ${(err as Error).message}` })
     }
   })
 
@@ -329,6 +340,14 @@ export function createMemoryRouter(getAgentCore: () => AgentCore | null = () => 
     }
   })
 
+  router.get('/heartbeat/default', (_req, res) => {
+    try {
+      res.json({ content: getDefaultHeartbeatContent() })
+    } catch (err) {
+      res.status(500).json({ error: `Failed to load HEARTBEAT.md default: ${(err as Error).message}` })
+    }
+  })
+
   // User profile endpoints
   router.get('/profile', (req: AuthenticatedRequest, res) => {
     try {
@@ -389,6 +408,14 @@ export function createMemoryRouter(getAgentCore: () => AgentCore | null = () => 
       res.json({ message: 'CONSOLIDATION.md updated', content })
     } catch (err) {
       res.status(500).json({ error: `Failed to write CONSOLIDATION.md: ${(err as Error).message}` })
+    }
+  })
+
+  router.get('/consolidation-rules/default', (_req, res) => {
+    try {
+      res.json({ content: getDefaultConsolidationContent() })
+    } catch (err) {
+      res.status(500).json({ error: `Failed to load CONSOLIDATION.md default: ${(err as Error).message}` })
     }
   })
 

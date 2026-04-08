@@ -166,6 +166,20 @@ export function useMemory() {
     }
   }
 
+  async function loadDefaultAgentRules(): Promise<string> {
+    loading.value = true
+    error.value = null
+    try {
+      const data = await apiFetch<{ content: string }>('/api/memory/agents/default')
+      return data.content
+    } catch (err) {
+      error.value = (err as Error).message
+      return ''
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function loadHeartbeat(): Promise<string> {
     loading.value = true
     error.value = null
@@ -199,6 +213,20 @@ export function useMemory() {
     }
   }
 
+  async function loadDefaultHeartbeat(): Promise<string> {
+    loading.value = true
+    error.value = null
+    try {
+      const data = await apiFetch<{ content: string }>('/api/memory/heartbeat/default')
+      return data.content
+    } catch (err) {
+      error.value = (err as Error).message
+      return ''
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function loadConsolidationRules(): Promise<string> {
     loading.value = true
     error.value = null
@@ -229,6 +257,20 @@ export function useMemory() {
       return false
     } finally {
       saving.value = false
+    }
+  }
+
+  async function loadDefaultConsolidationRules(): Promise<string> {
+    loading.value = true
+    error.value = null
+    try {
+      const data = await apiFetch<{ content: string }>('/api/memory/consolidation-rules/default')
+      return data.content
+    } catch (err) {
+      error.value = (err as Error).message
+      return ''
+    } finally {
+      loading.value = false
     }
   }
 
@@ -328,10 +370,13 @@ export function useMemory() {
     saveCoreMemory,
     loadAgentRules,
     saveAgentRules,
+    loadDefaultAgentRules,
     loadHeartbeat,
     saveHeartbeat,
+    loadDefaultHeartbeat,
     loadConsolidationRules,
     saveConsolidationRules,
+    loadDefaultConsolidationRules,
     loadProfile,
     saveProfile,
     loadDailyFiles,
