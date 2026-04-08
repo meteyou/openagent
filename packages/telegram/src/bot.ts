@@ -1063,7 +1063,12 @@ export class TelegramBot {
     if (!this.running) return
 
     this.running = false
-    this.bot.stop()
+    try {
+      await this.bot.stop()
+    } catch (err) {
+      // Ignore errors during stop (e.g. 409 Conflict when another instance started polling)
+      console.warn('[telegram] Error during bot stop (ignored):', (err as Error).message)
+    }
     console.log('🛑 Telegram bot stopped')
   }
 
