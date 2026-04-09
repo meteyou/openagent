@@ -273,7 +273,7 @@
                     ? 'border-destructive text-destructive'
                     : 'border-input text-muted-foreground hover:bg-muted',
             ]"
-            :title="sttRecording ? $t('chat.micRecording') : sttTranscribing ? $t('chat.micTranscribing') : sttError === 'permission_denied' ? $t('chat.micPermissionDenied') : sttError ? $t('chat.micError') : $t('chat.micTooltip')"
+            :title="sttRecording ? $t('chat.micRecording') : sttTranscribing ? $t('chat.micTranscribing') : sttError === 'permission_denied' ? $t('chat.micPermissionDenied') : sttError === 'recording_too_short' ? $t('chat.micTooShort') : sttError ? $t('chat.micError') : $t('chat.micTooltip')"
             :disabled="sttTranscribing"
             @mousedown="handleMicDown"
             @mouseup="handleMicUp"

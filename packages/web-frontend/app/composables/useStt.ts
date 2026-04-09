@@ -12,9 +12,13 @@ export function useStt() {
   /** Whether STT is enabled (cached from server) */
   const sttEnabled = useState<boolean>('stt_enabled', () => false)
 
+  /** Minimum recording duration in ms (Whisper requires >= 0.1s) */
+  const MIN_RECORDING_MS = 300
+
   let mediaRecorder: MediaRecorder | null = null
   let mediaStream: MediaStream | null = null
   let audioChunks: Blob[] = []
+  let recordingStartedAt = 0
 
   /** Fetch STT settings from the server to check if enabled */
   async function fetchSttSettings(): Promise<void> {
@@ -66,6 +70,7 @@ export function useStt() {
     }
 
     mediaRecorder.start()
+    recordingStartedAt = Date.now()
     recording.value = true
   }
 
@@ -82,6 +87,15 @@ export function useStt() {
         cleanupStream()
 
         if (audioChunks.length === 0) {
+          resolve(null)
+          return
+        }
+
+        // Skip transcription for very short recordings (< 0.3s)
+        const durationMs = Date.now() - recordingStartedAt
+        if (durationMs < MIN_RECORDING_MS) {
+          audioChunks = []
+          error.value = 'recording_too_short'
           resolve(null)
           return
         }
