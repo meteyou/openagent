@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { loadConfig, ensureConfigTemplates, transcribeAudio } from '@openagent/core'
+import { loadConfig, ensureConfigTemplates, transcribeAudio, loadSttSettings } from '@openagent/core'
 import { jwtMiddleware } from '../auth.js'
 import type { AuthenticatedRequest } from '../auth.js'
 import { uploadMiddleware } from '../uploads.js'
@@ -46,6 +46,19 @@ export function createSttRouter(): Router {
       }
     },
   )
+
+  /**
+   * GET /api/stt/settings
+   * Returns minimal STT settings so the frontend can check if STT is enabled.
+   */
+  router.get('/settings', (_req: AuthenticatedRequest, res) => {
+    try {
+      const settings = loadSttSettings()
+      res.json({ enabled: settings.enabled })
+    } catch {
+      res.json({ enabled: false })
+    }
+  })
 
   return router
 }
