@@ -1298,6 +1298,22 @@
                     <p class="text-xs text-muted-foreground">{{ $t('settings.sttWhisperUrlHint') }}</p>
                   </div>
 
+                  <!-- OpenAI model field (only visible when provider is openai) -->
+                  <div v-if="form.stt.provider === 'openai'" class="flex flex-col gap-2">
+                    <Label for="stt-openai-model">{{ $t('settings.sttOpenaiModel') }}</Label>
+                    <Select v-model="form.stt.openaiModel">
+                      <SelectTrigger id="stt-openai-model">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="whisper-1">whisper-1</SelectItem>
+                        <SelectItem value="gpt-4o-transcribe">gpt-4o-transcribe</SelectItem>
+                        <SelectItem value="gpt-4o-mini-transcribe">gpt-4o-mini-transcribe</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p class="text-xs text-muted-foreground">{{ $t('settings.sttOpenaiModelHint') }}</p>
+                  </div>
+
                   <!-- Ollama model field (only visible when provider is ollama) -->
                   <div v-if="form.stt.provider === 'ollama'" class="flex flex-col gap-2">
                     <Label for="stt-ollama-model">{{ $t('settings.sttOllamaModel') }}</Label>

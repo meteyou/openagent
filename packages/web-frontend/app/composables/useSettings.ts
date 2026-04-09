@@ -71,6 +71,7 @@ export interface SttSettings {
   provider: 'whisper-url' | 'openai' | 'ollama'
   whisperUrl: string
   providerId: string
+  openaiModel: string
   ollamaModel: string
   rewrite: SttRewriteSettings
 }
@@ -105,7 +106,22 @@ export function useSettings() {
     loading.value = true
     error.value = null
     try {
-      settings.value = await apiFetch<Settings>('/api/settings')
+      const result = await apiFetch<Settings>('/api/settings')
+      settings.value = {
+        ...result,
+        stt: {
+          enabled: result.stt?.enabled ?? false,
+          provider: result.stt?.provider ?? 'whisper-url',
+          whisperUrl: result.stt?.whisperUrl ?? '',
+          providerId: result.stt?.providerId ?? '',
+          openaiModel: result.stt?.openaiModel ?? 'whisper-1',
+          ollamaModel: result.stt?.ollamaModel ?? '',
+          rewrite: {
+            enabled: result.stt?.rewrite?.enabled ?? false,
+            providerId: result.stt?.rewrite?.providerId ?? '',
+          },
+        },
+      }
     } catch (err) {
       error.value = (err as Error).message
     } finally {
@@ -184,15 +200,16 @@ export function useSettings() {
           mistralVoice: '',
           responseFormat: 'mp3',
         },
-        stt: result.stt ?? {
-          enabled: false,
-          provider: 'whisper-url',
-          whisperUrl: '',
-          providerId: '',
-          ollamaModel: '',
+        stt: {
+          enabled: result.stt?.enabled ?? false,
+          provider: result.stt?.provider ?? 'whisper-url',
+          whisperUrl: result.stt?.whisperUrl ?? '',
+          providerId: result.stt?.providerId ?? '',
+          openaiModel: result.stt?.openaiModel ?? 'whisper-1',
+          ollamaModel: result.stt?.ollamaModel ?? '',
           rewrite: {
-            enabled: false,
-            providerId: '',
+            enabled: result.stt?.rewrite?.enabled ?? false,
+            providerId: result.stt?.rewrite?.providerId ?? '',
           },
         },
       }
