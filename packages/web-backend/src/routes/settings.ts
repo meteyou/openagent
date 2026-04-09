@@ -273,6 +273,56 @@ function mergeTts(
   return { error: null }
 }
 
+function mergeStt(
+  body: Record<string, unknown>,
+  settingsRaw: Record<string, unknown>,
+): { error: string | null } {
+  const stt = body.stt as Record<string, unknown> | undefined
+  if (!stt) return { error: null }
+
+  const existing = (settingsRaw.stt ?? {}) as Record<string, unknown>
+
+  if (stt.enabled !== undefined) existing.enabled = !!stt.enabled
+  if (stt.provider !== undefined) {
+    const err = validateEnum(stt.provider, ['whisper-url', 'openai', 'ollama'], 'stt.provider')
+    if (err) return { error: err }
+    existing.provider = stt.provider
+  }
+  if (stt.whisperUrl !== undefined) {
+    if (typeof stt.whisperUrl !== 'string') {
+      return { error: 'stt.whisperUrl must be a string' }
+    }
+    existing.whisperUrl = stt.whisperUrl
+  }
+  if (stt.providerId !== undefined) {
+    if (typeof stt.providerId !== 'string') {
+      return { error: 'stt.providerId must be a string' }
+    }
+    existing.providerId = stt.providerId
+  }
+  if (stt.ollamaModel !== undefined) {
+    if (typeof stt.ollamaModel !== 'string') {
+      return { error: 'stt.ollamaModel must be a string' }
+    }
+    existing.ollamaModel = stt.ollamaModel
+  }
+  if (stt.rewrite !== undefined) {
+    const rw = stt.rewrite as Record<string, unknown>
+    const existingRw = (existing.rewrite ?? {}) as Record<string, unknown>
+    if (rw.enabled !== undefined) existingRw.enabled = !!rw.enabled
+    if (rw.providerId !== undefined) {
+      if (typeof rw.providerId !== 'string') {
+        return { error: 'stt.rewrite.providerId must be a string' }
+      }
+      existingRw.providerId = rw.providerId
+    }
+    existing.rewrite = existingRw
+  }
+
+  settingsRaw.stt = existing
+  return { error: null }
+}
+
 function mergeTasks(
   body: Record<string, unknown>,
   settingsRaw: Record<string, unknown>,
@@ -387,6 +437,22 @@ function buildAgentHeartbeatResponse(settingsRaw: Record<string, unknown>) {
   }
 }
 
+function buildSttResponse(settingsRaw: Record<string, unknown>) {
+  const stt = (settingsRaw.stt ?? {}) as Record<string, unknown>
+  const rewrite = (stt.rewrite ?? {}) as Record<string, unknown>
+  return {
+    enabled: stt.enabled ?? false,
+    provider: stt.provider ?? 'whisper-url',
+    whisperUrl: stt.whisperUrl ?? '',
+    providerId: stt.providerId ?? '',
+    ollamaModel: stt.ollamaModel ?? '',
+    rewrite: {
+      enabled: rewrite.enabled ?? false,
+      providerId: rewrite.providerId ?? '',
+    },
+  }
+}
+
 function buildTtsResponse(settingsRaw: Record<string, unknown>) {
   const tts = (settingsRaw.tts ?? {}) as Record<string, unknown>
   return {
@@ -455,6 +521,7 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
         agentHeartbeat: buildAgentHeartbeatResponse(settingsRaw),
         tasks: buildTasksResponse(settingsRaw),
         tts: buildTtsResponse(settingsRaw),
+        stt: buildSttResponse(settingsRaw),
       })
     } catch (err) {
       res.status(500).json({ error: `Failed to read settings: ${(err as Error).message}` })
@@ -527,6 +594,9 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
       const ttsResult = mergeTts(body, settingsRaw)
       if (ttsResult.error) { res.status(400).json({ error: ttsResult.error }); return }
 
+      const sttResult = mergeStt(body, settingsRaw)
+      if (sttResult.error) { res.status(400).json({ error: sttResult.error }); return }
+
       // ── Telegram ──
       if (body.telegramEnabled !== undefined) {
         telegram.enabled = !!body.telegramEnabled
@@ -588,6 +658,7 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
         agentHeartbeat: buildAgentHeartbeatResponse(settingsRaw),
         tasks: buildTasksResponse(settingsRaw),
         tts: buildTtsResponse(settingsRaw),
+        stt: buildSttResponse(settingsRaw),
       })
     } catch (err) {
       res.status(500).json({ error: `Failed to update settings: ${(err as Error).message}` })
