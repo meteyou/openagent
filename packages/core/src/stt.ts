@@ -1,5 +1,5 @@
 import { loadConfig, ensureConfigTemplates } from './config.js'
-import { loadProvidersDecrypted, getApiKeyForProvider } from './provider-config.js'
+import { loadProvidersDecrypted, getApiKeyForProvider, PROVIDER_TYPE_PRESETS } from './provider-config.js'
 import type { ProviderConfig } from './provider-config.js'
 
 // ── Types ─────────────────────────────────────────────────────────────
@@ -18,6 +18,11 @@ export interface SttSettings {
   providerId: string
   ollamaModel: string
   rewrite: SttRewriteSettings
+}
+
+export interface TranscribeResult {
+  transcript: string
+  rewritten?: string
 }
 
 export interface TranscribeOptions {
@@ -193,38 +198,184 @@ export async function transcribeOllama(
   return transcript.trim()
 }
 
+// ── Rewrite ───────────────────────────────────────────────────────────
+
+const REWRITE_SYSTEM_PROMPT = [
+  'You are a transcript editor. Clean up the following dictated text.',
+  '- Remove filler words (um, uh, like, you know, basically, well, so, etc.)',
+  '- Remove false starts and repeated words or phrases',
+  '- Fix grammar and punctuation',
+  '- Preserve the complete meaning, intent, and tone',
+  '- Do NOT add, summarize, or reinterpret the content',
+  '- Output ONLY the cleaned text, nothing else',
+].join('\n')
+
+export async function rewriteTranscript(
+  transcript: string,
+  providerId: string,
+): Promise<string> {
+  const provider = findSttProvider(providerId)
+  if (!provider) {
+    throw new Error(`Rewrite provider not found: ${providerId}. Check Settings → Speech-to-Text.`)
+  }
+
+  const apiKey = await getApiKeyForProvider(provider)
+  const preset = PROVIDER_TYPE_PRESETS[provider.providerType]
+  const isAnthropic = preset?.apiType === 'anthropic-messages'
+
+  if (isAnthropic) {
+    return rewriteViaAnthropic(provider, apiKey, transcript)
+  }
+  return rewriteViaOpenAi(provider, apiKey, transcript)
+}
+
+async function rewriteViaOpenAi(
+  provider: ProviderConfig,
+  apiKey: string,
+  transcript: string,
+): Promise<string> {
+  const baseUrl = (provider.baseUrl || 'https://api.openai.com').replace(/\/+$/, '')
+  // Strip /v1 suffix for Ollama-type providers, then always append /v1/chat/completions
+  const cleanBase = baseUrl.replace(/\/v1$/, '')
+  const url = `${cleanBase}/v1/chat/completions`
+
+  const body = {
+    model: provider.defaultModel,
+    messages: [
+      { role: 'system', content: REWRITE_SYSTEM_PROMPT },
+      { role: 'user', content: transcript },
+    ],
+    temperature: 0,
+  }
+
+  let response: Response
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(body),
+    })
+  } catch (err) {
+    throw new Error(`Rewrite request failed: ${(err as Error).message}`)
+  }
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => 'Unknown error')
+    throw new Error(`Rewrite returned HTTP ${response.status}: ${errorText}`)
+  }
+
+  const data = await response.json() as {
+    choices?: Array<{ message?: { content?: string } }>
+  }
+  const content = data?.choices?.[0]?.message?.content
+  if (!content) {
+    throw new Error('Rewrite returned no content.')
+  }
+
+  return content.trim()
+}
+
+async function rewriteViaAnthropic(
+  provider: ProviderConfig,
+  apiKey: string,
+  transcript: string,
+): Promise<string> {
+  const baseUrl = (provider.baseUrl || 'https://api.anthropic.com').replace(/\/+$/, '')
+  const url = `${baseUrl}/v1/messages`
+
+  const body = {
+    model: provider.defaultModel,
+    max_tokens: 4096,
+    system: REWRITE_SYSTEM_PROMPT,
+    messages: [
+      { role: 'user', content: transcript },
+    ],
+  }
+
+  let response: Response
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify(body),
+    })
+  } catch (err) {
+    throw new Error(`Rewrite request failed: ${(err as Error).message}`)
+  }
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => 'Unknown error')
+    throw new Error(`Rewrite returned HTTP ${response.status}: ${errorText}`)
+  }
+
+  const data = await response.json() as {
+    content?: Array<{ type: string; text?: string }>
+  }
+  const textBlock = data?.content?.find(b => b.type === 'text')
+  if (!textBlock?.text) {
+    throw new Error('Rewrite returned no content.')
+  }
+
+  return textBlock.text.trim()
+}
+
 // ── Dispatcher ────────────────────────────────────────────────────────
 
 export async function transcribeAudio(
   buffer: Buffer,
   options: TranscribeOptions = {},
-): Promise<string> {
+): Promise<TranscribeResult> {
   const settings = loadSttSettings()
 
   if (!settings.enabled) {
     throw new Error('STT is not enabled. Enable it in Settings → Speech-to-Text.')
   }
 
+  let transcript: string
   switch (settings.provider) {
     case 'whisper-url': {
       if (!settings.whisperUrl) {
         throw new Error('Whisper URL is not configured. Set it in Settings → Speech-to-Text.')
       }
-      return transcribeWhisperUrl(buffer, settings.whisperUrl, options.language)
+      transcript = await transcribeWhisperUrl(buffer, settings.whisperUrl, options.language)
+      break
     }
     case 'openai': {
       if (!settings.providerId) {
         throw new Error('OpenAI STT provider is not configured. Select a provider in Settings → Speech-to-Text.')
       }
-      return transcribeOpenAi(buffer, settings.providerId, options.language)
+      transcript = await transcribeOpenAi(buffer, settings.providerId, options.language)
+      break
     }
     case 'ollama': {
       if (!settings.providerId) {
         throw new Error('Ollama STT provider is not configured. Select a provider in Settings → Speech-to-Text.')
       }
-      return transcribeOllama(buffer, settings.providerId, settings.ollamaModel, options.language)
+      transcript = await transcribeOllama(buffer, settings.providerId, settings.ollamaModel, options.language)
+      break
     }
     default:
       throw new Error(`Unknown STT provider: ${settings.provider}`)
   }
+
+  // Optional LLM-based rewriting
+  if (settings.rewrite.enabled && settings.rewrite.providerId) {
+    try {
+      const rewritten = await rewriteTranscript(transcript, settings.rewrite.providerId)
+      return { transcript, rewritten }
+    } catch (err) {
+      // Rewrite failure is non-fatal — return raw transcript
+      console.warn(`[stt] Rewrite failed, returning raw transcript: ${(err as Error).message}`)
+      return { transcript }
+    }
+  }
+
+  return { transcript }
 }

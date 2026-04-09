@@ -217,11 +217,13 @@ export {
   transcribeWhisperUrl,
   transcribeOpenAi,
   transcribeOllama,
+  rewriteTranscript,
 } from './stt.js'
 export type {
   SttProvider,
   SttSettings,
   SttRewriteSettings,
   TranscribeOptions,
+  TranscribeResult,
 } from './stt.js'
 export { createTranscribeAudioTool } from './stt-tool.js'
