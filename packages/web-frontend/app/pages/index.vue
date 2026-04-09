@@ -260,6 +260,30 @@
             <input class="hidden" type="file" multiple @change="handleFileSelection">
             <AppIcon name="paperclip" class="h-4 w-4" />
           </label>
+          <button
+            v-if="sttEnabled"
+            type="button"
+            class="inline-flex h-[42px] select-none items-center rounded-xl border px-3 text-sm transition-colors"
+            :class="[
+              sttRecording
+                ? 'border-destructive bg-destructive/10 text-destructive animate-pulse-recording'
+                : sttTranscribing
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : sttError
+                    ? 'border-destructive text-destructive'
+                    : 'border-input text-muted-foreground hover:bg-muted',
+            ]"
+            :title="sttRecording ? $t('chat.micRecording') : sttTranscribing ? $t('chat.micTranscribing') : sttError === 'permission_denied' ? $t('chat.micPermissionDenied') : sttError ? $t('chat.micError') : $t('chat.micTooltip')"
+            :disabled="sttTranscribing"
+            @mousedown="handleMicDown"
+            @mouseup="handleMicUp"
+            @mouseleave="handleMicUp"
+            @touchstart="handleMicDown"
+            @touchend="handleMicUp"
+          >
+            <AppIcon v-if="sttTranscribing" name="loader" class="h-4 w-4 animate-spin" />
+            <AppIcon v-else name="mic" class="h-4 w-4" />
+          </button>
           <textarea ref="inputRef" v-model="inputText" class="min-h-[42px] max-h-[150px] flex-1 resize-none rounded-xl border border-input bg-background px-3.5 py-2.5 text-sm" :placeholder="$t('chat.placeholder')" rows="1" @keydown.enter.exact.prevent="handleSend" @input="autoResize" />
           <Button type="submit" size="sm" :disabled="(!inputText.trim() && pendingFiles.length === 0) || connectionStatus !== 'connected'" class="h-[42px] shrink-0 px-4">{{ $t('chat.send') }}</Button>
         </div>
@@ -347,6 +371,7 @@ function taskResultBody(content: string): string {
 }
 const { messages, connectionStatus, isStreaming, connect, disconnect, sendMessage, newSession, stopTask } = useChat()
 const { playingIndex: ttsPlayingIndex, loading: ttsLoading, ttsEnabled, fetchTtsSettings, play: ttsPlay, stop: ttsStop } = useTts()
+const { recording: sttRecording, transcribing: sttTranscribing, error: sttError, sttEnabled, fetchSttSettings, startRecording: sttStartRecording, stopAndTranscribe: sttStopAndTranscribe, cleanup: sttCleanup } = useStt()
 
 function handleTtsPlay(content: string, index: number) {
   ttsPlay(content, index)
@@ -361,8 +386,8 @@ const isNearBottom = ref(true)
 const SCROLL_THRESHOLD = 120
 function onMessagesScroll() { const el = messagesContainer.value; if (!el) return; isNearBottom.value = el.scrollHeight - el.scrollTop - el.clientHeight <= SCROLL_THRESHOLD }
 function jumpToBottom() { isNearBottom.value = true; nextTick(() => scrollToBottom()) }
-onMounted(async () => { connect(); await Promise.all([loadHistory(), fetchTtsSettings()]) })
-onUnmounted(() => { disconnect(); ttsStop() })
+onMounted(async () => { connect(); await Promise.all([loadHistory(), fetchTtsSettings(), fetchSttSettings()]) })
+onUnmounted(() => { disconnect(); ttsStop(); sttCleanup() })
 watch(() => messages.value.length, () => {
   if (isNearBottom.value) nextTick(() => scrollToBottom())
   // Reset sessionResetting flag when a divider appears (session_end received)
@@ -439,6 +464,31 @@ function scrollToBottom() { if (messagesContainer.value) messagesContainer.value
 function autoResize() { const el = inputRef.value; if (!el) return; el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 150) + 'px' }
 function handleFileSelection(event: Event) { const target = event.target as HTMLInputElement; const files = Array.from(target.files || []); pendingFiles.value = [...pendingFiles.value, ...files]; target.value = '' }
 function removePendingFile(index: number) { pendingFiles.value.splice(index, 1) }
+
+// ── STT push-to-talk ──────────────────────────────────────────────────
+const sttErrorTimeout = ref<ReturnType<typeof setTimeout> | null>(null)
+
+function handleMicDown(event: MouseEvent | TouchEvent) {
+  event.preventDefault()
+  sttStartRecording()
+}
+
+async function handleMicUp() {
+  if (!sttRecording.value) return
+  const text = await sttStopAndTranscribe()
+  if (text) {
+    inputText.value = text
+    await handleSend()
+  }
+}
+
+// Auto-clear STT errors after 3 seconds
+watch(sttError, (val) => {
+  if (sttErrorTimeout.value) clearTimeout(sttErrorTimeout.value)
+  if (val) {
+    sttErrorTimeout.value = setTimeout(() => { sttError.value = null }, 3000)
+  }
+})
 function formatMessageTime(timestamp: string): string { const d = new Date(timestamp); if (isNaN(d.getTime())) return ''; return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) }
 
 </script>
