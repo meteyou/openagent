@@ -462,9 +462,17 @@
     "sttEnabledHint": "Ermöglicht Audio-Transkription über den konfigurierten STT-Anbieter.",
     "sttProvider": "STT-Anbieter",
     "sttProviderHint": "Wähle, welcher Dienst Audio zu Text transkribiert.",
+    "sttProviderWhisperUrl": "Whisper (URL)",
+    "sttProviderOpenai": "OpenAI Whisper",
+    "sttProviderOllama": "Ollama",
     "sttWhisperUrl": "Whisper-URL",
     "sttWhisperUrlPlaceholder": "http://localhost:8000/v1/audio/transcriptions",
-    "sttWhisperUrlHint": "Vollständige URL eines Whisper-kompatiblen Transkriptionsendpunkts (z.B. faster-whisper-server)."
+    "sttWhisperUrlHint": "Vollständige URL eines Whisper-kompatiblen Transkriptionsendpunkts (z.B. faster-whisper-server).",
+    "sttOpenaiNone": "OpenAI Whisper (kein Anbieter konfiguriert)",
+    "sttOllamaNone": "Ollama (kein Anbieter konfiguriert)",
+    "sttOllamaModel": "Ollama-Modell",
+    "sttOllamaModelHint": "Name des Ollama-Modells für die Transkription.",
+    "sttOllamaModelPlaceholder": "whisper"
   },
   "users": {
     "kicker": "Zugriffssteuerung",

@@ -462,9 +462,17 @@
     "sttEnabledHint": "Allow audio transcription via the configured STT provider.",
     "sttProvider": "STT Provider",
     "sttProviderHint": "Choose which service transcribes audio to text.",
+    "sttProviderWhisperUrl": "Whisper (URL)",
+    "sttProviderOpenai": "OpenAI Whisper",
+    "sttProviderOllama": "Ollama",
     "sttWhisperUrl": "Whisper URL",
     "sttWhisperUrlPlaceholder": "http://localhost:8000/v1/audio/transcriptions",
-    "sttWhisperUrlHint": "Full URL of a Whisper-compatible transcription endpoint (e.g. faster-whisper-server)."
+    "sttWhisperUrlHint": "Full URL of a Whisper-compatible transcription endpoint (e.g. faster-whisper-server).",
+    "sttOpenaiNone": "OpenAI Whisper (no provider configured)",
+    "sttOllamaNone": "Ollama (no provider configured)",
+    "sttOllamaModel": "Ollama Model",
+    "sttOllamaModelHint": "Name of the Ollama model to use for transcription.",
+    "sttOllamaModelPlaceholder": "whisper"
   },
   "users": {
     "kicker": "Access control",

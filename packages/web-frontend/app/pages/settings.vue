@@ -1271,12 +1271,16 @@
                   <!-- Provider -->
                   <div class="flex flex-col gap-2">
                     <Label for="stt-provider">{{ $t('settings.sttProvider') }}</Label>
-                    <Select v-model="form.stt.provider">
+                    <Select v-model="sttProviderComposite">
                       <SelectTrigger id="stt-provider">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="whisper-url">Whisper (URL)</SelectItem>
+                        <template v-for="opt in sttProviderOptions" :key="opt.value">
+                          <SelectItem :value="opt.value" :disabled="opt.disabled">
+                            {{ opt.label }}
+                          </SelectItem>
+                        </template>
                       </SelectContent>
                     </Select>
                     <p class="text-xs text-muted-foreground">{{ $t('settings.sttProviderHint') }}</p>
@@ -1292,6 +1296,18 @@
                       :placeholder="$t('settings.sttWhisperUrlPlaceholder')"
                     />
                     <p class="text-xs text-muted-foreground">{{ $t('settings.sttWhisperUrlHint') }}</p>
+                  </div>
+
+                  <!-- Ollama model field (only visible when provider is ollama) -->
+                  <div v-if="form.stt.provider === 'ollama'" class="flex flex-col gap-2">
+                    <Label for="stt-ollama-model">{{ $t('settings.sttOllamaModel') }}</Label>
+                    <Input
+                      id="stt-ollama-model"
+                      v-model="form.stt.ollamaModel"
+                      type="text"
+                      :placeholder="$t('settings.sttOllamaModelPlaceholder')"
+                    />
+                    <p class="text-xs text-muted-foreground">{{ $t('settings.sttOllamaModelHint') }}</p>
                   </div>
                 </template>
               </div>
@@ -2052,6 +2068,55 @@ const ttsProviderComposite = computed({
     const id = rest.join('::')
     form.value.tts.provider = type as 'openai' | 'mistral'
     form.value.tts.providerId = id
+  },
+})
+
+/* ── STT provider composite select ── */
+const sttProviderOptions = computed(() => {
+  const options: Array<{ value: string; label: string; disabled?: boolean }> = []
+
+  // Whisper URL (standalone, no provider needed)
+  options.push({ value: 'whisper-url::', label: t('settings.sttProviderWhisperUrl') })
+
+  // OpenAI-compatible providers
+  const openaiProviders = providers.value.filter(p =>
+    p.providerType === 'openai' || p.provider === 'openai' || p.baseUrl?.includes('api.openai.com')
+  )
+  if (openaiProviders.length > 0) {
+    for (const p of openaiProviders) {
+      options.push({ value: `openai::${p.id}`, label: `${t('settings.sttProviderOpenai')} (${p.name})` })
+    }
+  } else {
+    options.push({ value: 'openai::', label: t('settings.sttOpenaiNone'), disabled: true })
+  }
+
+  // Ollama providers
+  const ollamaProviders = providers.value.filter(p =>
+    p.providerType.startsWith('ollama-')
+  )
+  if (ollamaProviders.length > 0) {
+    for (const p of ollamaProviders) {
+      options.push({ value: `ollama::${p.id}`, label: `${t('settings.sttProviderOllama')} (${p.name})` })
+    }
+  } else {
+    options.push({ value: 'ollama::', label: t('settings.sttOllamaNone'), disabled: true })
+  }
+
+  return options
+})
+
+const sttProviderComposite = computed({
+  get(): string {
+    if (!form.value) return 'whisper-url::'
+    const { provider, providerId } = form.value.stt
+    return `${provider}::${providerId}`
+  },
+  set(value: string) {
+    if (!form.value) return
+    const [type, ...rest] = value.split('::')
+    const id = rest.join('::')
+    form.value.stt.provider = type as 'whisper-url' | 'openai' | 'ollama'
+    form.value.stt.providerId = id
   },
 })
 
