@@ -78,7 +78,12 @@
     },
     "ttsPlay": "Vorlesen",
     "ttsStop": "Vorlesen stoppen",
-    "ttsLoading": "Sprache wird generiert..."
+    "ttsLoading": "Sprache wird generiert...",
+    "micTooltip": "Gedrückt halten zum Aufnehmen",
+    "micRecording": "Aufnahme...",
+    "micTranscribing": "Transkribiere...",
+    "micError": "Mikrofonfehler",
+    "micPermissionDenied": "Mikrofonzugriff verweigert"
   },
   "status": {
     "online": "Online",
@@ -328,7 +333,7 @@
     "heartbeatTasksTitle": "Heartbeat-Aufgaben",
     "heartbeatTasksDescription": "Definiere periodische Aufgaben, die der Agent bei jedem Heartbeat-Zyklus ausführen soll.",
     "consolidationRulesTitle": "Konsolidierungs-Regeln",
-    "consolidationRulesDescription": "Lege fest, worauf sich die nächtliche Memory-Konsolidierung konzentrieren soll \u2014 was übernommen, aktualisiert oder ignoriert werden soll.",
+    "consolidationRulesDescription": "Lege fest, worauf sich die nächtliche Memory-Konsolidierung konzentrieren soll — was übernommen, aktualisiert oder ignoriert werden soll.",
     "consolidationSection": "Memory-Konsolidierung",
     "consolidationSectionDescription": "Überprüft automatisch tägliche Einträge und übernimmt dauerhafte Erkenntnisse in das Kerngedächtnis (MEMORY.md).",
     "consolidationEnabled": "Automatische Konsolidierung aktivieren",

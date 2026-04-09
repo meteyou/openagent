@@ -78,7 +78,12 @@
     },
     "ttsPlay": "Read aloud",
     "ttsStop": "Stop reading",
-    "ttsLoading": "Generating speech..."
+    "ttsLoading": "Generating speech...",
+    "micTooltip": "Hold to record",
+    "micRecording": "Recording...",
+    "micTranscribing": "Transcribing...",
+    "micError": "Microphone error",
+    "micPermissionDenied": "Microphone permission denied"
   },
   "status": {
     "online": "Online",
