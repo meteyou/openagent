@@ -4,6 +4,9 @@ import crypto from 'node:crypto'
 import type { Database } from './database.js'
 import { loadConfig } from './config.js'
 
+// Lazily imported to avoid mandatory dependency when PDF extraction is not needed
+let PDFParseClass: (new (opts: { data: Uint8Array }) => { getText(): Promise<{ text: string }> }) | null | undefined = undefined
+
 export interface UploadSettings {
   uploadRetentionDays?: number
 }
@@ -19,6 +22,8 @@ export interface UploadDescriptor {
   previewUrl?: string
   width?: number
   height?: number
+  /** Extracted text content for PDF and plain-text uploads */
+  extractedText?: string
 }
 
 export interface SaveUploadInput {
@@ -85,6 +90,53 @@ function buildDatePath(date = new Date()): string {
 
 function detectKind(mimeType: string): 'image' | 'file' {
   return mimeType.startsWith(IMAGE_MIME_PREFIX) ? 'image' : 'file'
+}
+
+/**
+ * Returns true for MIME types whose content we can extract as text.
+ */
+export function isExtractableType(mimeType: string): boolean {
+  if (mimeType === 'application/pdf') return true
+  if (mimeType.startsWith('text/')) return true
+  if (mimeType === 'application/json') return true
+  return false
+}
+
+/**
+ * Extract readable text from a file buffer based on its MIME type.
+ * Returns `null` when the type is not supported or extraction fails.
+ */
+export async function extractTextContent(buffer: Buffer, mimeType: string): Promise<string | null> {
+  try {
+    if (mimeType === 'application/pdf') {
+      // Lazy-load pdf-parse to keep startup time low and avoid errors when the
+      // package is absent in environments that don't need PDF support.
+      if (PDFParseClass === undefined) {
+        try {
+          const mod = await import('pdf-parse')
+          PDFParseClass = mod.PDFParse as unknown as typeof PDFParseClass
+        } catch {
+          PDFParseClass = null
+        }
+      }
+      if (!PDFParseClass) return null
+
+      const parser = new PDFParseClass({ data: new Uint8Array(buffer) })
+      const result = await parser.getText()
+      const text = result.text?.trim()
+      return text || null
+    }
+
+    // text/* and application/json: decode as UTF-8
+    if (mimeType.startsWith('text/') || mimeType === 'application/json') {
+      const text = buffer.toString('utf-8').trim()
+      return text || null
+    }
+
+    return null
+  } catch {
+    return null
+  }
 }
 
 function parsePngDimensions(buffer: Buffer): { width: number; height: number } | null {
@@ -174,6 +226,23 @@ export function saveUpload(input: SaveUploadInput): UploadDescriptor {
   }
 
   return result
+}
+
+/**
+ * Save an upload and extract its text content (for PDF, text/*, application/json).
+ * This is the preferred entry-point for upload handlers — it populates
+ * `descriptor.extractedText` so the agent can read the file contents without
+ * a separate tool call.
+ */
+export async function saveUploadWithExtraction(input: SaveUploadInput): Promise<UploadDescriptor> {
+  const descriptor = saveUpload(input)
+  if (isExtractableType(descriptor.mimeType)) {
+    const extracted = await extractTextContent(input.buffer, descriptor.mimeType)
+    if (extracted !== null) {
+      descriptor.extractedText = extracted
+    }
+  }
+  return descriptor
 }
 
 export function serializeUploadsMetadata(files: UploadDescriptor[]): string {
