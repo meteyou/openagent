@@ -16,8 +16,10 @@ import {
   getUserProfileDir,
   ensureUserProfile,
   readUserProfile,
+  ensureWikiDir,
   ensureProjectsDir,
   parseProjectAliases,
+  listWikiPages,
   listProjectNotes,
 } from './memory.js'
 import fs from 'node:fs'
@@ -39,19 +41,35 @@ describe('memory', () => {
   }
 
   describe('ensureMemoryStructure', () => {
-    it('creates memory directory structure including users/ and projects/', () => {
+    it('creates memory directory structure including users/ and wiki/', () => {
       const dir = makeTmpDir()
       ensureMemoryStructure(dir)
 
       expect(fs.existsSync(dir)).toBe(true)
       expect(fs.existsSync(path.join(dir, 'daily'))).toBe(true)
       expect(fs.existsSync(path.join(dir, 'users'))).toBe(true)
-      expect(fs.existsSync(path.join(dir, 'projects'))).toBe(true)
+      expect(fs.existsSync(path.join(dir, 'wiki'))).toBe(true)
       expect(fs.existsSync(path.join(dir, 'SOUL.md'))).toBe(true)
       expect(fs.existsSync(path.join(dir, 'MEMORY.md'))).toBe(true)
       // AGENTS.md and HEARTBEAT.md are now in config dir, not memory dir
       expect(fs.existsSync(path.join(dir, 'AGENTS.md'))).toBe(false)
       expect(fs.existsSync(path.join(dir, 'HEARTBEAT.md'))).toBe(false)
+    })
+
+    it('migrates projects/ to wiki/ on first run', () => {
+      const dir = makeTmpDir()
+      fs.mkdirSync(dir, { recursive: true })
+      // Create a legacy projects/ directory with a file
+      const projectsDir = path.join(dir, 'projects')
+      fs.mkdirSync(projectsDir, { recursive: true })
+      fs.writeFileSync(path.join(projectsDir, 'myproject.md'), '# My Project\n', 'utf-8')
+
+      ensureMemoryStructure(dir)
+
+      // projects/ should be gone, wiki/ should exist with the migrated file
+      expect(fs.existsSync(path.join(dir, 'projects'))).toBe(false)
+      expect(fs.existsSync(path.join(dir, 'wiki'))).toBe(true)
+      expect(fs.existsSync(path.join(dir, 'wiki', 'myproject.md'))).toBe(true)
     })
 
     it('does not overwrite existing files', () => {
@@ -315,7 +333,7 @@ describe('memory', () => {
       expect(prompt).toContain('</agent_rules>')
     })
 
-    it('includes memory_paths section with all file paths including projects/', () => {
+    it('includes memory_paths section with all file paths including wiki/', () => {
       const dir = makeTmpDir()
       ensureMemoryStructure(dir)
 
@@ -327,36 +345,36 @@ describe('memory', () => {
       expect(prompt).toContain('AGENTS.md')
       expect(prompt).toContain('HEARTBEAT.md')
       expect(prompt).toContain('daily/')
-      expect(prompt).toContain('projects/')
+      expect(prompt).toContain('wiki/')
       expect(prompt).toContain('read_file, write_file, and edit_file')
       expect(prompt).toContain('</memory_paths>')
     })
 
-    it('includes project_notes section when project notes exist', () => {
+    it('includes wiki_pages section when wiki pages exist', () => {
       const dir = makeTmpDir()
       ensureMemoryStructure(dir)
 
-      // Create a project note
-      const projectsDir = path.join(dir, 'projects')
-      fs.writeFileSync(path.join(projectsDir, 'openagent.md'), '---\naliases: [OpenAgent, open-agent]\n---\n# Project: OpenAgent\n', 'utf-8')
+      // Create a wiki page
+      const wikiDir = path.join(dir, 'wiki')
+      fs.writeFileSync(path.join(wikiDir, 'openagent.md'), '---\naliases: [OpenAgent, open-agent]\n---\n# Project: OpenAgent\n', 'utf-8')
 
       const prompt = assembleSystemPrompt({ memoryDir: dir })
 
-      expect(prompt).toContain('<project_notes>')
+      expect(prompt).toContain('<wiki_pages>')
       expect(prompt).toContain('openagent.md')
       expect(prompt).toContain('OpenAgent')
       expect(prompt).toContain('open-agent')
       expect(prompt).toContain('load it with read_file')
-      expect(prompt).toContain('</project_notes>')
+      expect(prompt).toContain('</wiki_pages>')
     })
 
-    it('excludes project_notes section when no project notes exist', () => {
+    it('excludes wiki_pages section when no wiki pages exist', () => {
       const dir = makeTmpDir()
       ensureMemoryStructure(dir)
 
       const prompt = assembleSystemPrompt({ memoryDir: dir })
 
-      expect(prompt).not.toContain('<project_notes>')
+      expect(prompt).not.toContain('<wiki_pages>')
     })
 
     it('includes custom AGENTS.md content in agent_rules', () => {
@@ -441,72 +459,119 @@ describe('memory', () => {
     })
   })
 
-  describe('listProjectNotes', () => {
-    it('returns empty array for empty projects directory', () => {
+  describe('listWikiPages', () => {
+    it('returns empty array for empty wiki directory', () => {
       const dir = makeTmpDir()
       ensureMemoryStructure(dir)
 
-      const notes = listProjectNotes(dir)
-      expect(notes).toEqual([])
+      const pages = listWikiPages(dir)
+      expect(pages).toEqual([])
     })
 
-    it('lists multiple project note files with aliases', () => {
+    it('lists multiple wiki page files with aliases', () => {
       const dir = makeTmpDir()
       ensureMemoryStructure(dir)
 
-      const projectsDir = path.join(dir, 'projects')
-      fs.writeFileSync(path.join(projectsDir, 'alpha.md'), '---\naliases: [Alpha, alpha-project]\n---\n# Alpha\n', 'utf-8')
-      fs.writeFileSync(path.join(projectsDir, 'beta.md'), '---\naliases: [Beta]\n---\n# Beta\n', 'utf-8')
+      const wikiDir = path.join(dir, 'wiki')
+      fs.writeFileSync(path.join(wikiDir, 'alpha.md'), '---\naliases: [Alpha, alpha-project]\n---\n# Alpha\n', 'utf-8')
+      fs.writeFileSync(path.join(wikiDir, 'beta.md'), '---\naliases: [Beta]\n---\n# Beta\n', 'utf-8')
 
-      const notes = listProjectNotes(dir)
-      expect(notes).toHaveLength(2)
-      expect(notes[0]).toEqual({ filename: 'alpha.md', aliases: ['Alpha', 'alpha-project'] })
-      expect(notes[1]).toEqual({ filename: 'beta.md', aliases: ['Beta'] })
+      const pages = listWikiPages(dir)
+      expect(pages).toHaveLength(2)
+      expect(pages[0]).toEqual({ filename: 'alpha.md', aliases: ['Alpha', 'alpha-project'] })
+      expect(pages[1]).toEqual({ filename: 'beta.md', aliases: ['Beta'] })
     })
 
     it('handles files without frontmatter', () => {
       const dir = makeTmpDir()
       ensureMemoryStructure(dir)
 
-      const projectsDir = path.join(dir, 'projects')
-      fs.writeFileSync(path.join(projectsDir, 'noaliases.md'), '# No Aliases Project\n', 'utf-8')
+      const wikiDir = path.join(dir, 'wiki')
+      fs.writeFileSync(path.join(wikiDir, 'noaliases.md'), '# No Aliases Page\n', 'utf-8')
 
-      const notes = listProjectNotes(dir)
-      expect(notes).toHaveLength(1)
-      expect(notes[0]).toEqual({ filename: 'noaliases.md', aliases: [] })
+      const pages = listWikiPages(dir)
+      expect(pages).toHaveLength(1)
+      expect(pages[0]).toEqual({ filename: 'noaliases.md', aliases: [] })
     })
 
     it('ignores non-md files', () => {
       const dir = makeTmpDir()
       ensureMemoryStructure(dir)
 
-      const projectsDir = path.join(dir, 'projects')
-      fs.writeFileSync(path.join(projectsDir, 'project.md'), '---\naliases: [P]\n---\n', 'utf-8')
-      fs.writeFileSync(path.join(projectsDir, 'readme.txt'), 'not a note', 'utf-8')
+      const wikiDir = path.join(dir, 'wiki')
+      fs.writeFileSync(path.join(wikiDir, 'page.md'), '---\naliases: [P]\n---\n', 'utf-8')
+      fs.writeFileSync(path.join(wikiDir, 'readme.txt'), 'not a page', 'utf-8')
 
-      const notes = listProjectNotes(dir)
-      expect(notes).toHaveLength(1)
-      expect(notes[0].filename).toBe('project.md')
+      const pages = listWikiPages(dir)
+      expect(pages).toHaveLength(1)
+      expect(pages[0].filename).toBe('page.md')
     })
 
-    it('creates projects directory if it does not exist', () => {
+    it('creates wiki directory if it does not exist', () => {
       const dir = makeTmpDir()
       fs.mkdirSync(dir, { recursive: true })
 
-      const notes = listProjectNotes(dir)
-      expect(notes).toEqual([])
-      expect(fs.existsSync(path.join(dir, 'projects'))).toBe(true)
+      const pages = listWikiPages(dir)
+      expect(pages).toEqual([])
+      expect(fs.existsSync(path.join(dir, 'wiki'))).toBe(true)
     })
   })
 
-  describe('ensureProjectsDir', () => {
-    it('creates projects directory and returns path', () => {
+  describe('listProjectNotes (backward compat alias)', () => {
+    it('returns same result as listWikiPages', () => {
+      const dir = makeTmpDir()
+      ensureMemoryStructure(dir)
+
+      const wikiDir = path.join(dir, 'wiki')
+      fs.writeFileSync(path.join(wikiDir, 'mypage.md'), '---\naliases: [MyPage]\n---\n# My Page\n', 'utf-8')
+
+      const pages = listProjectNotes(dir)
+      expect(pages).toHaveLength(1)
+      expect(pages[0]).toEqual({ filename: 'mypage.md', aliases: ['MyPage'] })
+    })
+  })
+
+  describe('ensureWikiDir', () => {
+    it('creates wiki directory and returns path', () => {
       const dir = makeTmpDir()
       fs.mkdirSync(dir, { recursive: true })
 
-      const projectsDir = ensureProjectsDir(dir)
-      expect(projectsDir).toBe(path.join(dir, 'projects'))
-      expect(fs.existsSync(projectsDir)).toBe(true)
+      const wikiDir = ensureWikiDir(dir)
+      expect(wikiDir).toBe(path.join(dir, 'wiki'))
+      expect(fs.existsSync(wikiDir)).toBe(true)
+    })
+
+    it('is idempotent', () => {
+      const dir = makeTmpDir()
+      fs.mkdirSync(dir, { recursive: true })
+
+      ensureWikiDir(dir)
+      ensureWikiDir(dir)
+      expect(fs.existsSync(path.join(dir, 'wiki'))).toBe(true)
+    })
+
+    it('migrates projects/ to wiki/', () => {
+      const dir = makeTmpDir()
+      fs.mkdirSync(dir, { recursive: true })
+      const projectsDir = path.join(dir, 'projects')
+      fs.mkdirSync(projectsDir, { recursive: true })
+      fs.writeFileSync(path.join(projectsDir, 'old.md'), '# Old\n', 'utf-8')
+
+      const wikiDir = ensureWikiDir(dir)
+      expect(wikiDir).toBe(path.join(dir, 'wiki'))
+      expect(fs.existsSync(path.join(dir, 'projects'))).toBe(false)
+      expect(fs.existsSync(path.join(dir, 'wiki', 'old.md'))).toBe(true)
+    })
+  })
+
+  describe('ensureProjectsDir (backward compat alias)', () => {
+    it('creates wiki directory and returns wiki path', () => {
+      const dir = makeTmpDir()
+      fs.mkdirSync(dir, { recursive: true })
+
+      const result = ensureProjectsDir(dir)
+      expect(result).toBe(path.join(dir, 'wiki'))
+      expect(fs.existsSync(result)).toBe(true)
     })
 
     it('is idempotent', () => {
@@ -515,7 +580,7 @@ describe('memory', () => {
 
       ensureProjectsDir(dir)
       ensureProjectsDir(dir)
-      expect(fs.existsSync(path.join(dir, 'projects'))).toBe(true)
+      expect(fs.existsSync(path.join(dir, 'wiki'))).toBe(true)
     })
   })
 
