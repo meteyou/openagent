@@ -4,7 +4,22 @@ set -e
 echo "[openagent] Starting entrypoint..."
 
 # Ensure data directories exist
-mkdir -p /data/db /data/config /data/memory/daily /data/skills /data/npm-global /workspace
+mkdir -p /data/db /data/config /data/memory/daily /data/skills /data/skills_agent /data/npm-global /workspace
+
+# ---------------------------------------------------------------------------
+# Seed built-in agent skills (only if not already present — never overwrite)
+# Skills ship with the image under /app/skills_agent_defaults/
+# ---------------------------------------------------------------------------
+if [ -d /app/skills_agent_defaults ]; then
+    for skill_dir in /app/skills_agent_defaults/*/; do
+        skill_name=$(basename "$skill_dir")
+        target="/data/skills_agent/$skill_name"
+        if [ ! -d "$target" ]; then
+            cp -r "$skill_dir" "$target"
+            echo "[openagent] Seeded agent skill: $skill_name"
+        fi
+    done
+fi
 
 # Fix ownership on first run or after migration from root user
 if [ "$(stat -c '%u' /workspace)" = "0" ]; then

@@ -50,7 +50,10 @@ ENV NPM_CONFIG_PREFIX=/data/npm-global
 ENV PATH="/data/npm-global/bin:${PATH}"
 
 # Create data directories
-RUN mkdir -p /data/db /data/config /data/memory/daily /data/skills /data/npm-global /workspace
+RUN mkdir -p /data/db /data/config /data/memory/daily /data/skills /data/skills_agent /data/npm-global /workspace
+
+# Copy built-in agent skills into image (seeded to /data/skills_agent on first run via entrypoint)
+COPY data/skills_agent /app/skills_agent_defaults
 
 # Save baseline package snapshot for auto-tracking agent-installed packages
 RUN dpkg-query -W -f='${Package}\n' | sort -u > /etc/dpkg-base-packages.txt
