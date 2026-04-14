@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { WebSocket } from 'ws'
 import { createApp } from './app.js'
-import { initDatabase } from '@openagent/core'
+import { createMemory, initDatabase } from '@openagent/core'
 import type { Database } from '@openagent/core'
 import type { AgentCore } from '@openagent/core'
 import { setupWebSocketChat } from './ws-chat.js'
@@ -792,6 +792,96 @@ describe('memory API', () => {
     expect(putBody.username).toBe('admin')
     expect(putBody.content).toContain('Updated from test')
     expect(refreshSystemPrompt).toHaveBeenCalled()
+  })
+
+  it('lists, filters, updates, and deletes stored facts', async () => {
+    db.prepare('INSERT OR IGNORE INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)')
+      .run(2, 'regular-facts', 'hash', 'user')
+
+    const dockerFactId = createMemory(db, 1, 'facts-session-1', 'User works with Docker every day', 'session')
+    createMemory(db, 1, 'facts-session-2', 'Prefers Postgres over SQLite', 'session')
+    const userTwoFactId = createMemory(db, 2, 'facts-session-3', 'Enjoys gardening on weekends', 'session')
+
+    const listRes = await fetch(`${baseUrl}/api/memory/facts?limit=2&offset=0`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    })
+    const listBody = (await listRes.json()) as {
+      facts: Array<{ id: number }>
+      total: number
+    }
+    expect(listRes.status).toBe(200)
+    expect(listBody.total).toBeGreaterThanOrEqual(3)
+    expect(listBody.facts).toHaveLength(2)
+
+    const queryRes = await fetch(`${baseUrl}/api/memory/facts?query=docker`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    })
+    const queryBody = (await queryRes.json()) as {
+      facts: Array<{ id: number; content: string }>
+      total: number
+    }
+    expect(queryRes.status).toBe(200)
+    expect(queryBody.total).toBe(1)
+    expect(queryBody.facts[0]?.id).toBe(dockerFactId)
+    expect(queryBody.facts[0]?.content).toContain('Docker')
+
+    const userFilterRes = await fetch(`${baseUrl}/api/memory/facts?userId=1`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    })
+    const userFilterBody = (await userFilterRes.json()) as {
+      facts: Array<{ userId: number | null }>
+      total: number
+    }
+    expect(userFilterRes.status).toBe(200)
+    expect(userFilterBody.total).toBeGreaterThanOrEqual(2)
+    expect(userFilterBody.facts.every((fact) => fact.userId === 1)).toBe(true)
+
+    const updateRes = await fetch(`${baseUrl}/api/memory/facts/${dockerFactId}`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ content: 'User works with Docker and Kubernetes every day' }),
+    })
+    expect(updateRes.status).toBe(200)
+
+    const updatedFact = db.prepare('SELECT content FROM memories WHERE id = ?').get(dockerFactId) as { content: string }
+    expect(updatedFact.content).toBe('User works with Docker and Kubernetes every day')
+
+    const deleteRes = await fetch(`${baseUrl}/api/memory/facts/${userTwoFactId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${adminToken}` },
+    })
+    expect(deleteRes.status).toBe(200)
+
+    const deletedFact = db.prepare('SELECT id FROM memories WHERE id = ?').get(userTwoFactId)
+    expect(deletedFact).toBeUndefined()
+  })
+
+  it('enforces admin-only access for facts endpoints', async () => {
+    const userToken = generateAccessToken({ userId: 2, username: 'regular', role: 'user' })
+
+    const listRes = await fetch(`${baseUrl}/api/memory/facts`, {
+      headers: { Authorization: `Bearer ${userToken}` },
+    })
+    expect(listRes.status).toBe(403)
+
+    const updateRes = await fetch(`${baseUrl}/api/memory/facts/1`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${userToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ content: 'Nope' }),
+    })
+    expect(updateRes.status).toBe(403)
+
+    const deleteRes = await fetch(`${baseUrl}/api/memory/facts/1`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${userToken}` },
+    })
+    expect(deleteRes.status).toBe(403)
   })
 
   it('requires authentication for memory routes', async () => {
