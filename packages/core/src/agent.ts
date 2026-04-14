@@ -833,15 +833,19 @@ export class AgentCore {
       const summarySettings = loadConfig<{ sessionSummaryProviderId?: string }>('settings.json')
       const summaryProviderId = summarySettings.sessionSummaryProviderId
       if (summaryProviderId) {
-        const { loadProvidersDecrypted } = await import('./provider-config.js')
-        const file = loadProvidersDecrypted()
-        const summaryProvider = file.providers.find(p => p.id === summaryProviderId)
-        if (summaryProvider) {
-          summaryModel = buildModel(summaryProvider)
-          summaryApiKey = await getApiKeyForProvider(summaryProvider)
-          console.log(`[session-summary] Using dedicated provider: ${summaryProvider.name} (${summaryProvider.defaultModel})`)
-        } else {
-          console.warn(`[session-summary] Configured summary provider '${summaryProviderId}' not found, using active provider`)
+        const { parseProviderModelId, loadProvidersDecrypted } = await import('./provider-config.js')
+        const { providerId, modelId } = parseProviderModelId(summaryProviderId)
+        if (providerId) {
+          const file = loadProvidersDecrypted()
+          const summaryProvider = file.providers.find(p => p.id === providerId)
+          if (summaryProvider) {
+            const resolvedModelId = modelId ?? summaryProvider.defaultModel
+            summaryModel = buildModel(summaryProvider, resolvedModelId)
+            summaryApiKey = await getApiKeyForProvider(summaryProvider)
+            console.log(`[session-summary] Using dedicated provider: ${summaryProvider.name} (${resolvedModelId})`)
+          } else {
+            console.warn(`[session-summary] Configured summary provider '${providerId}' not found, using active provider`)
+          }
         }
       }
     } catch {
