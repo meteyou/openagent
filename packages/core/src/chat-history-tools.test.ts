@@ -238,6 +238,97 @@ describe('read_chat_history tool', () => {
       expect(details.total).toBe(1)
     })
 
+    it('uses FTS word matching for message content', async () => {
+      insertMessage(db, 'session-fts-word', 'user', 'Server-Setup checklist is ready', '2025-04-06 09:00:00')
+      insertMessage(db, 'session-fts-word', 'assistant', 'The database backup finished', '2025-04-06 09:00:05')
+      insertMessage(db, 'session-fts-word', 'assistant', 'myserveralias should not match a token search', '2025-04-06 09:00:10')
+
+      const result = await tool.execute('tc-1', { query: 'server' })
+      const details = getDetails(result)
+      const text = getTextContent(result)
+
+      expect(details.total).toBe(1)
+      expect(text).toContain('Server-Setup checklist is ready')
+      expect(text).not.toContain('myserveralias should not match a token search')
+    })
+
+    it('supports phrase matching', async () => {
+      insertMessage(db, 'session-fts-phrase', 'user', 'The memory system stores important facts', '2025-04-06 10:00:00')
+      insertMessage(db, 'session-fts-phrase', 'assistant', 'The system for memory is separate', '2025-04-06 10:00:05')
+
+      const result = await tool.execute('tc-1', { query: '"memory system"' })
+      const details = getDetails(result)
+      const text = getTextContent(result)
+
+      expect(details.total).toBe(1)
+      expect(text).toContain('The memory system stores important facts')
+      expect(text).not.toContain('The system for memory is separate')
+    })
+
+    it('supports prefix matching', async () => {
+      insertMessage(db, 'session-fts-prefix', 'user', 'config loaded successfully', '2025-04-06 11:00:00')
+      insertMessage(db, 'session-fts-prefix', 'assistant', 'The configuration file was updated', '2025-04-06 11:00:05')
+      insertMessage(db, 'session-fts-prefix', 'assistant', 'Service configured and running', '2025-04-06 11:00:10')
+
+      const result = await tool.execute('tc-1', { query: 'config*' })
+      const details = getDetails(result)
+      const text = getTextContent(result)
+
+      expect(details.total).toBe(3)
+      expect(text).toContain('config loaded successfully')
+      expect(text).toContain('The configuration file was updated')
+      expect(text).toContain('Service configured and running')
+    })
+
+    it('orders FTS matches by BM25 relevance before timestamp', async () => {
+      insertMessage(db, 'session-fts-rank', 'user', 'docker quickstart guide', '2025-04-06 08:00:00')
+      insertMessage(db, 'session-fts-rank', 'assistant', 'docker docker docker container image', '2025-04-06 20:00:00')
+
+      const result = await tool.execute('tc-1', { query: 'docker' })
+      const text = getTextContent(result)
+
+      expect(text.indexOf('docker docker docker container image')).toBeLessThan(
+        text.indexOf('docker quickstart guide'),
+      )
+    })
+
+    it('combines FTS queries with other filters', async () => {
+      insertMessage(db, 'telegram-99-filter', 'assistant', 'Docker container deployed', '2025-04-06 12:00:00')
+      insertMessage(db, 'telegram-99-filter', 'user', 'Docker container deployed', '2025-04-06 12:00:05')
+      insertMessage(db, 'web-99-filter', 'assistant', 'Docker container deployed', '2025-04-06 12:00:10')
+
+      const result = await tool.execute('tc-1', {
+        query: 'docker',
+        source: 'telegram',
+        role: 'assistant',
+        session_id: 'telegram-99-filter',
+        start: '2025-04-06T11:59:00',
+        end: '2025-04-06T12:00:01',
+      })
+      const details = getDetails(result)
+      const text = getTextContent(result)
+
+      expect(details.total).toBe(1)
+      expect(text).toContain('Docker container deployed')
+      expect(text).toContain('[telegram]')
+      expect(text).toContain('[assistant]')
+    })
+
+    it('paginates FTS results correctly', async () => {
+      insertMessage(db, 'session-fts-pagination', 'user', 'docker alpha', '2025-04-06 07:00:00')
+      insertMessage(db, 'session-fts-pagination', 'user', 'docker beta beta', '2025-04-06 07:00:05')
+      insertMessage(db, 'session-fts-pagination', 'user', 'docker gamma gamma gamma', '2025-04-06 07:00:10')
+
+      const result = await tool.execute('tc-1', { query: 'docker', limit: 1, offset: 1 })
+      const details = getDetails(result)
+      const text = getTextContent(result)
+
+      expect(details.total).toBe(3)
+      expect(details.count).toBe(1)
+      expect(details.offset).toBe(1)
+      expect(text).toContain('Showing 2–2 of 3 messages')
+    })
+
     it('returns no results for non-matching query', async () => {
       const result = await tool.execute('tc-1', { query: 'xyzzy-no-match-12345' })
       const details = getDetails(result)
@@ -273,22 +364,21 @@ describe('read_chat_history tool', () => {
       expect(text).toContain('no-match-xyz')
     })
 
-    it('matches tool call input/output via subquery join', async () => {
+    it('matches tool call input/output via LIKE fallback', async () => {
       // Insert a tool call whose input contains a unique string NOT present in any chat_message content
       db.prepare(
         'INSERT INTO tool_calls (session_id, tool_name, input, output, timestamp) VALUES (?, ?, ?, ?, ?)'
       ).run('session-1-abc', 'web_fetch', '{"url":"https://example.com/secret-page-xyz"}', 'Fetched content', '2025-04-04 10:00:30')
 
-      // The chat messages in session-1-abc do NOT contain 'secret-page-xyz' in their content
-      // But the tool_call input does — so all messages from that session should be returned
+      // The chat messages in session-1-abc do NOT contain 'secret-page-xyz' in their content,
+      // so these results must come from the tool call fallback path.
       const result = await tool.execute('tc-1', { query: 'secret-page-xyz' })
       const details = getDetails(result)
-      // session-1-abc has 4 messages; all should be included because the tool_call matches
-      expect(details.total).toBeGreaterThanOrEqual(1)
-      // Verify none of the returned messages have 'secret-page-xyz' in their own content
       const text = getTextContent(result)
-      // The result should come from the join path, not direct content match
-      expect(typeof details.total).toBe('number')
+
+      expect(details.total).toBe(4)
+      expect(text).toContain('Hello, how are you?')
+      expect(text).not.toContain('secret-page-xyz')
     })
   })
 })
