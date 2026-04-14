@@ -557,7 +557,6 @@ export class AgentCore {
    * All messages are queued and processed sequentially to prevent collisions.
    */
   async *sendMessage(userId: string, text: string, source: string = 'web', attachments?: UploadDescriptor[]): AsyncIterable<ResponseChunk> {
-    const self = this
     const uploads = attachments
     const iterable = await this.messageQueue.enqueue<ResponseChunk>(
       'user_message',
@@ -565,7 +564,7 @@ export class AgentCore {
       text,
       source,
       (msg) => {
-        return self.processUserMessage(msg.payload.userId, msg.payload.text, msg.payload.source, uploads)
+        return this.processUserMessage(msg.payload.userId, msg.payload.text, msg.payload.source, uploads)
       },
     )
     yield* iterable
@@ -576,14 +575,13 @@ export class AgentCore {
    * The injection is queued and processed sequentially like any other message.
    */
   async injectTaskResult(injection: string): Promise<void> {
-    const self = this
     const iterable = await this.messageQueue.enqueue<ResponseChunk>(
       'task_injection',
       'system',
       injection,
       'task',
       (msg) => {
-        return self.processTaskInjection(msg.payload.text)
+        return this.processTaskInjection(msg.payload.text)
       },
     )
     // Stream response chunks via callback (if set), otherwise drain silently
