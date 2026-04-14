@@ -223,6 +223,23 @@
                   </Alert>
                 </div>
 
+                <!-- Session Summary Provider -->
+                <div class="flex flex-col gap-2">
+                  <Label for="session-summary-provider">{{ $t('settings.sessionSummaryProvider') }}</Label>
+                  <Select v-model="form.sessionSummaryProviderId">
+                    <SelectTrigger id="session-summary-provider">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">{{ $t('settings.sessionSummaryProviderDefault') }}</SelectItem>
+                      <SelectItem v-for="p in providers" :key="p.id" :value="p.id">
+                        {{ p.name }} ({{ p.defaultModel }})
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p class="text-xs text-muted-foreground">{{ $t('settings.sessionSummaryProviderHint') }}</p>
+                </div>
+
                 <div class="flex flex-col gap-2">
                   <Label for="upload-retention">Upload retention</Label>
                   <div class="flex items-center gap-2">
@@ -1831,6 +1848,7 @@ async function handleRunConsolidation() {
 /* ── Form state ── */
 interface SettingsForm {
   sessionTimeoutMinutes: number
+  sessionSummaryProviderId: string
   language: string
   timezone: string
   healthMonitorIntervalMinutes: number
@@ -1853,6 +1871,7 @@ function hydrateForm() {
   const s = settings.value
   form.value = {
     sessionTimeoutMinutes: s.sessionTimeoutMinutes,
+    sessionSummaryProviderId: s.sessionSummaryProviderId ?? '',
     language: s.language,
     timezone: s.timezone,
     healthMonitorIntervalMinutes: s.healthMonitorIntervalMinutes,

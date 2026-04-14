@@ -26,6 +26,7 @@ export interface HealthMonitorData {
 
 export interface SettingsData {
   sessionTimeoutMinutes: number
+  sessionSummaryProviderId?: string
   language: string
   timezone: string
   healthMonitorIntervalMinutes: number
@@ -515,6 +516,7 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
 
       res.json({
         sessionTimeoutMinutes: settings.sessionTimeoutMinutes ?? 15,
+        sessionSummaryProviderId: (settingsRaw.sessionSummaryProviderId as string) ?? '',
         language: settings.language ?? 'match',
         timezone: settings.timezone ?? 'UTC',
         healthMonitorIntervalMinutes: settings.healthMonitorIntervalMinutes ?? settings.healthMonitor?.intervalMinutes ?? 5,
@@ -555,6 +557,13 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
         const err = validatePositiveNumber(body.sessionTimeoutMinutes, 'sessionTimeoutMinutes')
         if (err) { res.status(400).json({ error: err }); return }
         settings.sessionTimeoutMinutes = body.sessionTimeoutMinutes as number
+      }
+      if (body.sessionSummaryProviderId !== undefined) {
+        if (typeof body.sessionSummaryProviderId !== 'string') {
+          res.status(400).json({ error: 'sessionSummaryProviderId must be a string' })
+          return
+        }
+        (settings as unknown as Record<string, unknown>).sessionSummaryProviderId = body.sessionSummaryProviderId
       }
       if (body.language !== undefined) {
         const err = validateNonEmptyString(body.language, 'language')
@@ -652,6 +661,7 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
       res.json({
         message: 'Settings updated',
         sessionTimeoutMinutes: settings.sessionTimeoutMinutes,
+        sessionSummaryProviderId: (settingsRaw.sessionSummaryProviderId as string) ?? '',
         language: settings.language,
         timezone: settings.timezone ?? 'UTC',
         healthMonitorIntervalMinutes: settings.healthMonitorIntervalMinutes,

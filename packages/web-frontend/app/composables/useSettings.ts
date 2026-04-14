@@ -78,6 +78,7 @@ export interface SttSettings {
 
 export interface Settings {
   sessionTimeoutMinutes: number
+  sessionSummaryProviderId: string
   language: string
   timezone: string
   healthMonitorIntervalMinutes: number
@@ -109,6 +110,7 @@ export function useSettings() {
       const result = await apiFetch<Settings>('/api/settings')
       settings.value = {
         ...result,
+        sessionSummaryProviderId: result.sessionSummaryProviderId ?? '',
         stt: {
           enabled: result.stt?.enabled ?? false,
           provider: result.stt?.provider ?? 'whisper-url',
@@ -141,6 +143,7 @@ export function useSettings() {
 
       settings.value = {
         sessionTimeoutMinutes: result.sessionTimeoutMinutes,
+        sessionSummaryProviderId: result.sessionSummaryProviderId ?? '',
         language: result.language,
         timezone: result.timezone,
         healthMonitorIntervalMinutes: result.healthMonitorIntervalMinutes,
