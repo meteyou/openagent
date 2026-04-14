@@ -8,7 +8,9 @@ import {
   AgentHeartbeatService,
   injectSecretsIntoEnv,
   getActiveProvider,
+  getActiveModelId,
   getFallbackProvider,
+  getFallbackModelId,
   buildModel,
   getApiKeyForProvider,
   loadConfig,
@@ -642,7 +644,8 @@ async function initOrUpdateAgentCore(): Promise<void> {
       }
     }
 
-    const model = buildModel(provider)
+    const activeModelId = getActiveModelId()
+    const model = buildModel(provider, activeModelId ?? undefined)
     const apiKey = await getApiKeyForProvider(provider)
     const fallbackProvider = getFallbackProvider()
 
@@ -664,9 +667,10 @@ async function initOrUpdateAgentCore(): Promise<void> {
       const effectiveProvider = providerManager.getEffectiveProvider()
       if (!effectiveProvider) return
       try {
+        const fbModelId = getFallbackModelId()
         const key = await getApiKeyForProvider(effectiveProvider)
-        agentCore.swapProvider(effectiveProvider, key)
-        console.log(`[openagent] Swapped to fallback provider: ${effectiveProvider.name} (${effectiveProvider.defaultModel})`)
+        agentCore.swapProvider(effectiveProvider, key, fbModelId ?? undefined)
+        console.log(`[openagent] Swapped to fallback provider: ${effectiveProvider.name} (${fbModelId ?? effectiveProvider.defaultModel})`)
       } catch (err) {
         console.error('[openagent] Failed to swap to fallback provider:', err)
       }
@@ -677,9 +681,10 @@ async function initOrUpdateAgentCore(): Promise<void> {
       const effectiveProvider = providerManager.getEffectiveProvider()
       if (!effectiveProvider) return
       try {
+        const actModelId = getActiveModelId()
         const key = await getApiKeyForProvider(effectiveProvider)
-        agentCore.swapProvider(effectiveProvider, key)
-        console.log(`[openagent] Swapped back to primary provider: ${effectiveProvider.name} (${effectiveProvider.defaultModel})`)
+        agentCore.swapProvider(effectiveProvider, key, actModelId ?? undefined)
+        console.log(`[openagent] Swapped back to primary provider: ${effectiveProvider.name} (${actModelId ?? effectiveProvider.defaultModel})`)
       } catch (err) {
         console.error('[openagent] Failed to swap to primary provider:', err)
       }

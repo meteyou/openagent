@@ -9,12 +9,15 @@ import {
   updateProvider,
   deleteProvider,
   setActiveProvider,
+  setActiveModel,
+  getActiveModelId,
   updateProviderStatus,
   getAvailableModels,
   buildModel,
   PROVIDER_TYPE_PRESETS,
   performProviderHealthCheck,
   getFallbackProvider,
+  getFallbackModelId,
   setFallbackProvider,
   clearFallbackProvider,
   updateOAuthCredentials,
@@ -82,13 +85,13 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
    * Set or clear the fallback provider
    */
   router.put('/fallback', (req: AuthenticatedRequest, res) => {
-    const { providerId } = req.body as { providerId?: string | null }
+    const { providerId, modelId } = req.body as { providerId?: string | null; modelId?: string | null }
 
     try {
       if (providerId === null || providerId === undefined) {
         clearFallbackProvider()
         options.onFallbackProviderChanged?.()
-        res.json({ message: 'Fallback provider cleared', fallbackProvider: null })
+        res.json({ message: 'Fallback provider cleared', fallbackProvider: null, fallbackModel: null })
         return
       }
 
@@ -97,9 +100,10 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
         return
       }
 
-      setFallbackProvider(providerId)
+      setFallbackProvider(providerId, modelId ?? undefined)
       options.onFallbackProviderChanged?.()
-      res.json({ message: 'Fallback provider set', fallbackProvider: providerId })
+      const fbModelId = getFallbackModelId()
+      res.json({ message: 'Fallback set', fallbackProvider: providerId, fallbackModel: fbModelId })
     } catch (err) {
       const message = (err as Error).message
       if (message.includes('not found')) {
@@ -121,34 +125,50 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
       const providersWithCost = data.providers.map(p => {
         const full = decrypted.providers.find(d => d.id === p.id)
         let cost: { input: number; output: number } | null = null
-        if (full) {
-          try {
-            const model = buildModel(full)
-            if (model.cost.input > 0 || model.cost.output > 0) {
-              cost = { input: model.cost.input, output: model.cost.output }
-            }
-          } catch { /* ignore */ }
+        const modelCosts: Record<string, { input: number; output: number }> = {}
 
-          // Fallback: look up cost directly from pi-ai model registry
-          if (!cost) {
+        if (full) {
+          // Helper: resolve cost for a single model ID
+          const resolveCost = (modelId: string): { input: number; output: number } | null => {
+            try {
+              const m = buildModel(full, modelId)
+              if (m.cost.input > 0 || m.cost.output > 0) {
+                return { input: m.cost.input, output: m.cost.output }
+              }
+            } catch { /* ignore */ }
+
+            // Fallback: look up cost directly from pi-ai model registry
             const preset = PROVIDER_TYPE_PRESETS[full.providerType as ProviderType]
             if (preset?.piAiProvider) {
               try {
                 const piModels = getPiAiModels(preset.piAiProvider as PiAiKnownProvider)
-                const match = piModels.find(m => m.id === full.defaultModel)
+                const match = piModels.find(m => m.id === modelId)
                 if (match && (match.cost.input > 0 || match.cost.output > 0)) {
-                  cost = { input: match.cost.input, output: match.cost.output }
+                  return { input: match.cost.input, output: match.cost.output }
                 }
               } catch { /* ignore */ }
             }
+            return null
+          }
+
+          // Default model cost (shown on provider row for single-model providers)
+          cost = resolveCost(full.defaultModel)
+
+          // Per-model costs for all enabled models
+          const enabledModels = full.enabledModels ?? [full.defaultModel]
+          for (const modelId of enabledModels) {
+            const mc = resolveCost(modelId)
+            if (mc) modelCosts[modelId] = mc
           }
         }
-        return { ...p, cost }
+        return { ...p, cost, modelCosts }
       })
       res.json({
         providers: providersWithCost,
         activeProvider: data.activeProvider ?? null,
+        activeModel: data.activeModel ?? null,
         fallbackProvider: data.fallbackProvider ?? null,
+        fallbackModel: data.fallbackModel ?? null,
         presets: PROVIDER_TYPE_PRESETS,
       })
     } catch (err) {
@@ -363,12 +383,13 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
    * Add a new provider
    */
   router.post('/', (req: AuthenticatedRequest, res) => {
-    const { name, providerType, baseUrl, apiKey, defaultModel, degradedThresholdMs } = req.body as {
+    const { name, providerType, baseUrl, apiKey, defaultModel, enabledModels, degradedThresholdMs } = req.body as {
       name?: string
       providerType?: string
       baseUrl?: string
       apiKey?: string
       defaultModel?: string
+      enabledModels?: string[]
       degradedThresholdMs?: number
     }
 
@@ -399,6 +420,7 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
         baseUrl: baseUrl?.trim(),
         apiKey: apiKey?.trim(),
         defaultModel: defaultModel.trim(),
+        enabledModels: enabledModels?.map(m => m.trim()).filter(Boolean),
         degradedThresholdMs: degradedThresholdMs != null ? Math.max(1, Math.round(degradedThresholdMs)) : undefined,
       })
       const afterActiveProvider = loadProviders().activeProvider ?? null
@@ -425,12 +447,13 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
    */
   router.put('/:id', (req: AuthenticatedRequest, res) => {
     const id = req.params.id as string
-    const { name, providerType, baseUrl, apiKey, defaultModel, degradedThresholdMs } = req.body as {
+    const { name, providerType, baseUrl, apiKey, defaultModel, enabledModels, degradedThresholdMs } = req.body as {
       name?: string
       providerType?: string
       baseUrl?: string
       apiKey?: string
       defaultModel?: string
+      enabledModels?: string[]
       degradedThresholdMs?: number
     }
 
@@ -447,6 +470,7 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
         baseUrl: baseUrl?.trim(),
         apiKey: apiKey?.trim(),
         defaultModel: defaultModel?.trim(),
+        enabledModels: enabledModels?.map(m => m.trim()).filter(Boolean),
         degradedThresholdMs: degradedThresholdMs != null ? Math.max(1, Math.round(degradedThresholdMs)) : undefined,
       })
 
@@ -497,6 +521,7 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
    */
   router.post('/:id/test', async (req: AuthenticatedRequest, res) => {
     const id = req.params.id as string
+    const { modelId } = (req.body ?? {}) as { modelId?: string }
 
     try {
       const data = loadProvidersDecrypted()
@@ -506,11 +531,16 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
         return
       }
 
-      const result = await performProviderHealthCheck(provider)
-      updateProviderStatus(id, result.status === 'down' ? 'error' : 'connected')
+      // If a specific model is requested, temporarily override defaultModel for the health check
+      const testProvider = modelId ? { ...provider, defaultModel: modelId } : provider
+      const testModelId = modelId ?? provider.defaultModel
+
+      const result = await performProviderHealthCheck(testProvider)
+      const status = result.status === 'down' ? 'error' : 'connected'
+      updateProviderStatus(id, status, modelId)
 
       if (result.status === 'down') {
-        res.status(200).json({ success: false, error: result.errorMessage ?? 'Connection failed' })
+        res.status(200).json({ success: false, error: result.errorMessage ?? 'Connection failed', modelId: testModelId })
         return
       }
 
@@ -518,9 +548,10 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
         success: true,
         message: result.status === 'degraded'
           ? `Connected, but slow response (${result.latencyMs}ms)`
-          : `Connected successfully. Model: ${provider.defaultModel}`,
+          : `Connected successfully. Model: ${testModelId}`,
         latencyMs: result.latencyMs,
         status: result.status,
+        modelId: testModelId,
       })
     } catch (err) {
       res.status(500).json({ success: false, error: `Test failed: ${(err as Error).message}` })
@@ -533,17 +564,22 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
    */
   router.post('/:id/activate', (req: AuthenticatedRequest, res) => {
     const id = req.params.id as string
+    const { modelId } = (req.body ?? {}) as { modelId?: string }
 
     try {
-      const beforeActiveProvider = loadProviders().activeProvider ?? null
-      setActiveProvider(id)
-      const afterActiveProvider = loadProviders().activeProvider ?? null
+      const before = loadProviders()
+      const beforeActiveProvider = before.activeProvider ?? null
+      const beforeActiveModel = before.activeModel ?? null
+      setActiveProvider(id, modelId ?? undefined)
+      const after = loadProviders()
+      const afterActiveProvider = after.activeProvider ?? null
+      const afterActiveModel = after.activeModel ?? null
 
-      if (beforeActiveProvider !== afterActiveProvider) {
+      if (beforeActiveProvider !== afterActiveProvider || beforeActiveModel !== afterActiveModel) {
         options.onActiveProviderChanged?.()
       }
 
-      res.json({ message: 'Provider activated', activeProvider: id })
+      res.json({ message: 'Provider activated', activeProvider: id, activeModel: afterActiveModel })
     } catch (err) {
       const message = (err as Error).message
       if (message.includes('not found')) {
