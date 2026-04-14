@@ -22,6 +22,7 @@ import {
   updateMemory,
   deleteMemory,
 } from '@openagent/core'
+import { NotFoundError, InvalidInputError } from '@openagent/core'
 import type { AgentCore, Database } from '@openagent/core'
 import { jwtMiddleware } from '../auth.js'
 import type { AuthenticatedRequest } from '../auth.js'
@@ -566,9 +567,12 @@ export function createMemoryRouter(db: Database, getAgentCore: () => AgentCore |
 
       res.json(result)
     } catch (err) {
+      if (err instanceof InvalidInputError) {
+        res.status(400).json({ error: err.message })
+        return
+      }
       const message = (err as Error).message
-      const status = message.startsWith('Invalid date') ? 400 : 500
-      res.status(status).json({ error: `Failed to list facts: ${message}` })
+      res.status(500).json({ error: `Failed to list facts: ${message}` })
     }
   })
 
@@ -591,9 +595,12 @@ export function createMemoryRouter(db: Database, getAgentCore: () => AgentCore |
       updateMemory(db, id, trimmedContent)
       res.json({ message: 'Fact updated' })
     } catch (err) {
+      if (err instanceof NotFoundError) {
+        res.status(404).json({ error: 'Fact not found' })
+        return
+      }
       const message = (err as Error).message
-      const status = message.startsWith('Memory not found') ? 404 : 500
-      res.status(status).json({ error: status === 404 ? 'Fact not found' : `Failed to update fact: ${message}` })
+      res.status(500).json({ error: `Failed to update fact: ${message}` })
     }
   })
 
@@ -609,9 +616,12 @@ export function createMemoryRouter(db: Database, getAgentCore: () => AgentCore |
       deleteMemory(db, id)
       res.json({ message: 'Fact deleted' })
     } catch (err) {
+      if (err instanceof NotFoundError) {
+        res.status(404).json({ error: 'Fact not found' })
+        return
+      }
       const message = (err as Error).message
-      const status = message.startsWith('Memory not found') ? 404 : 500
-      res.status(status).json({ error: status === 404 ? 'Fact not found' : `Failed to delete fact: ${message}` })
+      res.status(500).json({ error: `Failed to delete fact: ${message}` })
     }
   })
 
