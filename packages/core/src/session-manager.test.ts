@@ -581,6 +581,49 @@ describe('SessionManager', () => {
       expect(manager2.hasActiveSession('user1')).toBe(false)
     })
 
+    it('fires onSessionEnd when an orphaned session is summarized on startup', async () => {
+      const manager1 = new SessionManager({
+        db,
+        memoryDir,
+        timeoutMinutes: 15,
+      })
+      await manager1.init()
+
+      const session = manager1.getOrCreateSession('1', 'web')
+      manager1.recordMessage('1')
+
+      db.prepare(
+        `INSERT INTO chat_messages (session_id, role, content) VALUES (?, 'user', 'Remember this orphaned session')`
+      ).run(session.id)
+
+      const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000)
+      db.prepare(
+        `UPDATE sessions SET last_activity = datetime(? / 1000, 'unixepoch'), session_user = ? WHERE id = ?`
+      ).run(twoHoursAgo.getTime(), '1', session.id)
+
+      const onSessionEnd = vi.fn()
+      const manager2 = new SessionManager({
+        db,
+        memoryDir,
+        timeoutMinutes: 15,
+        onSummarize: vi.fn().mockResolvedValue('Recovered summary.'),
+        onSessionEnd,
+      })
+      await manager2.init()
+
+      expect(onSessionEnd).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: session.id,
+          userId: '1',
+          source: 'web',
+          messageCount: 1,
+          summaryWritten: true,
+          restored: true,
+        }),
+        'Recovered summary.',
+      )
+    })
+
     it('writes summary to previous day daily file when crash spans midnight', async () => {
       const manager1 = new SessionManager({
         db,

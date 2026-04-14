@@ -131,12 +131,13 @@ export class SessionManager {
   ): Promise<void> {
     let summary: string | null = null
     let summaryWritten = !!row.summary_written
+    const startedAt = this.parseSqliteTimestamp(row.started_at)
 
     if (row.message_count > 0 && !summaryWritten && this.onSummarize) {
       try {
         const history = this.buildConversationHistory(row.id, {
           userId,
-          startedAt: this.parseSqliteTimestamp(row.started_at),
+          startedAt,
           endAt: lastActivity,
         })
         if (history) {
@@ -175,6 +176,19 @@ export class SessionManager {
       durationMs: 0,
       status: 'success',
     })
+
+    if (this.onSessionEnd) {
+      this.onSessionEnd({
+        id: row.id,
+        userId,
+        source: row.source,
+        startedAt,
+        lastActivity,
+        messageCount: row.message_count,
+        summaryWritten,
+        restored: true,
+      }, summary)
+    }
   }
 
   /**
