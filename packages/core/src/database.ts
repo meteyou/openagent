@@ -452,6 +452,18 @@ export function initDatabase(dbPath?: string): Database {
     db.exec("ALTER TABLE sessions ADD COLUMN completion_tokens INTEGER NOT NULL DEFAULT 0")
   }
 
+  db.exec(`
+    UPDATE sessions SET
+      prompt_tokens = COALESCE((
+        SELECT SUM(prompt_tokens) FROM token_usage WHERE token_usage.session_id = sessions.id
+      ), 0),
+      completion_tokens = COALESCE((
+        SELECT SUM(completion_tokens) FROM token_usage WHERE token_usage.session_id = sessions.id
+      ), 0)
+    WHERE prompt_tokens = 0 AND completion_tokens = 0
+      AND EXISTS (SELECT 1 FROM token_usage WHERE token_usage.session_id = sessions.id);
+  `)
+
   return db
 }
 

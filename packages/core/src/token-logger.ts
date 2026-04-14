@@ -35,6 +35,14 @@ export function logTokenUsage(db: Database, record: TokenUsageRecord): void {
     record.estimatedCost,
     record.sessionId ?? null,
   )
+
+  if (record.sessionId) {
+    db.prepare(
+      `UPDATE sessions
+       SET prompt_tokens = prompt_tokens + ?, completion_tokens = completion_tokens + ?
+       WHERE id = ?`
+    ).run(record.promptTokens, record.completionTokens, record.sessionId)
+  }
 }
 
 /**

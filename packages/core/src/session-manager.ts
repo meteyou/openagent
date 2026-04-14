@@ -575,9 +575,11 @@ export class SessionManager {
     source: string
     last_activity: string | null
     session_user: string | null
+    prompt_tokens: number
+    completion_tokens: number
   } | undefined {
     return this.db.prepare(
-      `SELECT id, started_at, ended_at, message_count, summary_written, source, last_activity, session_user
+      `SELECT id, started_at, ended_at, message_count, summary_written, source, last_activity, session_user, prompt_tokens, completion_tokens
        FROM sessions WHERE id = ?`
     ).get(sessionId) as {
       id: string
@@ -588,6 +590,8 @@ export class SessionManager {
       source: string
       last_activity: string | null
       session_user: string | null
+      prompt_tokens: number
+      completion_tokens: number
     } | undefined
   }
 }
