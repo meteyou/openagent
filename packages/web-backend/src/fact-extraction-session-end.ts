@@ -5,6 +5,7 @@ import {
   getApiKeyForProvider,
   loadConfig,
   loadProvidersDecrypted,
+  parseProviderModelId,
 } from '@openagent/core'
 import type { Database, ProviderConfig } from '@openagent/core'
 
@@ -100,23 +101,31 @@ export async function resolveFactExtractionExecutionContext(
   const resolvedDeps = { ...defaultDeps, ...deps }
   let provider: ProviderConfig | null = null
 
-  if (settings.providerId) {
-    const providers = resolvedDeps.loadProvidersDecrypted()
-    provider = providers.providers.find(candidate => candidate.id === settings.providerId) ?? null
+  let modelId: string | undefined
 
-    if (!provider) {
-      resolvedDeps.console.warn(
-        `[fact-extraction] Configured provider '${settings.providerId}' not found, using active provider`,
-      )
+  if (settings.providerId) {
+    const parsed = parseProviderModelId(settings.providerId)
+    if (parsed.providerId) {
+      const providers = resolvedDeps.loadProvidersDecrypted()
+      provider = providers.providers.find(candidate => candidate.id === parsed.providerId) ?? null
+      modelId = parsed.modelId
+
+      if (!provider) {
+        resolvedDeps.console.warn(
+          `[fact-extraction] Configured provider '${parsed.providerId}' not found, using active provider`,
+        )
+      }
     }
   }
 
   provider = provider ?? resolvedDeps.getActiveProvider()
   if (!provider) return null
 
+  const resolvedModelId = modelId ?? provider.defaultModel
+
   return {
     provider,
-    model: resolvedDeps.buildModel(provider),
+    model: resolvedDeps.buildModel(provider, resolvedModelId),
     apiKey: await resolvedDeps.getApiKeyForProvider(provider),
   }
 }

@@ -68,7 +68,7 @@ describe('fact-extraction session-end trigger', () => {
     )
 
     expect(dedicatedContext?.provider.id).toBe('dedicated')
-    expect(buildModel).toHaveBeenCalledWith(dedicatedProvider)
+    expect(buildModel).toHaveBeenCalledWith(dedicatedProvider, 'gpt-4o-mini')
     expect(getApiKeyForProvider).toHaveBeenCalledWith(dedicatedProvider)
 
     buildModel.mockClear()
@@ -86,7 +86,7 @@ describe('fact-extraction session-end trigger', () => {
     )
 
     expect(fallbackContext?.provider.id).toBe('active')
-    expect(buildModel).toHaveBeenCalledWith(activeProvider)
+    expect(buildModel).toHaveBeenCalledWith(activeProvider, 'gpt-4o-mini')
     expect(getApiKeyForProvider).toHaveBeenCalledWith(activeProvider)
   })
 
