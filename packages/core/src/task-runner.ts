@@ -6,7 +6,7 @@ import type { Database } from './database.js'
 import { TaskStore } from './task-store.js'
 import type { Task, TaskResultStatus } from './task-store.js'
 import { logTokenUsage, logToolCall } from './token-logger.js'
-import { estimateCost } from './provider-config.js'
+import { estimateCost, parseProviderModelId } from './provider-config.js'
 import type { ProviderConfig } from './provider-config.js'
 import {
   ToolCallTracker,
@@ -618,8 +618,14 @@ export class TaskRunner {
     const config = this.options.loopDetection
     if (!config?.smartProvider || !this.options.getProviderById) return
 
-    const provider = this.options.getProviderById(config.smartProvider)
-    if (!provider) return
+    const { providerId, modelId } = parseProviderModelId(config.smartProvider)
+    if (!providerId) return
+
+    const resolvedProvider = this.options.getProviderById(providerId)
+    if (!resolvedProvider) return
+
+    // Apply specific model override if provided
+    const provider = modelId ? { ...resolvedProvider, defaultModel: modelId } : resolvedProvider
 
     try {
       const model = this.options.buildModel(provider)
