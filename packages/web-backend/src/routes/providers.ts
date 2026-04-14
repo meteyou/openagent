@@ -1,4 +1,6 @@
 import crypto from 'node:crypto'
+import dns from 'node:dns/promises'
+import { URL } from 'node:url'
 import { Router } from 'express'
 import {
   loadProviders,
@@ -31,6 +33,59 @@ import { jwtMiddleware } from '../auth.js'
 import type { AuthenticatedRequest } from '../auth.js'
 
 const VALID_PROVIDER_TYPES = Object.keys(PROVIDER_TYPE_PRESETS)
+
+/** Timeout for non-streaming Ollama requests (tags, delete) */
+const OLLAMA_REQUEST_TIMEOUT_MS = 15_000
+
+/**
+ * Validate that a URL does not point to private/internal network addresses.
+ * For `ollama-local` providers, localhost/loopback is explicitly allowed.
+ * Rejects link-local, cloud metadata, and RFC-1918 ranges for `ollama-cloud`.
+ */
+async function validateOllamaUrl(urlStr: string, providerType: string): Promise<void> {
+  let parsed: URL
+  try {
+    parsed = new URL(urlStr)
+  } catch {
+    throw new Error('Invalid Ollama base URL')
+  }
+
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error('Only http/https URLs are allowed')
+  }
+
+  const hostname = parsed.hostname
+
+  // For ollama-local, allow loopback — that's the whole point
+  if (providerType === 'ollama-local') return
+
+  // For ollama-cloud, resolve DNS and reject private ranges
+  const isIpLiteral = /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname) || hostname.startsWith('[')
+  const addresses = isIpLiteral ? [hostname.replace(/^\[|\]$/g, '')] : (await dns.resolve4(hostname).catch(() => []))
+
+  for (const addr of addresses) {
+    if (isPrivateOrReserved(addr)) {
+      throw new Error(`URL resolves to a private/reserved address (${addr})`)
+    }
+  }
+}
+
+function isPrivateOrReserved(ip: string): boolean {
+  const parts = ip.split('.').map(Number)
+  if (parts.length !== 4) return false
+  const [a, b] = parts
+  // Loopback 127.0.0.0/8
+  if (a === 127) return true
+  // Link-local 169.254.0.0/16 (cloud metadata)
+  if (a === 169 && b === 254) return true
+  // RFC-1918
+  if (a === 10) return true
+  if (a === 172 && b >= 16 && b <= 31) return true
+  if (a === 192 && b === 168) return true
+  // 0.0.0.0
+  if (a === 0) return true
+  return false
+}
 
 export interface ProvidersRouterOptions {
   onActiveProviderChanged?: () => void
@@ -438,6 +493,390 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
       })
     } catch (err) {
       res.status(400).json({ error: (err as Error).message })
+    }
+  })
+
+  /**
+   * POST /api/providers/ollama-probe
+   * Probe an Ollama instance by base URL (for create-mode, before a provider exists).
+   * Body: { baseUrl: string, providerType: 'ollama-local' | 'ollama-cloud' }
+   */
+  router.post('/ollama-probe', async (req: AuthenticatedRequest, res) => {
+    const { baseUrl, providerType } = req.body as { baseUrl?: string; providerType?: string }
+
+    if (!providerType || (providerType !== 'ollama-local' && providerType !== 'ollama-cloud')) {
+      res.status(400).json({ error: 'providerType must be ollama-local or ollama-cloud' })
+      return
+    }
+
+    try {
+      let ollamaBase = (baseUrl || 'http://localhost:11434').replace(/\/v1\/?$/, '').replace(/\/$/, '')
+
+      await validateOllamaUrl(ollamaBase, providerType)
+
+      const tagsResp = await fetch(`${ollamaBase}/api/tags`, {
+        signal: AbortSignal.timeout(OLLAMA_REQUEST_TIMEOUT_MS),
+      })
+      if (!tagsResp.ok) {
+        throw new Error(`Ollama returned HTTP ${tagsResp.status}`)
+      }
+      const tagsData = await tagsResp.json() as {
+        models?: Array<{
+          name: string
+          size: number
+          details?: {
+            parameter_size?: string
+            quantization_level?: string
+            family?: string
+          }
+        }>
+      }
+
+      const models = (tagsData.models ?? []).map(m => ({
+        name: m.name,
+        size: m.size,
+        parameterSize: m.details?.parameter_size ?? '',
+        quantization: m.details?.quantization_level ?? '',
+        family: m.details?.family ?? '',
+      }))
+
+      res.json({ models })
+    } catch (err) {
+      res.status(502).json({ error: `Failed to reach Ollama API: ${(err as Error).message}` })
+    }
+  })
+
+  /**
+   * POST /api/providers/ollama-probe/pull
+   * Pull a model via Ollama base URL (for create-mode, before a provider exists).
+   * Body: { baseUrl: string, providerType: 'ollama-local' | 'ollama-cloud', modelName: string }
+   */
+  router.post('/ollama-probe/pull', async (req: AuthenticatedRequest, res) => {
+    const { baseUrl, providerType, modelName } = req.body as { baseUrl?: string; providerType?: string; modelName?: string }
+
+    if (!providerType || (providerType !== 'ollama-local' && providerType !== 'ollama-cloud')) {
+      res.status(400).json({ error: 'providerType must be ollama-local or ollama-cloud' })
+      return
+    }
+    if (!modelName?.trim()) {
+      res.status(400).json({ error: 'modelName is required' })
+      return
+    }
+
+    try {
+      let ollamaBase = (baseUrl || 'http://localhost:11434').replace(/\/v1\/?$/, '').replace(/\/$/, '')
+
+      await validateOllamaUrl(ollamaBase, providerType)
+
+      const ac = new AbortController()
+      req.on('close', () => ac.abort())
+
+      const pullResp = await fetch(`${ollamaBase}/api/pull`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: modelName.trim(), stream: true }),
+        signal: ac.signal,
+      })
+
+      if (!pullResp.ok) {
+        const errText = await pullResp.text().catch(() => '')
+        res.status(502).json({ error: `Ollama pull failed: HTTP ${pullResp.status} ${errText}` })
+        return
+      }
+
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no',
+      })
+      res.flushHeaders()
+
+      const reader = pullResp.body?.getReader()
+      if (!reader) {
+        res.write(`data: ${JSON.stringify({ error: 'No response body from Ollama' })}\n\n`)
+        res.end()
+        return
+      }
+
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() ?? ''
+          for (const line of lines) {
+            if (!line.trim()) continue
+            try {
+              const event = JSON.parse(line)
+              res.write(`data: ${JSON.stringify(event)}\n\n`)
+              if (typeof (res as any).flush === 'function') (res as any).flush()
+            } catch (parseErr) {
+              console.warn(`[ollama-probe-pull] Skipping malformed NDJSON line: ${line.substring(0, 200)}`)
+            }
+          }
+        }
+        if (buffer.trim()) {
+          try {
+            const event = JSON.parse(buffer)
+            res.write(`data: ${JSON.stringify(event)}\n\n`)
+          } catch (parseErr) {
+            console.warn(`[ollama-probe-pull] Skipping malformed trailing NDJSON: ${buffer.substring(0, 200)}`)
+          }
+        }
+      } finally {
+        reader.releaseLock()
+      }
+
+      res.write(`data: ${JSON.stringify({ done: true })}\n\n`)
+      res.end()
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') {
+        if (!res.writableEnded) res.end()
+        return
+      }
+      if (!res.headersSent) {
+        res.status(502).json({ error: `Failed to pull model: ${(err as Error).message}` })
+      } else {
+        res.write(`data: ${JSON.stringify({ error: (err as Error).message })}\n\n`)
+        res.end()
+      }
+    }
+  })
+
+  /**
+   * GET /api/providers/:id/ollama-models
+   * Fetch installed models from an Ollama instance.
+   * Only works for ollama-local / ollama-cloud providers.
+   */
+  router.get('/:id/ollama-models', async (req: AuthenticatedRequest, res) => {
+    const id = req.params.id as string
+
+    try {
+      const data = loadProvidersDecrypted()
+      const provider = data.providers.find(p => p.id === id)
+      if (!provider) {
+        res.status(404).json({ error: 'Provider not found' })
+        return
+      }
+
+      const isOllama = provider.providerType === 'ollama-local' || provider.providerType === 'ollama-cloud'
+      if (!isOllama) {
+        res.status(400).json({ error: 'Not an Ollama provider' })
+        return
+      }
+
+      // Derive Ollama base URL (strip /v1 suffix used for OpenAI compat)
+      let ollamaBase = provider.baseUrl || 'http://localhost:11434'
+      ollamaBase = ollamaBase.replace(/\/v1\/?$/, '').replace(/\/$/, '')
+
+      await validateOllamaUrl(ollamaBase, provider.providerType)
+
+      const tagsResp = await fetch(`${ollamaBase}/api/tags`, {
+        signal: AbortSignal.timeout(OLLAMA_REQUEST_TIMEOUT_MS),
+      })
+      if (!tagsResp.ok) {
+        throw new Error(`Ollama returned HTTP ${tagsResp.status}`)
+      }
+      const tagsData = await tagsResp.json() as {
+        models?: Array<{
+          name: string
+          size: number
+          details?: {
+            parameter_size?: string
+            quantization_level?: string
+            family?: string
+          }
+        }>
+      }
+
+      const models = (tagsData.models ?? []).map(m => ({
+        name: m.name,
+        size: m.size,
+        parameterSize: m.details?.parameter_size ?? '',
+        quantization: m.details?.quantization_level ?? '',
+        family: m.details?.family ?? '',
+      }))
+
+      res.json({ models })
+    } catch (err) {
+      res.status(502).json({ error: `Failed to reach Ollama API: ${(err as Error).message}` })
+    }
+  })
+
+  /**
+   * POST /api/providers/:id/ollama-pull
+   * Pull (download) a model from the Ollama library.
+   * Streams progress events as SSE (Server-Sent Events).
+   */
+  router.post('/:id/ollama-pull', async (req: AuthenticatedRequest, res) => {
+    const id = req.params.id as string
+    const { modelName } = req.body as { modelName?: string }
+
+    if (!modelName?.trim()) {
+      res.status(400).json({ error: 'modelName is required' })
+      return
+    }
+
+    try {
+      const data = loadProvidersDecrypted()
+      const provider = data.providers.find(p => p.id === id)
+      if (!provider) {
+        res.status(404).json({ error: 'Provider not found' })
+        return
+      }
+
+      const isOllama = provider.providerType === 'ollama-local' || provider.providerType === 'ollama-cloud'
+      if (!isOllama) {
+        res.status(400).json({ error: 'Not an Ollama provider' })
+        return
+      }
+
+      let ollamaBase = provider.baseUrl || 'http://localhost:11434'
+      ollamaBase = ollamaBase.replace(/\/v1\/?$/, '').replace(/\/$/, '')
+
+      await validateOllamaUrl(ollamaBase, provider.providerType)
+
+      // Abort the Ollama fetch when the client disconnects
+      const ac = new AbortController()
+      req.on('close', () => ac.abort())
+
+      // Start pull with streaming
+      const pullResp = await fetch(`${ollamaBase}/api/pull`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: modelName.trim(), stream: true }),
+        signal: ac.signal,
+      })
+
+      if (!pullResp.ok) {
+        const errText = await pullResp.text().catch(() => '')
+        res.status(502).json({ error: `Ollama pull failed: HTTP ${pullResp.status} ${errText}` })
+        return
+      }
+
+      // Stream SSE to client
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no',
+      })
+      res.flushHeaders()
+
+      const reader = pullResp.body?.getReader()
+      if (!reader) {
+        res.write(`data: ${JSON.stringify({ error: 'No response body from Ollama' })}\n\n`)
+        res.end()
+        return
+      }
+
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() ?? '' // keep incomplete line in buffer
+
+          for (const line of lines) {
+            if (!line.trim()) continue
+            try {
+              const event = JSON.parse(line) as {
+                status?: string
+                total?: number
+                completed?: number
+                error?: string
+              }
+              res.write(`data: ${JSON.stringify(event)}\n\n`)
+              if (typeof (res as any).flush === 'function') (res as any).flush()
+            } catch (parseErr) {
+              console.warn(`[ollama-pull] Skipping malformed NDJSON line: ${line.substring(0, 200)}`)
+            }
+          }
+        }
+
+        // Process any remaining buffer
+        if (buffer.trim()) {
+          try {
+            const event = JSON.parse(buffer)
+            res.write(`data: ${JSON.stringify(event)}\n\n`)
+          } catch (parseErr) {
+            console.warn(`[ollama-pull] Skipping malformed trailing NDJSON: ${buffer.substring(0, 200)}`)
+          }
+        }
+      } finally {
+        reader.releaseLock()
+      }
+
+      res.write(`data: ${JSON.stringify({ done: true })}\n\n`)
+      res.end()
+    } catch (err) {
+      // If aborted due to client disconnect, just clean up silently
+      if ((err as Error).name === 'AbortError') {
+        if (!res.writableEnded) res.end()
+        return
+      }
+      if (!res.headersSent) {
+        res.status(502).json({ error: `Failed to pull model: ${(err as Error).message}` })
+      } else {
+        res.write(`data: ${JSON.stringify({ error: (err as Error).message })}\n\n`)
+        res.end()
+      }
+    }
+  })
+
+  /**
+   * DELETE /api/providers/:id/ollama-models/:modelName
+   * Delete a model from the Ollama instance.
+   */
+  router.delete('/:id/ollama-models/:modelName', async (req: AuthenticatedRequest, res) => {
+    const id = req.params.id as string
+    const modelName = req.params.modelName as string
+
+    try {
+      const data = loadProvidersDecrypted()
+      const provider = data.providers.find(p => p.id === id)
+      if (!provider) {
+        res.status(404).json({ error: 'Provider not found' })
+        return
+      }
+
+      const isOllama = provider.providerType === 'ollama-local' || provider.providerType === 'ollama-cloud'
+      if (!isOllama) {
+        res.status(400).json({ error: 'Not an Ollama provider' })
+        return
+      }
+
+      let ollamaBase = provider.baseUrl || 'http://localhost:11434'
+      ollamaBase = ollamaBase.replace(/\/v1\/?$/, '').replace(/\/$/, '')
+
+      await validateOllamaUrl(ollamaBase, provider.providerType)
+
+      const delResp = await fetch(`${ollamaBase}/api/delete`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: modelName }),
+        signal: AbortSignal.timeout(OLLAMA_REQUEST_TIMEOUT_MS),
+      })
+
+      if (!delResp.ok) {
+        const errText = await delResp.text().catch(() => '')
+        res.status(502).json({ error: `Ollama delete failed: HTTP ${delResp.status} ${errText}` })
+        return
+      }
+
+      res.json({ message: `Model ${modelName} deleted` })
+    } catch (err) {
+      res.status(502).json({ error: `Failed to delete model: ${(err as Error).message}` })
     }
   })
 
