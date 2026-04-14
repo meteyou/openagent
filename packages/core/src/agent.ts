@@ -809,8 +809,30 @@ export class AgentCore {
 
     console.log(`[session-summary] Generating summary for ${conversationHistory.length} chars of history`)
 
+    // Resolve model + apiKey: use dedicated summary provider if configured, else current model
+    let summaryModel = this.model
+    let summaryApiKey = this.apiKey
     try {
-      const response = await completeSimple(this.model, {
+      const summarySettings = loadConfig<{ sessionSummaryProviderId?: string }>('settings.json')
+      const summaryProviderId = summarySettings.sessionSummaryProviderId
+      if (summaryProviderId) {
+        const { loadProvidersDecrypted } = await import('./provider-config.js')
+        const file = loadProvidersDecrypted()
+        const summaryProvider = file.providers.find(p => p.id === summaryProviderId)
+        if (summaryProvider) {
+          summaryModel = buildModel(summaryProvider)
+          summaryApiKey = await getApiKeyForProvider(summaryProvider)
+          console.log(`[session-summary] Using dedicated provider: ${summaryProvider.name} (${summaryProvider.defaultModel})`)
+        } else {
+          console.warn(`[session-summary] Configured summary provider '${summaryProviderId}' not found, using active provider`)
+        }
+      }
+    } catch {
+      // Settings not available, use current model
+    }
+
+    try {
+      const response = await completeSimple(summaryModel, {
         systemPrompt: `You are writing a chronological activity log entry for this session. Your output will be stored in a daily file so the agent can recall what happened in past sessions (e.g. "yesterday at 14:30 we discussed X and you asked me to do Y").
 
 Your output has two parts:
@@ -834,11 +856,11 @@ Open items are: explicitly mentioned but unfinished tasks, background tasks star
 Do NOT add this section if everything discussed was resolved or if there is nothing left open. Never add an empty "### Offene Fäden" section.`,
         messages: [{
           role: 'user' as const,
-          content: conversationHistory,
+          content: `Analyze the following session transcript and write an activity log entry:\n\n<transcript>\n${conversationHistory}\n</transcript>`,
           timestamp: Date.now(),
         }],
       }, {
-        apiKey: this.apiKey,
+        apiKey: summaryApiKey,
         temperature: 0,
       })
 
