@@ -459,24 +459,27 @@ export function initDatabase(dbPath?: string): Database {
   if (!sessionCols.find(c => c.name === 'session_user')) {
     db.exec("ALTER TABLE sessions ADD COLUMN session_user TEXT")
   }
-  if (!sessionCols.find(c => c.name === 'prompt_tokens')) {
+  const needsTokenBackfill = !sessionCols.find(c => c.name === 'prompt_tokens')
+  if (needsTokenBackfill) {
     db.exec("ALTER TABLE sessions ADD COLUMN prompt_tokens INTEGER NOT NULL DEFAULT 0")
   }
   if (!sessionCols.find(c => c.name === 'completion_tokens')) {
     db.exec("ALTER TABLE sessions ADD COLUMN completion_tokens INTEGER NOT NULL DEFAULT 0")
   }
 
-  db.exec(`
-    UPDATE sessions SET
-      prompt_tokens = COALESCE((
-        SELECT SUM(prompt_tokens) FROM token_usage WHERE token_usage.session_id = sessions.id
-      ), 0),
-      completion_tokens = COALESCE((
-        SELECT SUM(completion_tokens) FROM token_usage WHERE token_usage.session_id = sessions.id
-      ), 0)
-    WHERE prompt_tokens = 0 AND completion_tokens = 0
-      AND EXISTS (SELECT 1 FROM token_usage WHERE token_usage.session_id = sessions.id);
-  `)
+  // Backfill token counts from token_usage only when the columns are first added
+  if (needsTokenBackfill) {
+    db.exec(`
+      UPDATE sessions SET
+        prompt_tokens = COALESCE((
+          SELECT SUM(prompt_tokens) FROM token_usage WHERE token_usage.session_id = sessions.id
+        ), 0),
+        completion_tokens = COALESCE((
+          SELECT SUM(completion_tokens) FROM token_usage WHERE token_usage.session_id = sessions.id
+        ), 0)
+      WHERE EXISTS (SELECT 1 FROM token_usage WHERE token_usage.session_id = sessions.id);
+    `)
+  }
 
   return db
 }
