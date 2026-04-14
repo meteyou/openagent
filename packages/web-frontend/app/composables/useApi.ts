@@ -49,5 +49,10 @@ export function useApi() {
     return res.json() as Promise<T>
   }
 
-  return { apiFetch }
+  function getAuthHeaders(): Record<string, string> {
+    const token = getAccessToken()
+    return token ? { Authorization: `Bearer ${token}` } : {}
+  }
+
+  return { apiFetch, getAuthHeaders }
 }
