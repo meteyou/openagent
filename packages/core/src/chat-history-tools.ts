@@ -1,6 +1,7 @@
 import type { AgentTool } from '@mariozechner/pi-agent-core'
 import { Type } from '@mariozechner/pi-ai'
 import type { Database } from './database.js'
+import { normalizeFtsQuery } from './fts-utils.js'
 
 export interface ChatHistoryToolsOptions {
   db: Database
@@ -340,31 +341,6 @@ function parseMetadata(metadata: string | null): Record<string, unknown> | null 
   } catch {
     return null
   }
-}
-
-/**
- * Normalize plain-text queries into valid FTS5 syntax while preserving advanced FTS operators.
- */
-function normalizePlainFtsQuery(query: string): string {
-  const sanitized = query.replace(/[^\p{L}\p{N}_]+/gu, ' ').trim()
-  return sanitized || '""'
-}
-
-function normalizeFtsQuery(query: string): string {
-  const trimmed = query.trim()
-  if (trimmed.length === 0) return '""'
-
-  const hasBooleanOperators = /(^|\s)(AND|OR|NOT)(?=\s|$)/.test(trimmed)
-  const hasWildcard = /\*/.test(trimmed)
-  const quoteCount = (trimmed.match(/"/g) ?? []).length
-  const hasBalancedQuotes = quoteCount > 0 && quoteCount % 2 === 0
-  const hasGrouping = /[()]/.test(trimmed) && (hasBooleanOperators || hasWildcard || hasBalancedQuotes)
-
-  if (hasBooleanOperators || hasWildcard || hasBalancedQuotes || hasGrouping) {
-    return trimmed
-  }
-
-  return normalizePlainFtsQuery(trimmed)
 }
 
 /**
