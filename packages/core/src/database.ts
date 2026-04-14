@@ -47,6 +47,19 @@ CREATE TABLE IF NOT EXISTS sessions (
   ended_at TEXT,
   message_count INTEGER NOT NULL DEFAULT 0,
   summary_written INTEGER NOT NULL DEFAULT 0,
+  prompt_tokens INTEGER NOT NULL DEFAULT 0,
+  completion_tokens INTEGER NOT NULL DEFAULT 0,
+  FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS memories (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER,
+  session_id TEXT,
+  content TEXT NOT NULL,
+  source TEXT NOT NULL DEFAULT 'session',
+  timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+  embedding BLOB,
   FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
@@ -65,6 +78,9 @@ CREATE INDEX IF NOT EXISTS idx_tool_calls_session ON tool_calls(session_id);
 CREATE INDEX IF NOT EXISTS idx_tool_calls_timestamp ON tool_calls(timestamp);
 CREATE INDEX IF NOT EXISTS idx_tool_calls_tool_name ON tool_calls(tool_name);
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_memories_user ON memories(user_id);
+CREATE INDEX IF NOT EXISTS idx_memories_timestamp ON memories(timestamp);
+CREATE INDEX IF NOT EXISTS idx_memories_session ON memories(session_id);
 CREATE INDEX IF NOT EXISTS idx_health_checks_timestamp ON health_checks(timestamp);
 CREATE INDEX IF NOT EXISTS idx_health_checks_provider ON health_checks(provider);
 CREATE INDEX IF NOT EXISTS idx_health_checks_status ON health_checks(status);
@@ -147,11 +163,67 @@ export function initDatabase(dbPath?: string): Database {
         timestamp TEXT NOT NULL DEFAULT (datetime('now')),
         FOREIGN KEY (user_id) REFERENCES users(id)
       );
-      INSERT INTO chat_messages (id, session_id, user_id, role, content, timestamp)
-        SELECT id, session_id, user_id, role, content, timestamp FROM chat_messages_old;
+      INSERT INTO chat_messages (id, session_id, user_id, role, content, metadata, timestamp)
+        SELECT id, session_id, user_id, role, content, metadata, timestamp FROM chat_messages_old;
       DROP TABLE chat_messages_old;
     `)
   }
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id);
+    CREATE INDEX IF NOT EXISTS idx_chat_messages_user ON chat_messages(user_id);
+    CREATE INDEX IF NOT EXISTS idx_chat_messages_timestamp ON chat_messages(timestamp);
+  `)
+
+  db.exec(`
+    CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
+      content,
+      content=memories,
+      content_rowid=id,
+      tokenize="unicode61 remove_diacritics 2"
+    );
+
+    CREATE TRIGGER IF NOT EXISTS memories_fts_insert AFTER INSERT ON memories BEGIN
+      INSERT INTO memories_fts(rowid, content) VALUES (new.id, new.content);
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS memories_fts_delete AFTER DELETE ON memories BEGIN
+      INSERT INTO memories_fts(memories_fts, rowid, content) VALUES('delete', old.id, old.content);
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS memories_fts_update AFTER UPDATE OF content ON memories BEGIN
+      INSERT INTO memories_fts(memories_fts, rowid, content) VALUES('delete', old.id, old.content);
+      INSERT INTO memories_fts(rowid, content) VALUES (new.id, new.content);
+    END;
+  `)
+
+  db.exec(`
+    CREATE VIRTUAL TABLE IF NOT EXISTS chat_messages_fts USING fts5(
+      content,
+      content=chat_messages,
+      content_rowid=id,
+      tokenize="unicode61 remove_diacritics 2"
+    );
+
+    CREATE TRIGGER IF NOT EXISTS chat_messages_fts_insert AFTER INSERT ON chat_messages BEGIN
+      INSERT INTO chat_messages_fts(rowid, content) VALUES (new.id, new.content);
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS chat_messages_fts_delete AFTER DELETE ON chat_messages BEGIN
+      INSERT INTO chat_messages_fts(chat_messages_fts, rowid, content) VALUES('delete', old.id, old.content);
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS chat_messages_fts_update AFTER UPDATE OF content ON chat_messages BEGIN
+      INSERT INTO chat_messages_fts(chat_messages_fts, rowid, content) VALUES('delete', old.id, old.content);
+      INSERT INTO chat_messages_fts(rowid, content) VALUES (new.id, new.content);
+    END;
+  `)
+
+  // Backfill / repair external-content FTS indexes from existing rows.
+  // FTS5 external-content tables can expose content-table rowids even when the
+  // inverted index itself is empty, so rebuild is the safest idempotent option.
+  db.exec("INSERT INTO memories_fts(memories_fts) VALUES('rebuild')")
+  db.exec("INSERT INTO chat_messages_fts(chat_messages_fts) VALUES('rebuild')")
 
   // Create tasks table
   db.exec(`
@@ -365,13 +437,19 @@ export function initDatabase(dbPath?: string): Database {
     `)
   }
 
-  // Migration: add last_activity and session_user columns to sessions table
+  // Migration: add last_activity, session_user, and token columns to sessions table
   const sessionCols = db.prepare("PRAGMA table_info(sessions)").all() as { name: string }[]
   if (!sessionCols.find(c => c.name === 'last_activity')) {
     db.exec("ALTER TABLE sessions ADD COLUMN last_activity TEXT")
   }
   if (!sessionCols.find(c => c.name === 'session_user')) {
     db.exec("ALTER TABLE sessions ADD COLUMN session_user TEXT")
+  }
+  if (!sessionCols.find(c => c.name === 'prompt_tokens')) {
+    db.exec("ALTER TABLE sessions ADD COLUMN prompt_tokens INTEGER NOT NULL DEFAULT 0")
+  }
+  if (!sessionCols.find(c => c.name === 'completion_tokens')) {
+    db.exec("ALTER TABLE sessions ADD COLUMN completion_tokens INTEGER NOT NULL DEFAULT 0")
   }
 
   return db
