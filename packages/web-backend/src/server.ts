@@ -44,6 +44,7 @@ import { MemoryConsolidationScheduler } from './memory-consolidation-scheduler.j
 import { createTelegramBot } from '@openagent/telegram'
 import type { TelegramBot } from '@openagent/telegram'
 import { ChatEventBus } from './chat-event-bus.js'
+import { triggerFactExtractionForSessionEnd } from './fact-extraction-session-end.js'
 
 const PORT = parseInt(process.env.PORT ?? '3000', 10)
 const HOST = process.env.HOST ?? '0.0.0.0'
@@ -491,6 +492,13 @@ function wireAgentCoreEvents(): void {
       userId: parseInt(userId, 10),
       source: 'web',
       text: summary ?? undefined,
+    })
+
+    triggerFactExtractionForSessionEnd({
+      db,
+      agentCore,
+      userId,
+      sessionId,
     })
   })
 

@@ -819,13 +819,17 @@ describe('settings API', () => {
     adminToken = body.accessToken
   })
 
-  it('reads settings including telegram token', async () => {
+  it('reads settings including telegram token and fact extraction defaults', async () => {
     const res = await fetch(`${baseUrl}/api/settings`, {
       headers: { Authorization: `Bearer ${adminToken}` },
     })
-    const body = (await res.json()) as { telegramBotToken: string }
+    const body = (await res.json()) as {
+      telegramBotToken: string
+      factExtraction: { enabled: boolean; providerId: string; minSessionMessages: number }
+    }
     expect(res.status).toBe(200)
     expect(body.telegramBotToken).toBe('')
+    expect(body.factExtraction).toEqual({ enabled: false, providerId: '', minSessionMessages: 3 })
   })
 
   it('updates settings and applies live changes', async () => {
@@ -872,6 +876,55 @@ describe('settings API', () => {
     expect(settings.language).toBe('German')
     expect(settings.batchingDelayMs).toBe(4000)
     expect(telegram.botToken).toBe('telegram-secret')
+  })
+
+  it('persists factExtraction when saving full form (like the frontend)', async () => {
+    const getRes = await fetch(`${baseUrl}/api/settings`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    })
+    const defaults = (await getRes.json()) as Record<string, unknown>
+    expect(defaults.factExtraction).toEqual({
+      enabled: false,
+      providerId: '',
+      minSessionMessages: 3,
+    })
+
+    const fullForm = {
+      ...defaults,
+      factExtraction: {
+        ...(defaults.factExtraction as Record<string, unknown>),
+        enabled: true,
+        providerId: 'provider-123',
+        minSessionMessages: 5,
+      },
+    }
+    delete (fullForm as Record<string, unknown>).message
+
+    const putRes = await fetch(`${baseUrl}/api/settings`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(fullForm),
+    })
+    const putBody = (await putRes.json()) as {
+      factExtraction: { enabled: boolean; providerId: string; minSessionMessages: number }
+    }
+    expect(putRes.status).toBe(200)
+    expect(putBody.factExtraction).toEqual({ enabled: true, providerId: 'provider-123', minSessionMessages: 5 })
+
+    const settingsPath = path.join(tempDataDir, 'config', 'settings.json')
+    const raw = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as Record<string, unknown>
+    expect(raw.factExtraction).toEqual({ enabled: true, providerId: 'provider-123', minSessionMessages: 5 })
+
+    const reloadRes = await fetch(`${baseUrl}/api/settings`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    })
+    const reloaded = (await reloadRes.json()) as {
+      factExtraction: { enabled: boolean; providerId: string; minSessionMessages: number }
+    }
+    expect(reloaded.factExtraction).toEqual({ enabled: true, providerId: 'provider-123', minSessionMessages: 5 })
   })
 
   it('persists agentHeartbeat when saving full form (like the frontend)', async () => {

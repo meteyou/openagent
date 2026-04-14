@@ -33,6 +33,7 @@ export interface SettingsData {
   healthMonitor?: HealthMonitorData
   batchingDelayMs?: number
   uploadRetentionDays?: number
+  factExtraction?: FactExtractionSettingsData
 }
 
 export interface TelegramData {
@@ -49,6 +50,12 @@ export interface MemoryConsolidationSettingsData {
   runAtHour: number
   lookbackDays: number
   providerId: string
+}
+
+export interface FactExtractionSettingsData {
+  enabled: boolean
+  providerId: string
+  minSessionMessages: number
 }
 
 export interface AgentHeartbeatSettingsData {
@@ -181,6 +188,33 @@ function mergeConsolidation(
   }
 
   settingsRaw.memoryConsolidation = existing
+  return { error: null, changed: true }
+}
+
+function mergeFactExtraction(
+  body: Record<string, unknown>,
+  settingsRaw: Record<string, unknown>,
+): { error: string | null; changed: boolean } {
+  const fe = body.factExtraction as Record<string, unknown> | undefined
+  if (!fe) return { error: null, changed: false }
+
+  const existing = (settingsRaw.factExtraction ?? {}) as Record<string, unknown>
+
+  if (fe.enabled !== undefined) existing.enabled = !!fe.enabled
+  if (fe.providerId !== undefined) {
+    if (typeof fe.providerId !== 'string') {
+      return { error: 'factExtraction.providerId must be a string', changed: false }
+    }
+    existing.providerId = fe.providerId
+  }
+  if (fe.minSessionMessages !== undefined) {
+    if (typeof fe.minSessionMessages !== 'number' || !Number.isInteger(fe.minSessionMessages) || fe.minSessionMessages < 1 || fe.minSessionMessages > 100) {
+      return { error: 'factExtraction.minSessionMessages must be an integer 1-100', changed: false }
+    }
+    existing.minSessionMessages = fe.minSessionMessages
+  }
+
+  settingsRaw.factExtraction = existing
   return { error: null, changed: true }
 }
 
@@ -429,6 +463,15 @@ function buildConsolidationResponse(settingsRaw: Record<string, unknown>) {
   }
 }
 
+function buildFactExtractionResponse(settingsRaw: Record<string, unknown>) {
+  const fe = (settingsRaw.factExtraction ?? {}) as Record<string, unknown>
+  return {
+    enabled: fe.enabled ?? false,
+    providerId: fe.providerId ?? '',
+    minSessionMessages: fe.minSessionMessages ?? 3,
+  }
+}
+
 function buildAgentHeartbeatResponse(settingsRaw: Record<string, unknown>) {
   const ah = (settingsRaw.agentHeartbeat ?? {}) as Record<string, unknown>
   const nm = (ah.nightMode ?? {}) as Record<string, unknown>
@@ -526,6 +569,7 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
         telegramBotToken: telegram.botToken ?? '',
         healthMonitor: buildHealthMonitorResponse(settingsRaw),
         memoryConsolidation: buildConsolidationResponse(settingsRaw),
+        factExtraction: buildFactExtractionResponse(settingsRaw),
         agentHeartbeat: buildAgentHeartbeatResponse(settingsRaw),
         tasks: buildTasksResponse(settingsRaw),
         tts: buildTtsResponse(settingsRaw),
@@ -600,6 +644,9 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
       const mc = mergeConsolidation(body, settingsRaw)
       if (mc.error) { res.status(400).json({ error: mc.error }); return }
 
+      const fe = mergeFactExtraction(body, settingsRaw)
+      if (fe.error) { res.status(400).json({ error: fe.error }); return }
+
       const ah = mergeAgentHeartbeat(body, settingsRaw)
       if (ah.error) { res.status(400).json({ error: ah.error }); return }
 
@@ -671,6 +718,7 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
         telegramBotToken: telegram.botToken,
         healthMonitor: buildHealthMonitorResponse(settingsRaw),
         memoryConsolidation: buildConsolidationResponse(settingsRaw),
+        factExtraction: buildFactExtractionResponse(settingsRaw),
         agentHeartbeat: buildAgentHeartbeatResponse(settingsRaw),
         tasks: buildTasksResponse(settingsRaw),
         tts: buildTtsResponse(settingsRaw),
