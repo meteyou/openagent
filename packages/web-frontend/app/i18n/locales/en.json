@@ -180,7 +180,13 @@
     "fallbackNone": "None (no fallback)",
     "degradedThreshold": "Degraded Threshold",
     "degradedThresholdPlaceholder": "5000",
-    "degradedThresholdHint": "Latency above this value (in ms) marks the provider as degraded in health checks."
+    "degradedThresholdHint": "Latency above this value (in ms) marks the provider as degraded in health checks.",
+    "enabledModels": "Enabled Models",
+    "enabledModelsHint": "Select models to enable for this provider. Click \"Default\" to set the default model.",
+    "default": "Default",
+    "setDefault": "Set default",
+    "isDefault": "This is the default model",
+    "modelsCount": "models"
   },
   "logs": {
     "title": "Activity Logs",
