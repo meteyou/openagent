@@ -70,6 +70,8 @@ export {
   storedToOAuthCredentials,
   buildModel,
   estimateCost,
+  parseProviderModelId,
+  resolveProviderModelId,
   DEFAULT_PRICE_TABLE,
   getConfiguredPriceTable,
   PROVIDER_TYPE_PRESETS,

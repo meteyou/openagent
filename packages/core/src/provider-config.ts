@@ -897,6 +897,41 @@ export function buildModel(provider: ProviderConfig, modelId?: string): Model<Ap
 }
 
 /**
+ * Parse a composite provider:model ID string into its parts.
+ * Supports formats:
+ *   - "providerId:modelId" → { providerId, modelId }
+ *   - "providerId"         → { providerId, modelId: undefined }
+ *   - "" / undefined        → { providerId: '', modelId: undefined }
+ *
+ * When modelId is undefined, callers should fall back to the provider's defaultModel.
+ */
+export function parseProviderModelId(value?: string): { providerId: string; modelId?: string } {
+  if (!value) return { providerId: '' }
+  const colonIdx = value.indexOf(':')
+  if (colonIdx === -1) return { providerId: value }
+  return {
+    providerId: value.slice(0, colonIdx),
+    modelId: value.slice(colonIdx + 1) || undefined,
+  }
+}
+
+/**
+ * Resolve a composite provider:model ID to a provider config and model.
+ * Returns null if the provider is not found.
+ */
+export function resolveProviderModelId(value?: string): {
+  provider: ProviderConfig
+  modelId?: string
+} | null {
+  const { providerId, modelId } = parseProviderModelId(value)
+  if (!providerId) return null
+  const file = loadProvidersDecrypted()
+  const provider = file.providers.find(p => p.id === providerId)
+  if (!provider) return null
+  return { provider, modelId }
+}
+
+/**
  * Estimate cost from token counts using price table or model cost data
  */
 export function estimateCost(
