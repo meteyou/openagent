@@ -53,6 +53,12 @@ describe('config', () => {
     expect(settings.heartbeat.notifications.degradedToHealthy).toBe(false)
     expect(settings.heartbeat.notifications.degradedToDown).toBe(true)
 
+    expect(settings.factExtraction).toEqual({
+      enabled: false,
+      providerId: '',
+      minSessionMessages: 3,
+    })
+
     // top-level heartbeatIntervalMinutes should NOT exist
     expect(settings.heartbeatIntervalMinutes).toBeUndefined()
   })

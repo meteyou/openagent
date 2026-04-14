@@ -40,6 +40,11 @@ const TEMPLATES: Record<string, object> = {
       lookbackDays: 3,
       providerId: '',
     },
+    factExtraction: {
+      enabled: false,
+      providerId: '',
+      minSessionMessages: 3,
+    },
     agentHeartbeat: {
       enabled: false,
       intervalMinutes: 60,

@@ -242,7 +242,7 @@ export class SessionManager {
    * Includes main-session user/assistant messages plus related background-task
    * notifications that the user saw during the same session window.
    */
-  private buildConversationHistory(
+  buildConversationHistory(
     sessionId: string,
     options?: { userId?: string; startedAt?: number; endAt?: number },
   ): string | null {

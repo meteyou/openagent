@@ -195,6 +195,12 @@ export {
   deleteMemory,
 } from './memories-store.js'
 export type { MemoryFact, SearchMemoriesOptions, ListMemoriesOptions } from './memories-store.js'
+export {
+  parseFactLines,
+  isDuplicateFact,
+  storeFact,
+  extractAndStoreFacts,
+} from './fact-extraction.js'
 export { createSearchMemoriesTool } from './memories-tool.js'
 export type { SearchMemoriesToolOptions } from './memories-tool.js'
 export { MessageQueue } from './message-queue.js'
