@@ -95,7 +95,7 @@ export function createApp(options?: AppOptions): express.Express {
         options.onActiveProviderChanged?.()
       },
     }))
-    app.use('/api/memory', createMemoryRouter(getAgentCore, options.consolidationScheduler ?? null))
+    app.use('/api/memory', createMemoryRouter(options.db, getAgentCore, options.consolidationScheduler ?? null))
     app.use('/api/settings', createSettingsRouter({
       getAgentCore,
       onHealthMonitorSettingsChanged: () => {

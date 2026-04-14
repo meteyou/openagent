@@ -18,13 +18,16 @@ import {
   getDefaultConsolidationContent,
   readUserProfile,
   ensureUserProfile,
+  listMemories,
+  updateMemory,
+  deleteMemory,
 } from '@openagent/core'
-import type { AgentCore } from '@openagent/core'
+import type { AgentCore, Database } from '@openagent/core'
 import { jwtMiddleware } from '../auth.js'
 import type { AuthenticatedRequest } from '../auth.js'
 import type { MemoryConsolidationScheduler } from '../memory-consolidation-scheduler.js'
 
-export function createMemoryRouter(getAgentCore: () => AgentCore | null = () => null, consolidationScheduler?: MemoryConsolidationScheduler | null): Router {
+export function createMemoryRouter(db: Database, getAgentCore: () => AgentCore | null = () => null, consolidationScheduler?: MemoryConsolidationScheduler | null): Router {
   const router = Router()
 
   router.use(jwtMiddleware)
@@ -518,6 +521,97 @@ export function createMemoryRouter(getAgentCore: () => AgentCore | null = () => 
       res.json({ message: `Profile for ${username} updated`, username, content })
     } catch (err) {
       res.status(500).json({ error: `Failed to write user profile: ${(err as Error).message}` })
+    }
+  })
+
+  router.get('/facts', (req, res) => {
+    const rawUserId = req.query.userId
+    const rawLimit = req.query.limit
+    const rawOffset = req.query.offset
+
+    const userId = typeof rawUserId === 'string' && rawUserId.trim().length > 0
+      ? Number.parseInt(rawUserId, 10)
+      : undefined
+    const limit = typeof rawLimit === 'string' && rawLimit.trim().length > 0
+      ? Number.parseInt(rawLimit, 10)
+      : undefined
+    const offset = typeof rawOffset === 'string' && rawOffset.trim().length > 0
+      ? Number.parseInt(rawOffset, 10)
+      : undefined
+
+    if (userId !== undefined && Number.isNaN(userId)) {
+      res.status(400).json({ error: 'Invalid userId' })
+      return
+    }
+
+    if (limit !== undefined && Number.isNaN(limit)) {
+      res.status(400).json({ error: 'Invalid limit' })
+      return
+    }
+
+    if (offset !== undefined && Number.isNaN(offset)) {
+      res.status(400).json({ error: 'Invalid offset' })
+      return
+    }
+
+    try {
+      const result = listMemories(db, {
+        query: typeof req.query.query === 'string' ? req.query.query : undefined,
+        userId,
+        dateFrom: typeof req.query.dateFrom === 'string' ? req.query.dateFrom : undefined,
+        dateTo: typeof req.query.dateTo === 'string' ? req.query.dateTo : undefined,
+        limit,
+        offset,
+      })
+
+      res.json(result)
+    } catch (err) {
+      const message = (err as Error).message
+      const status = message.startsWith('Invalid date') ? 400 : 500
+      res.status(status).json({ error: `Failed to list facts: ${message}` })
+    }
+  })
+
+  router.put('/facts/:id', (req: AuthenticatedRequest, res) => {
+    const rawId = req.params.id
+    const id = Number.parseInt(Array.isArray(rawId) ? rawId[0] : rawId, 10)
+    if (Number.isNaN(id)) {
+      res.status(400).json({ error: 'Invalid fact ID' })
+      return
+    }
+
+    const { content } = req.body as { content?: string }
+    const trimmedContent = content?.trim()
+    if (!trimmedContent) {
+      res.status(400).json({ error: 'Content is required' })
+      return
+    }
+
+    try {
+      updateMemory(db, id, trimmedContent)
+      res.json({ message: 'Fact updated' })
+    } catch (err) {
+      const message = (err as Error).message
+      const status = message.startsWith('Memory not found') ? 404 : 500
+      res.status(status).json({ error: status === 404 ? 'Fact not found' : `Failed to update fact: ${message}` })
+    }
+  })
+
+  router.delete('/facts/:id', (req: AuthenticatedRequest, res) => {
+    const rawId = req.params.id
+    const id = Number.parseInt(Array.isArray(rawId) ? rawId[0] : rawId, 10)
+    if (Number.isNaN(id)) {
+      res.status(400).json({ error: 'Invalid fact ID' })
+      return
+    }
+
+    try {
+      deleteMemory(db, id)
+      res.json({ message: 'Fact deleted' })
+    } catch (err) {
+      const message = (err as Error).message
+      const status = message.startsWith('Memory not found') ? 404 : 500
+      res.status(status).json({ error: status === 404 ? 'Fact not found' : `Failed to delete fact: ${message}` })
     }
   })
 
