@@ -345,17 +345,26 @@ function parseMetadata(metadata: string | null): Record<string, unknown> | null 
 /**
  * Normalize plain-text queries into valid FTS5 syntax while preserving advanced FTS operators.
  */
+function normalizePlainFtsQuery(query: string): string {
+  const sanitized = query.replace(/[^\p{L}\p{N}_]+/gu, ' ').trim()
+  return sanitized || '""'
+}
+
 function normalizeFtsQuery(query: string): string {
   const trimmed = query.trim()
   if (trimmed.length === 0) return '""'
 
-  const hasAdvancedSyntax = /["()*]/.test(trimmed) || /(^|\s)(AND|OR|NOT)(?=\s|$)/.test(trimmed)
-  if (hasAdvancedSyntax) {
+  const hasBooleanOperators = /(^|\s)(AND|OR|NOT)(?=\s|$)/.test(trimmed)
+  const hasWildcard = /\*/.test(trimmed)
+  const quoteCount = (trimmed.match(/"/g) ?? []).length
+  const hasBalancedQuotes = quoteCount > 0 && quoteCount % 2 === 0
+  const hasGrouping = /[()]/.test(trimmed) && (hasBooleanOperators || hasWildcard || hasBalancedQuotes)
+
+  if (hasBooleanOperators || hasWildcard || hasBalancedQuotes || hasGrouping) {
     return trimmed
   }
 
-  const sanitized = trimmed.replace(/[^\p{L}\p{N}_]+/gu, ' ').trim()
-  return sanitized || `"${trimmed.replaceAll('"', '""')}"`
+  return normalizePlainFtsQuery(trimmed)
 }
 
 /**

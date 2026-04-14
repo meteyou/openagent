@@ -380,5 +380,16 @@ describe('read_chat_history tool', () => {
       expect(text).toContain('Hello, how are you?')
       expect(text).not.toContain('secret-page-xyz')
     })
+
+    it('sanitizes punctuation-heavy plain-text queries before sending them to FTS', async () => {
+      insertMessage(db, 'session-fts-special', 'user', 'Uses C# (legacy) stack', '2025-04-06 13:00:00')
+
+      const result = await tool.execute('tc-1', { query: 'C# (legacy)' })
+      const details = getDetails(result)
+      const text = getTextContent(result)
+
+      expect(details.total).toBe(1)
+      expect(text).toContain('Uses C# (legacy) stack')
+    })
   })
 })

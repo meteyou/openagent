@@ -86,6 +86,40 @@ describe('memories-store', () => {
     expect(page.facts.every(fact => fact.content.includes('docker'))).toBe(true)
   })
 
+  it('treats punctuation-heavy UI queries as plain text instead of raw FTS syntax', () => {
+    createMemory(db, 1, 'session-special', 'Uses C# (legacy) stack', 'session')
+
+    expect(() => listMemories(db, {
+      userId: 1,
+      query: 'C# (legacy)',
+      limit: 10,
+      offset: 0,
+    })).not.toThrow()
+
+    const page = listMemories(db, {
+      userId: 1,
+      query: 'C# (legacy)',
+      limit: 10,
+      offset: 0,
+    })
+    expect(page.total).toBe(1)
+    expect(page.facts[0].content).toBe('Uses C# (legacy) stack')
+  })
+
+  it('sanitizes unmatched quotes in plain-text queries', () => {
+    createMemory(db, 1, 'session-quote', 'User prefers dark mode', 'session')
+
+    const page = listMemories(db, {
+      userId: 1,
+      query: '"dark mode',
+      limit: 10,
+      offset: 0,
+    })
+
+    expect(page.total).toBe(1)
+    expect(page.facts[0].content).toBe('User prefers dark mode')
+  })
+
   it('updates the FTS index when a memory is created', () => {
     const id = createMemory(db, 1, 'session-a', 'Remember the postgres port', 'session')
 
