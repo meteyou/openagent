@@ -168,6 +168,86 @@ describe('database', () => {
     db.close()
   })
 
+  it('backfills session token counters from existing token_usage rows', () => {
+    const dbPath = tmpDbPath()
+    const legacyDb = new BetterSqlite3(dbPath)
+    legacyDb.pragma('foreign_keys = ON')
+    legacyDb.exec(`
+      CREATE TABLE users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'user'
+      );
+
+      CREATE TABLE sessions (
+        id TEXT PRIMARY KEY,
+        user_id INTEGER,
+        source TEXT NOT NULL DEFAULT 'web',
+        started_at TEXT NOT NULL DEFAULT (datetime('now')),
+        ended_at TEXT,
+        message_count INTEGER NOT NULL DEFAULT 0,
+        summary_written INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      );
+
+      CREATE TABLE token_usage (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+        provider TEXT NOT NULL,
+        model TEXT NOT NULL,
+        prompt_tokens INTEGER NOT NULL DEFAULT 0,
+        completion_tokens INTEGER NOT NULL DEFAULT 0,
+        estimated_cost REAL NOT NULL DEFAULT 0.0,
+        session_id TEXT
+      );
+    `)
+
+    legacyDb.prepare(
+      'INSERT INTO sessions (id, source) VALUES (?, ?)'
+    ).run('legacy-with-usage', 'web')
+    legacyDb.prepare(
+      'INSERT INTO sessions (id, source) VALUES (?, ?)'
+    ).run('legacy-without-usage', 'web')
+
+    legacyDb.prepare(
+      'INSERT INTO token_usage (provider, model, prompt_tokens, completion_tokens, estimated_cost, session_id) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run('openai', 'gpt-4o', 100, 40, 0.001, 'legacy-with-usage')
+    legacyDb.prepare(
+      'INSERT INTO token_usage (provider, model, prompt_tokens, completion_tokens, estimated_cost, session_id) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run('openai', 'gpt-4o-mini', 25, 10, 0.0002, 'legacy-with-usage')
+    legacyDb.prepare(
+      'INSERT INTO token_usage (provider, model, prompt_tokens, completion_tokens, estimated_cost) VALUES (?, ?, ?, ?, ?)'
+    ).run('anthropic', 'claude-3-5-sonnet-20241022', 50, 20, 0.002)
+
+    legacyDb.close()
+
+    let db = initDatabase(dbPath)
+
+    const backfilledSession = db.prepare(
+      'SELECT prompt_tokens, completion_tokens FROM sessions WHERE id = ?'
+    ).get('legacy-with-usage') as { prompt_tokens: number, completion_tokens: number }
+    expect(backfilledSession.prompt_tokens).toBe(125)
+    expect(backfilledSession.completion_tokens).toBe(50)
+
+    const untouchedSession = db.prepare(
+      'SELECT prompt_tokens, completion_tokens FROM sessions WHERE id = ?'
+    ).get('legacy-without-usage') as { prompt_tokens: number, completion_tokens: number }
+    expect(untouchedSession.prompt_tokens).toBe(0)
+    expect(untouchedSession.completion_tokens).toBe(0)
+
+    db.close()
+
+    db = initDatabase(dbPath)
+    const idempotentSession = db.prepare(
+      'SELECT prompt_tokens, completion_tokens FROM sessions WHERE id = ?'
+    ).get('legacy-with-usage') as { prompt_tokens: number, completion_tokens: number }
+    expect(idempotentSession.prompt_tokens).toBe(125)
+    expect(idempotentSession.completion_tokens).toBe(50)
+
+    db.close()
+  })
+
   it('can insert and query token_usage', () => {
     const db = initDatabase(tmpDbPath())
 

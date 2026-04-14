@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach, vi, beforeEach } from 'vitest'
 import { SessionManager } from './session-manager.js'
 import { initDatabase } from './database.js'
+import { logTokenUsage } from './token-logger.js'
 import type { Database } from './database.js'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -79,6 +80,36 @@ describe('SessionManager', () => {
       expect(metadata!.summary_written).toBe(0)
       expect(metadata!.last_activity).not.toBeNull()
       expect(metadata!.session_user).toBe('user1')
+      expect(metadata!.prompt_tokens).toBe(0)
+      expect(metadata!.completion_tokens).toBe(0)
+    })
+
+    it('returns prompt and completion token counts in session metadata', async () => {
+      const manager = new SessionManager({ db, memoryDir })
+      await manager.init()
+      const session = manager.getOrCreateSession('user1', 'web')
+
+      logTokenUsage(db, {
+        provider: 'openai',
+        model: 'gpt-4o',
+        promptTokens: 120,
+        completionTokens: 45,
+        estimatedCost: 0.001,
+        sessionId: session.id,
+      })
+      logTokenUsage(db, {
+        provider: 'openai',
+        model: 'gpt-4o-mini',
+        promptTokens: 30,
+        completionTokens: 15,
+        estimatedCost: 0.0002,
+        sessionId: session.id,
+      })
+
+      const metadata = manager.getSessionMetadata(session.id)
+      expect(metadata).toBeDefined()
+      expect(metadata!.prompt_tokens).toBe(150)
+      expect(metadata!.completion_tokens).toBe(60)
     })
   })
 
@@ -100,9 +131,6 @@ describe('SessionManager', () => {
       const manager = new SessionManager({ db, memoryDir })
       await manager.init()
       const session = manager.getOrCreateSession('user1')
-
-      const metadataBefore = manager.getSessionMetadata(session.id)
-      const activityBefore = metadataBefore!.last_activity
 
       // Small delay to ensure timestamp difference
       await new Promise(resolve => setTimeout(resolve, 10))

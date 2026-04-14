@@ -31,6 +31,10 @@ describe('token-logger', () => {
     it('inserts token usage record', () => {
       const testDb = createDb()
 
+      testDb.prepare(
+        'INSERT INTO sessions (id, source) VALUES (?, ?)'
+      ).run('session-123', 'web')
+
       logTokenUsage(testDb, {
         provider: 'openai',
         model: 'gpt-4o',
@@ -50,6 +54,62 @@ describe('token-logger', () => {
       expect(rows[0].session_id).toBe('session-123')
     })
 
+    it('increments per-session token counters', () => {
+      const testDb = createDb()
+
+      testDb.prepare(
+        'INSERT INTO sessions (id, source) VALUES (?, ?)'
+      ).run('session-with-tokens', 'web')
+
+      logTokenUsage(testDb, {
+        provider: 'openai',
+        model: 'gpt-4o',
+        promptTokens: 150,
+        completionTokens: 75,
+        estimatedCost: 0.001125,
+        sessionId: 'session-with-tokens',
+      })
+
+      const session = testDb.prepare(
+        'SELECT prompt_tokens, completion_tokens FROM sessions WHERE id = ?'
+      ).get('session-with-tokens') as { prompt_tokens: number, completion_tokens: number }
+
+      expect(session.prompt_tokens).toBe(150)
+      expect(session.completion_tokens).toBe(75)
+    })
+
+    it('accumulates per-session token counters across multiple calls', () => {
+      const testDb = createDb()
+
+      testDb.prepare(
+        'INSERT INTO sessions (id, source) VALUES (?, ?)'
+      ).run('session-accumulate', 'web')
+
+      logTokenUsage(testDb, {
+        provider: 'openai',
+        model: 'gpt-4o',
+        promptTokens: 100,
+        completionTokens: 50,
+        estimatedCost: 0.001,
+        sessionId: 'session-accumulate',
+      })
+      logTokenUsage(testDb, {
+        provider: 'openai',
+        model: 'gpt-4o',
+        promptTokens: 25,
+        completionTokens: 10,
+        estimatedCost: 0.00025,
+        sessionId: 'session-accumulate',
+      })
+
+      const session = testDb.prepare(
+        'SELECT prompt_tokens, completion_tokens FROM sessions WHERE id = ?'
+      ).get('session-accumulate') as { prompt_tokens: number, completion_tokens: number }
+
+      expect(session.prompt_tokens).toBe(125)
+      expect(session.completion_tokens).toBe(60)
+    })
+
     it('inserts without session_id', () => {
       const testDb = createDb()
 
@@ -64,6 +124,31 @@ describe('token-logger', () => {
       const rows = testDb.prepare('SELECT * FROM token_usage').all() as Record<string, unknown>[]
       expect(rows).toHaveLength(1)
       expect(rows[0].session_id).toBeNull()
+    })
+
+    it('does not update session counters when session_id is omitted', () => {
+      const testDb = createDb()
+
+      testDb.prepare(
+        'INSERT INTO sessions (id, source) VALUES (?, ?)'
+      ).run('session-no-op', 'web')
+
+      expect(() => {
+        logTokenUsage(testDb, {
+          provider: 'anthropic',
+          model: 'claude-3-5-sonnet-20241022',
+          promptTokens: 200,
+          completionTokens: 100,
+          estimatedCost: 0.002,
+        })
+      }).not.toThrow()
+
+      const session = testDb.prepare(
+        'SELECT prompt_tokens, completion_tokens FROM sessions WHERE id = ?'
+      ).get('session-no-op') as { prompt_tokens: number, completion_tokens: number }
+
+      expect(session.prompt_tokens).toBe(0)
+      expect(session.completion_tokens).toBe(0)
     })
   })
 
