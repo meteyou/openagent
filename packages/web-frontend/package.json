@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@nuxtjs/i18n": "^10.2.4",
+    "@openagent/core": "*",
     "@tailwindcss/vite": "^4.2.2",
     "@vueuse/core": "^14.2.1",
     "class-variance-authority": "^0.7.1",
