@@ -1,5 +1,4 @@
 import crypto from 'node:crypto'
-import dns from 'node:dns/promises'
 import { URL } from 'node:url'
 import { Router } from 'express'
 import {
@@ -38,11 +37,9 @@ const VALID_PROVIDER_TYPES = Object.keys(PROVIDER_TYPE_PRESETS)
 const OLLAMA_REQUEST_TIMEOUT_MS = 15_000
 
 /**
- * Validate that a URL does not point to private/internal network addresses.
- * For `ollama-local` providers, localhost/loopback is explicitly allowed.
- * Rejects link-local, cloud metadata, and RFC-1918 ranges for `ollama-cloud`.
+ * Validate that a URL is a valid http/https URL for Ollama.
  */
-async function validateOllamaUrl(urlStr: string, providerType: string): Promise<void> {
+function validateOllamaUrl(urlStr: string): void {
   let parsed: URL
   try {
     parsed = new URL(urlStr)
@@ -53,39 +50,8 @@ async function validateOllamaUrl(urlStr: string, providerType: string): Promise<
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
     throw new Error('Only http/https URLs are allowed')
   }
-
-  const hostname = parsed.hostname
-
-  // For ollama-local, allow loopback — that's the whole point
-  if (providerType === 'ollama-local') return
-
-  // For ollama-cloud, resolve DNS and reject private ranges
-  const isIpLiteral = /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname) || hostname.startsWith('[')
-  const addresses = isIpLiteral ? [hostname.replace(/^\[|\]$/g, '')] : (await dns.resolve4(hostname).catch(() => []))
-
-  for (const addr of addresses) {
-    if (isPrivateOrReserved(addr)) {
-      throw new Error(`URL resolves to a private/reserved address (${addr})`)
-    }
-  }
 }
 
-function isPrivateOrReserved(ip: string): boolean {
-  const parts = ip.split('.').map(Number)
-  if (parts.length !== 4) return false
-  const [a, b] = parts
-  // Loopback 127.0.0.0/8
-  if (a === 127) return true
-  // Link-local 169.254.0.0/16 (cloud metadata)
-  if (a === 169 && b === 254) return true
-  // RFC-1918
-  if (a === 10) return true
-  if (a === 172 && b >= 16 && b <= 31) return true
-  if (a === 192 && b === 168) return true
-  // 0.0.0.0
-  if (a === 0) return true
-  return false
-}
 
 export interface ProvidersRouterOptions {
   onActiveProviderChanged?: () => void
@@ -224,7 +190,10 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
         activeModel: data.activeModel ?? null,
         fallbackProvider: data.fallbackProvider ?? null,
         fallbackModel: data.fallbackModel ?? null,
-        presets: PROVIDER_TYPE_PRESETS,
+        // Filter out legacy aliases so they don't appear in the UI dropdown
+        presets: Object.fromEntries(
+          Object.entries(PROVIDER_TYPE_PRESETS).filter(([key]) => key !== 'ollama-local' && key !== 'ollama-cloud'),
+        ),
       })
     } catch (err) {
       res.status(500).json({ error: `Failed to load providers: ${(err as Error).message}` })
@@ -499,20 +468,20 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
   /**
    * POST /api/providers/ollama-probe
    * Probe an Ollama instance by base URL (for create-mode, before a provider exists).
-   * Body: { baseUrl: string, providerType: 'ollama-local' | 'ollama-cloud' }
+   * Body: { baseUrl: string, providerType: 'ollama' }
    */
   router.post('/ollama-probe', async (req: AuthenticatedRequest, res) => {
     const { baseUrl, providerType } = req.body as { baseUrl?: string; providerType?: string }
 
-    if (!providerType || (providerType !== 'ollama-local' && providerType !== 'ollama-cloud')) {
-      res.status(400).json({ error: 'providerType must be ollama-local or ollama-cloud' })
+    if (!providerType || providerType !== 'ollama') {
+      res.status(400).json({ error: 'providerType must be ollama' })
       return
     }
 
     try {
       let ollamaBase = (baseUrl || 'http://localhost:11434').replace(/\/v1\/?$/, '').replace(/\/$/, '')
 
-      await validateOllamaUrl(ollamaBase, providerType)
+      validateOllamaUrl(ollamaBase)
 
       const tagsResp = await fetch(`${ollamaBase}/api/tags`, {
         signal: AbortSignal.timeout(OLLAMA_REQUEST_TIMEOUT_MS),
@@ -549,13 +518,13 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
   /**
    * POST /api/providers/ollama-probe/pull
    * Pull a model via Ollama base URL (for create-mode, before a provider exists).
-   * Body: { baseUrl: string, providerType: 'ollama-local' | 'ollama-cloud', modelName: string }
+   * Body: { baseUrl: string, providerType: 'ollama', modelName: string }
    */
   router.post('/ollama-probe/pull', async (req: AuthenticatedRequest, res) => {
     const { baseUrl, providerType, modelName } = req.body as { baseUrl?: string; providerType?: string; modelName?: string }
 
-    if (!providerType || (providerType !== 'ollama-local' && providerType !== 'ollama-cloud')) {
-      res.status(400).json({ error: 'providerType must be ollama-local or ollama-cloud' })
+    if (!providerType || providerType !== 'ollama') {
+      res.status(400).json({ error: 'providerType must be ollama' })
       return
     }
     if (!modelName?.trim()) {
@@ -566,7 +535,7 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
     try {
       let ollamaBase = (baseUrl || 'http://localhost:11434').replace(/\/v1\/?$/, '').replace(/\/$/, '')
 
-      await validateOllamaUrl(ollamaBase, providerType)
+      validateOllamaUrl(ollamaBase)
 
       const ac = new AbortController()
       req.on('close', () => ac.abort())
@@ -651,7 +620,7 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
   /**
    * GET /api/providers/:id/ollama-models
    * Fetch installed models from an Ollama instance.
-   * Only works for ollama-local / ollama-cloud providers.
+   * Only works for ollama providers.
    */
   router.get('/:id/ollama-models', async (req: AuthenticatedRequest, res) => {
     const id = req.params.id as string
@@ -664,7 +633,7 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
         return
       }
 
-      const isOllama = provider.providerType === 'ollama-local' || provider.providerType === 'ollama-cloud'
+      const isOllama = provider.providerType === 'ollama'
       if (!isOllama) {
         res.status(400).json({ error: 'Not an Ollama provider' })
         return
@@ -674,7 +643,7 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
       let ollamaBase = provider.baseUrl || 'http://localhost:11434'
       ollamaBase = ollamaBase.replace(/\/v1\/?$/, '').replace(/\/$/, '')
 
-      await validateOllamaUrl(ollamaBase, provider.providerType)
+      validateOllamaUrl(ollamaBase)
 
       const tagsResp = await fetch(`${ollamaBase}/api/tags`, {
         signal: AbortSignal.timeout(OLLAMA_REQUEST_TIMEOUT_MS),
@@ -730,7 +699,7 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
         return
       }
 
-      const isOllama = provider.providerType === 'ollama-local' || provider.providerType === 'ollama-cloud'
+      const isOllama = provider.providerType === 'ollama'
       if (!isOllama) {
         res.status(400).json({ error: 'Not an Ollama provider' })
         return
@@ -739,7 +708,7 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
       let ollamaBase = provider.baseUrl || 'http://localhost:11434'
       ollamaBase = ollamaBase.replace(/\/v1\/?$/, '').replace(/\/$/, '')
 
-      await validateOllamaUrl(ollamaBase, provider.providerType)
+      validateOllamaUrl(ollamaBase)
 
       // Abort the Ollama fetch when the client disconnects
       const ac = new AbortController()
@@ -850,7 +819,7 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
         return
       }
 
-      const isOllama = provider.providerType === 'ollama-local' || provider.providerType === 'ollama-cloud'
+      const isOllama = provider.providerType === 'ollama'
       if (!isOllama) {
         res.status(400).json({ error: 'Not an Ollama provider' })
         return
@@ -859,7 +828,7 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
       let ollamaBase = provider.baseUrl || 'http://localhost:11434'
       ollamaBase = ollamaBase.replace(/\/v1\/?$/, '').replace(/\/$/, '')
 
-      await validateOllamaUrl(ollamaBase, provider.providerType)
+      validateOllamaUrl(ollamaBase)
 
       const delResp = await fetch(`${ollamaBase}/api/delete`, {
         method: 'DELETE',
