@@ -285,10 +285,6 @@
     "factsDeleteError": "Could not delete fact.",
     "factsDeleteConfirmTitle": "Delete fact?",
     "factsDeleteConfirmDescription": "Delete this fact? \"{content}\"",
-    "projectsTab": "Projects",
-    "noProjectFiles": "No project files yet.",
-    "projectColumnName": "Project",
-    "projectEditorDescription": "Project notes are used by the agent for project-specific context.",
     "wikiTab": "Wiki"
   },
   "settings": {

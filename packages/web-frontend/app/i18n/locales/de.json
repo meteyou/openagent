@@ -285,10 +285,6 @@
     "factsDeleteError": "Fakt konnte nicht gelöscht werden.",
     "factsDeleteConfirmTitle": "Fakt löschen?",
     "factsDeleteConfirmDescription": "Diesen Fakt löschen? \"{content}\"",
-    "projectsTab": "Projekte",
-    "noProjectFiles": "Noch keine Projektdateien vorhanden.",
-    "projectColumnName": "Projekt",
-    "projectEditorDescription": "Projektnotizen werden vom Agenten für projektspezifischen Kontext genutzt.",
     "wikiTab": "Wiki"
   },
   "settings": {
