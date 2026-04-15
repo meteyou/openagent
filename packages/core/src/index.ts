@@ -14,6 +14,7 @@ export {
 } from './uploads.js'
 export type { UploadDescriptor, SaveUploadInput, UploadSettings } from './uploads.js'
 export { loadConfig, getConfigDir, ensureConfigTemplates } from './config.js'
+export * from './contracts/index.js'
 export {
   ensureMemoryStructure,
   ensureConfigStructure,
