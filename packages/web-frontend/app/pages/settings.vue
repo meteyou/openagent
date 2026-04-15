@@ -1632,6 +1632,7 @@
 </template>
 
 <script setup lang="ts">
+import { canonicalizeProviderModelRef } from '@openagent/core/contracts'
 import type { MemoryConsolidationSettings, FactExtractionSettings, HealthMonitorNotificationToggles, HealthMonitorSettings, AgentHeartbeatSettings, TasksSettings, TtsSettings, SttSettings } from '~/composables/useSettings'
 import type { TelegramUser } from '~/composables/useTelegramUsers'
 
@@ -1943,10 +1944,10 @@ const form = ref<SettingsForm | null>(null)
  * If it matches a known provider, it is expanded to "providerId:defaultModel".
  */
 function migrateProviderValue(value: string): string {
-  if (!value || value.includes(':')) return value
-  const provider = providers.value.find(p => p.id === value)
-  if (provider) return `${provider.id}:${provider.defaultModel}`
-  return value
+  return canonicalizeProviderModelRef(
+    value,
+    providers.value.map(provider => ({ id: provider.id, defaultModel: provider.defaultModel })),
+  )
 }
 
 function hydrateForm() {
