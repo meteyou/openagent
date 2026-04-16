@@ -1,14 +1,24 @@
-name: Refactor Baseline Guardrails
+name: CI Guardrails
 
 on:
   pull_request:
+    branches:
+      - main
   push:
     branches:
       - main
+  workflow_dispatch:
+
+concurrency:
+  group: ci-guardrails-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  parity-baseline:
+  validate:
+    name: Lint + Baseline + Critical Flows
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout repository
@@ -19,6 +29,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: package-lock.json
 
       - name: Install dependencies
         run: npm ci
