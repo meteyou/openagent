@@ -367,7 +367,7 @@
 </template>
 
 <script setup lang="ts">
-import type { Provider, ProviderTypePreset, AvailableModel, OllamaModel, OllamaPullEvent } from '~/composables/useProviders'
+import type { Provider, ProviderTypePreset, AvailableModel, OllamaModel, OllamaPullEvent } from '~/features/providers/composables/useProviders'
 
 export interface ProviderFormPayload {
   name: string
@@ -392,7 +392,17 @@ const emit = defineEmits<{
   oauthComplete: []
 }>()
 
-const { fetchModels, fetchOllamaModels, probeOllamaModels, pullOllamaModel, probeOllamaPull, startOAuthLogin, pollOAuthStatus, submitOAuthCode, fetchProviders } = useProviders()
+const {
+  fetchModels,
+  fetchOllamaModels,
+  probeOllamaModels,
+  pullOllamaModel,
+  probeOllamaPull,
+  startOAuthLogin,
+  pollOAuthStatus,
+  submitOAuthCode,
+  fetchProviders,
+} = useProviders()
 const { t } = useI18n()
 
 const form = reactive({

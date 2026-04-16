@@ -84,7 +84,7 @@
 </template>
 
 <script setup lang="ts">
-import type { Provider, ProviderTypePreset } from '~/composables/useProviders'
+import type { Provider, ProviderTypePreset } from '~/features/providers/composables/useProviders'
 
 const { t } = useI18n()
 
