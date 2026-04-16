@@ -80,6 +80,17 @@
     "ttsStop": "Stop reading",
     "ttsLoading": "Generating speech...",
     "micTooltip": "Hold to record",
+    "thinkingLevelTooltip": "Thinking level for the next turn (applies to the main agent globally)",
+    "thinkingLevelSaved": "Thinking level updated",
+    "thinkingLevelSaveFailed": "Failed to update thinking level",
+    "thinkingLevelMenu": {
+      "off": "Off (fastest)",
+      "minimal": "Minimal",
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "xhigh": "Extra high"
+    },
     "micRecording": "Recording...",
     "micTranscribing": "Transcribing...",
     "micError": "Microphone error",
@@ -309,6 +320,18 @@
     "languageHint": "This setting is injected directly into the system prompt and applies immediately.",
     "timezone": "Timezone",
     "timezoneHint": "The current date and time in this timezone are included in the system prompt so the agent always knows when it is.",
+    "thinkingLevel": "Thinking level",
+    "thinkingLevelHint": "How much the chat agent should reason before responding. Higher levels are slower and more expensive. Ignored by models that don't support reasoning.",
+    "backgroundThinkingLevel": "Background thinking level",
+    "backgroundThinkingLevelHint": "Reasoning level for background task agents, loop detection, fact extraction, memory consolidation, and session summaries.",
+    "thinkingLevelOptions": {
+      "off": "Off (fastest, cheapest)",
+      "minimal": "Minimal",
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "xhigh": "Extra high (select models only)"
+    },
     "languageMatch": "Match user's language",
     "languages": {
       "english": "English",

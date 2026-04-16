@@ -80,6 +80,17 @@
     "ttsStop": "Vorlesen stoppen",
     "ttsLoading": "Sprache wird generiert...",
     "micTooltip": "Gedrückt halten zum Aufnehmen",
+    "thinkingLevelTooltip": "Denk-Level für den nächsten Zug (gilt global für den Haupt-Agent)",
+    "thinkingLevelSaved": "Denk-Level aktualisiert",
+    "thinkingLevelSaveFailed": "Denk-Level konnte nicht geändert werden",
+    "thinkingLevelMenu": {
+      "off": "Aus (am schnellsten)",
+      "minimal": "Minimal",
+      "low": "Niedrig",
+      "medium": "Mittel",
+      "high": "Hoch",
+      "xhigh": "Sehr hoch"
+    },
     "micRecording": "Aufnahme...",
     "micTranscribing": "Transkribiere...",
     "micError": "Mikrofonfehler",
@@ -309,6 +320,18 @@
     "languageHint": "Diese Einstellung wird direkt in den System-Prompt eingefügt und sofort übernommen.",
     "timezone": "Zeitzone",
     "timezoneHint": "Das aktuelle Datum und die Uhrzeit in dieser Zeitzone werden in den System-Prompt eingefügt, damit der Agent immer weiß, wann es ist.",
+    "thinkingLevel": "Denk-Level",
+    "thinkingLevelHint": "Wie stark der Chat-Agent nachdenken soll, bevor er antwortet. Höhere Stufen sind langsamer und teurer. Modelle ohne Reasoning-Support ignorieren die Einstellung.",
+    "backgroundThinkingLevel": "Denk-Level (Hintergrund)",
+    "backgroundThinkingLevelHint": "Denk-Level für Hintergrund-Aufgaben, Loop-Detection, Faktextraktion, Gedächtnis-Konsolidierung und Session-Zusammenfassungen.",
+    "thinkingLevelOptions": {
+      "off": "Aus (am schnellsten, am günstigsten)",
+      "minimal": "Minimal",
+      "low": "Niedrig",
+      "medium": "Mittel",
+      "high": "Hoch",
+      "xhigh": "Sehr hoch (nur ausgewählte Modelle)"
+    },
     "languageMatch": "Sprache des Nutzers übernehmen",
     "languages": {
       "english": "Englisch",
