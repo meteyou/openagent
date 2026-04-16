@@ -134,7 +134,7 @@ Folgende Baseline-Kommandos sind verbindlich für Refactor-PRs:
 ```bash
 npm run baseline:unit
 npm run baseline:api
-npm run baseline:smoke
+npm run verify:critical-flows
 ```
 
 ### Baseline-Segmente
@@ -144,8 +144,8 @@ npm run baseline:smoke
   - Frontend Utility/Composable-Tests
 - `baseline:api`
   - Backend API-/Transport-Test-Suite
-- `baseline:smoke`
-  - Kritische Flows (Health, Auth/Login, Chat-History, Settings, Providers) via fokussiertem Smoke-Subset
+- `verify:critical-flows`
+  - Kritische Flows (Health, Auth/Login, Chat-History, Memory, Settings, Providers, Tasks, Cronjobs)
 
 Gesamtausführung:
 
@@ -164,7 +164,7 @@ Dieser Workflow führt bei Push/PR aus:
 1. `npm run lint:boundaries`
 2. `npm run baseline:unit`
 3. `npm run baseline:api`
-4. `npm run baseline:smoke`
+4. `npm run verify:critical-flows`
 
 Damit wird jede Migrations-PR früh gegen Boundary-Verletzungen und Verhaltensdrift geprüft.
 
