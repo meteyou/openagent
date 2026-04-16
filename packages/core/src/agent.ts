@@ -14,7 +14,7 @@ import { SessionManager } from './session-manager.js'
 import type { SessionInfo } from './session-manager.js'
 import { MessageQueue } from './message-queue.js'
 import { createAgentRuntime } from './agent-runtime.js'
-import type { AgentRuntimeBoundary } from './agent-runtime.js'
+import type { AgentRuntimeBoundary, AgentRuntimePiAgentAccess } from './agent-runtime.js'
 import type { AgentRuntimeStateSnapshot, ResponseChunk } from './agent-runtime-types.js'
 
 export type { ResponseChunk } from './agent-runtime-types.js'
@@ -422,7 +422,12 @@ Do NOT add this section if everything discussed was resolved or if there is noth
    * @deprecated Prefer boundary methods like sendMessage()/abort()/getRuntimeStateSnapshot().
    */
   getAgent(): PiAgent {
-    return this.runtime.getAgent()
+    const runtimeWithAgent = this.runtime as Partial<AgentRuntimePiAgentAccess>
+    if (typeof runtimeWithAgent.getAgent !== 'function') {
+      throw new Error('Direct agent access is not available on this runtime implementation.')
+    }
+
+    return runtimeWithAgent.getAgent()
   }
 
   /**

@@ -43,10 +43,17 @@ export interface AgentRuntimeBoundary {
   getProviderManager(): ProviderManager | undefined
   clearMessages(): void
   abort(): void
-  getAgent(): PiAgent
   getStateSnapshot(): AgentRuntimeStateSnapshot
   getCurrentModel(): Model<Api>
   getCurrentApiKey(): string
+}
+
+/**
+ * Escape hatch for legacy integrations that still need direct pi-agent access.
+ * Not part of AgentRuntimeBoundary to keep the abstraction clean.
+ */
+export interface AgentRuntimePiAgentAccess {
+  getAgent(): PiAgent
 }
 
 /**
@@ -386,7 +393,7 @@ function getActiveSkillEntries(): SkillPromptEntry[] {
   }
 }
 
-class PiAgentRuntime implements AgentRuntimeBoundary {
+class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess {
   private agent: PiAgent
   private model: Model<Api>
   private apiKey: string
