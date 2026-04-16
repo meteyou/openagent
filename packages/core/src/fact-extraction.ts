@@ -2,6 +2,7 @@ import type { Api, Model } from '@mariozechner/pi-ai'
 import { completeSimple } from '@mariozechner/pi-ai'
 import type { Database } from './database.js'
 import { createMemory } from './memories-store.js'
+import { resolveBackgroundReasoning } from './thinking-level.js'
 
 const MAX_FACTS = 10
 const DUPLICATE_OVERLAP_THRESHOLD = 0.7
@@ -188,6 +189,7 @@ export async function extractAndStoreFacts(
   }, {
     apiKey,
     temperature: 0,
+    reasoning: resolveBackgroundReasoning(),
   })
 
   const responseText = response.content

@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { completeSimple } from '@mariozechner/pi-ai'
+import { resolveBackgroundReasoning } from './thinking-level.js'
 import type { Api, Model, Context } from '@mariozechner/pi-ai'
 import { getMemoryDir, ensureMemoryStructure, readMemoryFile, writeMemoryFile, readConsolidationFile } from './memory.js'
 
@@ -165,6 +166,7 @@ export async function consolidateMemory(
   // Call the LLM
   const response = await completeSimple(options.model, context, {
     apiKey: options.apiKey,
+    reasoning: resolveBackgroundReasoning(),
   })
 
   const responseText = response.content
