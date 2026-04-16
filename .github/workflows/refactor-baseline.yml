@@ -32,5 +32,5 @@ jobs:
       - name: Baseline API checks
         run: npm run baseline:api
 
-      - name: Baseline smoke checks
-        run: npm run baseline:smoke
+      - name: Critical flow verification
+        run: npm run verify:critical-flows
