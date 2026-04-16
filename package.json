@@ -18,8 +18,9 @@
     "lint:boundaries": "eslint -c eslint.boundaries.config.js \"packages/**/*.ts\"",
     "baseline:unit": "vitest run packages/core/src packages/telegram/src packages/web-frontend/app",
     "baseline:api": "vitest run packages/web-backend/src",
-    "baseline:smoke": "vitest run packages/web-backend/src/app.test.ts --testNamePattern=\"health endpoint|auth flow|chat history API|settings API|providers API\"",
-    "baseline:parity": "npm run lint:boundaries && npm run baseline:unit && npm run baseline:api && npm run baseline:smoke",
+    "baseline:smoke": "vitest run packages/web-backend/src/app.test.ts --testNamePattern=\"health endpoint|auth flow|chat history API|memory API|settings API|providers API\"",
+    "verify:critical-flows": "npm run baseline:smoke && vitest run packages/web-backend/src/api/modules/tasks/route.test.ts packages/web-backend/src/cronjobs.test.ts",
+    "baseline:parity": "npm run lint:boundaries && npm run baseline:unit && npm run baseline:api && npm run verify:critical-flows",
     "clean": "rm -rf packages/*/dist"
   },
   "devDependencies": {
