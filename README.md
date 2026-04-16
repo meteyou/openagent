@@ -88,6 +88,7 @@ packages/
 For the monorepo maintainability refactor, structural conventions, boundary rules and behavior-parity baseline are documented in:
 
 - `docs/refactor-guardrails.md`
+- `docs/architecture-conventions.md` (final architecture conventions)
 
 Run the parity baseline locally:
 
