@@ -6,7 +6,7 @@ import { EventEmitter } from 'node:events'
  */
 export interface ChatEvent {
   /** The kind of event being broadcast */
-  type: 'user_message' | 'text' | 'tool_call_start' | 'tool_call_end' | 'done' | 'error' | 'system' | 'session_end' | 'task_completed' | 'task_failed' | 'task_question' | 'reminder'
+  type: 'user_message' | 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'done' | 'error' | 'system' | 'session_end' | 'task_completed' | 'task_failed' | 'task_question' | 'reminder'
   /** The OpenAgent user ID (integer) this event belongs to */
   userId: number
   /** Where the event originated */
@@ -17,6 +17,8 @@ export interface ChatEvent {
   sessionId?: string
   /** Text content (for user_message, text, system, error) */
   text?: string
+  /** Thinking delta (for type='thinking') */
+  thinking?: string
   /** Tool name (for tool_call_start, tool_call_end) */
   toolName?: string
   /** Tool call ID */

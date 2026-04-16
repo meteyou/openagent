@@ -173,6 +173,96 @@ describe('setupWebSocketChat kill switch', () => {
     }
   })
 
+  it('streams thinking chunks, persists them with metadata.kind=thinking, and broadcasts them', async () => {
+    const db = initDatabase(':memory:')
+    const chatEventBus = new ChatEventBus()
+    const mockSessionManager = {
+      getOrCreateSession: vi.fn(() => ({ id: 'session-thinking', userId: '1', source: 'web', startedAt: Date.now(), lastActivity: Date.now(), messageCount: 0, summaryWritten: false, restored: false })),
+    }
+    const agentCore = {
+      sendMessage: vi.fn(async function* (): AsyncGenerator<ResponseChunk> {
+        yield { type: 'thinking', thinking: 'Hmm,' }
+        yield { type: 'thinking', thinking: ' let me think.' }
+        yield { type: 'text', text: 'Answer.' }
+        yield { type: 'done' }
+      }),
+      abort: vi.fn(),
+      resetSession: vi.fn(),
+      getSessionManager: vi.fn(() => mockSessionManager),
+    } as unknown as AgentCore
+
+    const app = createApp({ db })
+    const server = http.createServer(app)
+    const { wss } = setupWebSocketChat(server, db, agentCore, undefined, chatEventBus)
+
+    await new Promise<void>((resolve) => server.listen(0, resolve))
+    const port = (server.address() as { port: number }).port
+    const token = generateAccessToken({ userId: 1, username: 'admin', role: 'admin' })
+
+    // Spy on the event bus so we can verify thinking broadcasts.
+    const busEvents: Array<{ type: string; thinking?: string; text?: string }> = []
+    chatEventBus.subscribe((ev) => {
+      busEvents.push({ type: ev.type, thinking: ev.thinking, text: ev.text })
+    })
+
+    try {
+      const { ws, waitForMessage } = await connectWs(port, token)
+      await waitForMessage() // authenticated
+
+      ws.send(JSON.stringify({ type: 'message', content: 'hello' }))
+
+      const firstThinking = await waitForMessage()
+      expect(firstThinking.type).toBe('thinking')
+      expect(firstThinking.thinking).toBe('Hmm,')
+
+      const secondThinking = await waitForMessage()
+      expect(secondThinking.type).toBe('thinking')
+      expect(secondThinking.thinking).toBe(' let me think.')
+
+      const text = await waitForMessage()
+      expect(text.type).toBe('text')
+      expect(text.text).toBe('Answer.')
+
+      const done = await waitForMessage()
+      expect(done.type).toBe('done')
+
+      // Thinking block persisted as its own assistant row with metadata.kind === 'thinking'
+      const rows = db.prepare(
+        "SELECT role, content, metadata FROM chat_messages WHERE session_id = 'session-thinking' ORDER BY id"
+      ).all() as Array<{ role: string; content: string; metadata: string | null }>
+      const thinkingRows = rows.filter(r => {
+        if (!r.metadata) return false
+        try {
+          return (JSON.parse(r.metadata) as { kind?: string }).kind === 'thinking'
+        } catch { return false }
+      })
+      expect(thinkingRows.length).toBe(1)
+      expect(thinkingRows[0]!.role).toBe('assistant')
+      expect(thinkingRows[0]!.content).toBe('Hmm, let me think.')
+
+      // Assistant text persisted as its own row without thinking metadata
+      const assistantTextRows = rows.filter(r => r.role === 'assistant' && (!r.metadata || !(() => { try { return (JSON.parse(r.metadata!) as { kind?: string }).kind === 'thinking' } catch { return false } })()))
+      expect(assistantTextRows.length).toBe(1)
+      expect(assistantTextRows[0]!.content).toBe('Answer.')
+
+      // Event bus broadcasts thinking chunks (in addition to user_message/text/done)
+      const broadcastedThinking = busEvents.filter(e => e.type === 'thinking')
+      expect(broadcastedThinking.length).toBe(2)
+      expect(broadcastedThinking[0]!.thinking).toBe('Hmm,')
+      expect(broadcastedThinking[1]!.thinking).toBe(' let me think.')
+
+      ws.close()
+    } finally {
+      for (const client of wss.clients) {
+        client.terminate()
+      }
+      wss.close()
+      await new Promise<void>((resolve, reject) =>
+        server.close((err) => (err ? reject(err) : resolve()))
+      )
+    }
+  })
+
   it('treats /kill as an alias for /stop over web chat', async () => {
     const db = initDatabase(':memory:')
     const mockSessionManager2 = {

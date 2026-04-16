@@ -19,8 +19,10 @@ interface ChatMessage {
 }
 
 interface ChatResponse {
-  type: 'text' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'task_completed' | 'task_failed' | 'task_question' | 'reminder'
+  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'task_completed' | 'task_failed' | 'task_question' | 'reminder'
   text?: string
+  /** Streamed thinking delta (for type='thinking') */
+  thinking?: string
   toolName?: string
   toolCallId?: string
   toolArgs?: unknown
@@ -293,21 +295,52 @@ export function setupWebSocketChat(
       let doneSent = false
       // Track pending tool calls to save input+output together
       const pendingToolCalls = new Map<string, { toolName: string; toolArgs: unknown }>()
+      // Buffer thinking deltas between thinking_start/thinking_end boundaries. Because
+      // the core runtime only surfaces `thinking_delta` today, we treat each contiguous
+      // run of thinking chunks (i.e. uninterrupted by text/tool/done) as a single block
+      // and persist it as its own chat_messages row with metadata.kind === 'thinking'.
+      let currentThinking = ''
+      const flushThinking = () => {
+        if (!currentThinking) return
+        const thinkingText = currentThinking
+        currentThinking = ''
+        try {
+          saveChatMessage(
+            db,
+            resolvedSessionId,
+            currentUser.userId,
+            'assistant',
+            thinkingText,
+            JSON.stringify({ kind: 'thinking' }),
+          )
+        } catch (err) {
+          console.error('Failed to persist thinking block:', err)
+        }
+      }
 
       try {
         for await (const chunk of agentCore.sendMessage(String(currentUser.userId), parsed.content, 'web', parsed.attachments)) {
           if (abortController.signal.aborted) break
 
           if (chunk.type === 'text' && chunk.text) {
+            // Any text closes an in-progress thinking block.
+            flushThinking()
             fullResponse += chunk.text
           }
 
+          if (chunk.type === 'thinking' && chunk.thinking) {
+            currentThinking += chunk.thinking
+          }
+
           if (chunk.type === 'done') {
+            flushThinking()
             doneSent = true
           }
 
           // Track tool call start
           if (chunk.type === 'tool_call_start' && chunk.toolCallId) {
+            // Tool calls also end the current thinking block.
+            flushThinking()
             pendingToolCalls.set(chunk.toolCallId, {
               toolName: chunk.toolName ?? 'unknown',
               toolArgs: chunk.toolArgs,
@@ -339,6 +372,7 @@ export function setupWebSocketChat(
             sourceConnectionId: connId,
             sessionId: resolvedSessionId,
             text: chunk.text,
+            thinking: chunk.thinking,
             toolName: chunk.toolName,
             toolCallId: chunk.toolCallId,
             toolArgs: chunk.toolArgs,
@@ -357,6 +391,9 @@ export function setupWebSocketChat(
           sendMessage(ws, { type: 'error', error: `Agent error: ${(err as Error).message}` })
         }
       } finally {
+        // Flush any trailing thinking that wasn't closed by text/tool/done (e.g.
+        // aborted/errored streams) so reload shows the partial reasoning.
+        flushThinking()
         // Always send a 'done' if one wasn't already sent, so the frontend
         // never gets stuck with a streaming indicator that never resolves.
         if (!doneSent) {
@@ -446,6 +483,7 @@ export function setupWebSocketChat(
           sendMessage(client, {
             type: event.type,
             text: event.text,
+            thinking: event.thinking,
             toolName: event.toolName,
             toolCallId: event.toolCallId,
             toolArgs: event.toolArgs,
@@ -479,6 +517,7 @@ function chunkToResponse(chunk: ResponseChunk): ChatResponse {
   return {
     type: chunk.type === 'done' ? 'done' : chunk.type,
     text: chunk.text,
+    thinking: chunk.thinking,
     toolName: chunk.toolName,
     toolCallId: chunk.toolCallId,
     toolArgs: chunk.toolArgs,
