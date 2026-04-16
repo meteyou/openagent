@@ -111,4 +111,17 @@ describe('settings schema', () => {
       error: 'stt.rewrite.providerId must be a string',
     })
   })
+
+  it('validates tasks.backgroundThinkingLevel against the enum', () => {
+    const settingsRaw: Record<string, unknown> = {}
+
+    expect(mergeTasks({ tasks: { backgroundThinkingLevel: 'extreme' } }, settingsRaw)).toEqual({
+      error: 'tasks.backgroundThinkingLevel must be "off" or "minimal" or "low" or "medium" or "high" or "xhigh"',
+    })
+
+    expect(mergeTasks({ tasks: { backgroundThinkingLevel: 'medium' } }, settingsRaw)).toEqual({
+      error: null,
+    })
+    expect((settingsRaw.tasks as Record<string, unknown>).backgroundThinkingLevel).toBe('medium')
+  })
 })

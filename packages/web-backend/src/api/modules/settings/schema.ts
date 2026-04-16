@@ -2,6 +2,7 @@ import {
   HEALTH_MONITOR_FALLBACK_TRIGGERS,
   SETTINGS_STT_OPENAI_MODELS,
   SETTINGS_STT_PROVIDERS,
+  SETTINGS_THINKING_LEVELS,
   SETTINGS_TTS_OPENAI_MODELS,
   SETTINGS_TTS_PROVIDERS,
   SETTINGS_TTS_RESPONSE_FORMATS,
@@ -280,6 +281,12 @@ export function mergeTasks(
     const err = validatePositiveNumber(tasks.statusUpdateIntervalMinutes, 'tasks.statusUpdateIntervalMinutes')
     if (err) return { error: err }
     existing.statusUpdateIntervalMinutes = tasks.statusUpdateIntervalMinutes
+  }
+
+  if (tasks.backgroundThinkingLevel !== undefined) {
+    const err = validateEnum(tasks.backgroundThinkingLevel, SETTINGS_THINKING_LEVELS, 'tasks.backgroundThinkingLevel')
+    if (err) return { error: err }
+    existing.backgroundThinkingLevel = tasks.backgroundThinkingLevel
   }
 
   settingsRaw.tasks = existing
