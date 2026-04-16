@@ -3,6 +3,8 @@ import { Agent as PiAgent } from '@mariozechner/pi-agent-core'
 import type { AgentEvent, AgentTool } from '@mariozechner/pi-agent-core'
 import type { AssistantMessage, Message, Model, Api } from '@mariozechner/pi-ai'
 import type { Database } from './database.js'
+import type { SettingsThinkingLevel } from './contracts/settings.js'
+import { readBackgroundThinkingLevelFromConfig } from './thinking-level.js'
 import { TaskStore } from './task-store.js'
 import type { Task, TaskResultStatus } from './task-store.js'
 import { logTokenUsage, logToolCall } from './token-logger.js'
@@ -52,6 +54,12 @@ export interface TaskRunnerOptions {
   getProviderById?: (providerId: string) => ProviderConfig | null
   /** Optional event bus for streaming task execution events to WebSocket clients */
   taskEventBus?: TaskEventBus
+  /**
+   * Thinking level applied to every task agent (and the loop-detection agent).
+   * Defaults to the `tasks.backgroundThinkingLevel` entry in `settings.json`, or
+   * `off` if unavailable.
+   */
+  backgroundThinkingLevel?: SettingsThinkingLevel
 }
 
 interface RunningTask {
@@ -200,6 +208,17 @@ export class TaskRunner {
   }
 
   /**
+   * Resolve the thinking level for a new task / loop-detection call. Options
+   * passed to the runner win; otherwise we re-read settings.json on every
+   * start so that live settings updates take effect without a restart.
+   */
+  private resolveBackgroundThinkingLevel(): SettingsThinkingLevel {
+    return this.options.backgroundThinkingLevel
+      ?? readBackgroundThinkingLevelFromConfig()
+      ?? 'off'
+  }
+
+  /**
    * Get the task store
    */
   getStore(): TaskStore {
@@ -245,6 +264,7 @@ export class TaskRunner {
         systemPrompt,
         model,
         tools: effectiveTools,
+        thinkingLevel: this.resolveBackgroundThinkingLevel(),
       },
       getApiKey: () => apiKey,
     })
@@ -638,6 +658,7 @@ export class TaskRunner {
           systemPrompt: 'You are a loop detection assistant. Analyze tool call patterns and determine if an agent is making progress or stuck.',
           model,
           tools: [],
+          thinkingLevel: this.resolveBackgroundThinkingLevel(),
         },
         getApiKey: () => apiKey,
       })
