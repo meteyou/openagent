@@ -15,10 +15,7 @@ import {
   getApiKeyForProvider,
   loadConfig,
   ProviderManager,
-  TaskStore,
-  TaskRunner,
-  TaskScheduler,
-  ScheduledTaskStore,
+  createTaskRuntime,
   TaskEventBus,
   createTaskTool,
   createResumeTaskTool,
@@ -38,7 +35,7 @@ import {
   createSearchMemoriesTool,
   logToolCall,
 } from '@openagent/core'
-import type { ProviderConfig, LoopDetectionConfig, BuiltinToolsConfig } from '@openagent/core'
+import type { ProviderConfig, LoopDetectionConfig, BuiltinToolsConfig, TaskRuntimeTaskBoundary } from '@openagent/core'
 import { setupWebSocketChat } from './ws-chat.js'
 import { setupWebSocketLogs } from './ws-logs.js'
 import { setupWebSocketTask } from './ws-task.js'
@@ -159,8 +156,8 @@ const pendingTaskInjections: PendingTaskInjectionMeta[] = []
  * 1. Inject into agent so it can relay to the user
  * 2. Deliver via notification system (persist, broadcast, Telegram)
  */
-function handleTaskNotification(taskId: string, injection: string, taskStore: TaskStore): void {
-  const task = taskStore.getById(taskId)
+function handleTaskNotification(taskId: string, injection: string, taskRuntime: TaskRuntimeTaskBoundary): void {
+  const task = taskRuntime.getById(taskId)
   if (!task) return
 
   // Calculate duration
@@ -212,9 +209,9 @@ function handleTaskNotification(taskId: string, injection: string, taskStore: Ta
 }
 
 // Initialize task infrastructure (provider-independent)
-const taskStore = new TaskStore(db)
-const taskRunner = new TaskRunner({
+const taskRuntime = createTaskRuntime({
   db,
+  runner: {
   buildModel,
   getApiKey: getApiKeyForProvider,
   tools: [
@@ -224,10 +221,10 @@ const taskRunner = new TaskRunner({
     createSearchMemoriesTool({ db }),
   ],
   onTaskComplete: (taskId: string, injection: string) => {
-    handleTaskNotification(taskId, injection, taskStore)
+    handleTaskNotification(taskId, injection, taskRuntime.tasks)
   },
   onTaskPaused: (taskId: string, injection: string) => {
-    handleTaskNotification(taskId, injection, taskStore)
+    handleTaskNotification(taskId, injection, taskRuntime.tasks)
   },
   loopDetection: taskSettings.loopDetection.enabled
     ? {
@@ -241,15 +238,11 @@ const taskRunner = new TaskRunner({
   statusUpdateIntervalMinutes: taskSettings.statusUpdateIntervalMinutes,
   getProviderById: (id: string) => resolveProvider(id),
   taskEventBus,
-})
-
-const taskScheduler = new TaskScheduler({
-  db,
-  taskStore,
-  taskRunner,
-  getDefaultProvider: getTaskDefaultProvider,
-  resolveProvider,
-  onInjection: (scheduledTask) => {
+  },
+  scheduler: {
+    getDefaultProvider: getTaskDefaultProvider,
+    resolveProvider,
+    onInjection: (scheduledTask) => {
     const userId = 1 // Default admin user
     const deliveryResults: string[] = []
 
@@ -369,7 +362,8 @@ const taskScheduler = new TaskScheduler({
       })
     }
 
-    console.log(`[openagent] Reminder "${scheduledTask.name}" fired for user ${userId}`)
+      console.log(`[openagent] Reminder "${scheduledTask.name}" fired for user ${userId}`)
+    },
   },
 })
 
@@ -421,24 +415,21 @@ function parseNumericUserId(userId: string): number | null {
 
 // Build agent tools for tasks and cronjobs
 const taskToolsOptions = {
-  taskStore,
-  taskRunner,
+  taskRuntime: taskRuntime.tasks,
   getDefaultProvider: getTaskDefaultProvider,
   resolveProvider,
   defaultMaxDurationMinutes: taskSettings.maxDurationMinutes,
   maxDurationMinutesCap: taskSettings.maxDurationMinutes * 2,
 }
 
-const scheduledTaskStore = new ScheduledTaskStore(db)
 const cronjobToolsOptions = {
-  scheduledTaskStore,
-  taskScheduler,
+  taskRuntime: taskRuntime.schedules,
 }
 
 const agentTools = [
   createTaskTool(taskToolsOptions),
   createResumeTaskTool(taskToolsOptions),
-  listTasksTool({ taskStore }),
+  listTasksTool({ taskRuntime: taskRuntime.tasks }),
   createCronjobTool(cronjobToolsOptions),
   editCronjobTool(cronjobToolsOptions),
   removeCronjobTool(cronjobToolsOptions),
@@ -449,7 +440,7 @@ const agentTools = [
 ]
 
 // Start the task scheduler to pick up existing cronjobs
-taskScheduler.start()
+taskRuntime.schedules.start()
 
 // Provider-dependent state (initialized lazily when a provider is configured)
 let agentCore: AgentCore | null = null
@@ -463,16 +454,14 @@ healthMonitorService.start()
 const consolidationScheduler = new MemoryConsolidationScheduler({
   db,
   agentCore: null,
-  taskStore,
-  taskRunner,
+  taskRuntime: taskRuntime.tasks,
   getDefaultProvider: getTaskDefaultProvider,
 })
 consolidationScheduler.start()
 
 // Initialize agent heartbeat service (periodic background tasks via HEARTBEAT.md)
 const agentHeartbeatService = new AgentHeartbeatService({
-  taskStore,
-  taskRunner,
+  taskRuntime: taskRuntime.tasks,
   getDefaultProvider: getTaskDefaultProvider,
 })
 agentHeartbeatService.start()
@@ -735,8 +724,7 @@ const app = createApp({
   consolidationScheduler,
   agentHeartbeatService,
   onAgentHeartbeatSettingsChanged: () => {},
-  getTaskRunner: () => taskRunner,
-  getTaskScheduler: () => taskScheduler,
+  getTaskRuntime: () => taskRuntime,
   getTelegramBot: () => telegramBot,
   onTelegramSettingsChanged: () => {
     restartTelegramBot().catch((err) => {
