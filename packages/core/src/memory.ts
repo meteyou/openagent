@@ -98,6 +98,52 @@ const USER_PROFILE_TEMPLATE = `# User Profile — {username}
 (none yet)
 `
 
+export const SOURCES_README_TEMPLATE = `# Sources
+
+<!-- This directory holds the immutable raw material the wiki is built on. -->
+<!-- Sources are what you read. The wiki is what you learned. -->
+<!-- Never edit existing source files. Only add new ones. -->
+
+This is the **sources layer** of the memory system. Unlike \`wiki/\`, files here
+are treated as archival raw material: articles, transcripts, papers, podcast
+notes. Wiki pages cite these files so factual claims remain verifiable.
+
+## Subfolders (create on first use)
+
+- \`articles/\` — web articles, blog posts, documentation snapshots
+- \`youtube/\` — YouTube transcripts
+- \`podcasts/\` — podcast notes and transcripts
+- \`papers/\` — research papers, PDFs converted to markdown
+- \`notes/\` — longer conversation snippets or hand-captured notes
+
+## Filename pattern
+
+\`<yyyy-mm-dd>-<slug>.md\` — lowercase, hyphens instead of spaces.
+
+## Frontmatter
+
+Each source file should start with YAML frontmatter:
+
+\`\`\`markdown
+---
+source_type: article | youtube | podcast | paper | note
+url: https://...
+author: ...
+captured: YYYY-MM-DD
+---
+
+# Title
+
+<raw body — do not edit later>
+\`\`\`
+
+## Rules
+
+- **Immutable**: never rewrite an existing file. If the source itself changes, add a new dated entry.
+- **Cite from the wiki**: wiki pages that rely on a source should link to it in a \`## Sources\` / \`## Quellen\` section.
+- **Orphaned sources are a lint signal**, not an error — they just flag material that has not been distilled yet.
+`
+
 const HEARTBEAT_TEMPLATE = `# Heartbeat Tasks
 
 <!-- Define periodic tasks here. The agent will execute them during each heartbeat cycle. -->
@@ -120,6 +166,7 @@ The memory system has several tiers. Each piece of information should live in ex
 | MEMORY.md | Long-term core memory: learned lessons, recurring patterns, technical notes |
 | users/*.md | Per-user profiles: name, preferences, communication style, work context |
 | wiki/*.md | Wiki pages: project notes, concepts, architecture, key decisions, references |
+| sources/**/*.md | Immutable raw source material (articles, transcripts, papers). Never edited, only added to. Wiki pages cite these. |
 | daily/*.md | Ephemeral daily logs (source for consolidation, never modified) |
 
 ## What to promote to MEMORY.md
@@ -148,6 +195,21 @@ The memory system has several tiers. Each piece of information should live in ex
 - Create a new wiki page when a previously unknown project or concept is discussed repeatedly
 - For wiki page conventions (frontmatter, filenames, cross-links), load the wiki skill
 
+## What to archive under sources/ (immutable raw material)
+
+The \`sources/\` directory is the raw material the wiki is distilled from. Unlike
+wiki pages, source files are **never edited** — only added to. Wiki pages cite
+source files so their factual claims stay verifiable.
+
+- Archive an external source whenever you ingest substantive new material: an article, a YouTube transcript, a podcast note, a paper, a long conversation snippet worth preserving verbatim.
+- Layout: \`sources/articles/\`, \`sources/youtube/\`, \`sources/podcasts/\`, \`sources/papers/\`, \`sources/notes/\`. Create subfolders on first use.
+- Filename: \`<yyyy-mm-dd>-<slug>.md\` (lowercase, hyphens).
+- Frontmatter keys: \`source_type\`, \`url\`, \`author\`, \`captured\`.
+- Body is the raw captured text — do not interpret or summarize in the source file.
+- The corresponding wiki page should add a \`## Sources\` (or \`## Quellen\`) section linking to the archived file.
+- Do NOT archive trivial conversation context, one-off chats, or material already captured elsewhere.
+- Never rewrite an existing source file. If a source changes, add a new dated entry.
+
 ## What to ignore
 
 - One-off questions with no lasting value
@@ -165,6 +227,21 @@ The memory system has several tiers. Each piece of information should live in ex
 - **Preserve structure**: Keep existing markdown structure. Add new sections if needed.
 - **Be concise**: Use bullet points and short descriptions. Core memory should be scannable.
 - **Daily files are read-only**: Never modify daily log files — they are append-only source material.
+- **Sources are read-only**: Never modify files under \`sources/\` — they are the immutable archival layer.
+
+## Wiki lint: content gaps and source coverage
+
+During consolidation, also run these two checks on the wiki and report findings
+(append to today's daily file as a short lint section, do not auto-create pages):
+
+- **Content gaps** — surface topics the wiki implies but does not cover:
+  - Concepts, people, projects, or tools referenced repeatedly across multiple wiki pages but without a dedicated page of their own.
+  - Open questions or TODO markers inside wiki pages ("unclear", "to verify", "TODO").
+  - Topics discussed across multiple daily files but never promoted to the wiki.
+  - Report as suggestions. Do NOT auto-create pages — the user decides what to research next.
+- **Source coverage** — keep factual claims verifiable:
+  - Wiki pages that make factual claims (dates, numbers, quotes, attributed statements) but have no \`## Sources\` / \`## Quellen\` section → flag them.
+  - Files in \`sources/\` that are not cited by any wiki page → flag as orphaned source (either stale raw material or a candidate for ingest).
 `
 
 
@@ -249,6 +326,9 @@ export function ensureMemoryStructure(memoryDir?: string): void {
     fs.mkdirSync(wikiDir, { recursive: true })
   }
 
+  // Seed immutable sources/ layer (raw material for the wiki)
+  ensureSourcesDir(dir)
+
   const soulPath = path.join(dir, 'SOUL.md')
   if (!fs.existsSync(soulPath)) {
     fs.writeFileSync(soulPath, SOUL_TEMPLATE, 'utf-8')
@@ -306,6 +386,27 @@ export function ensureConfigStructure(configDir?: string): void {
   if (!fs.existsSync(consolidationPath)) {
     fs.writeFileSync(consolidationPath, CONSOLIDATION_TEMPLATE, 'utf-8')
   }
+}
+
+/**
+ * Ensure the sources/ directory exists with a README explaining the layer.
+ * Idempotent: does NOT overwrite an existing README (so user edits are preserved).
+ * Subfolders (articles/, youtube/, ...) are NOT auto-created — they are added on first use.
+ */
+export function ensureSourcesDir(memoryDir?: string): string {
+  const dir = memoryDir ?? getMemoryDir()
+  const sourcesDir = path.join(dir, 'sources')
+
+  if (!fs.existsSync(sourcesDir)) {
+    fs.mkdirSync(sourcesDir, { recursive: true })
+  }
+
+  const readmePath = path.join(sourcesDir, 'README.md')
+  if (!fs.existsSync(readmePath)) {
+    fs.writeFileSync(readmePath, SOURCES_README_TEMPLATE, 'utf-8')
+  }
+
+  return sourcesDir
 }
 
 /**
@@ -722,7 +823,7 @@ ${dailyContext}
       return `- ${n.filename}${aliasStr}`
     }).join('\n')
     sections.push(`<wiki_pages>
-The following wiki pages are available in the personal knowledge base. When discussing a topic covered by a wiki page, load it with read_file for context. Use write_file or edit_file to create or update wiki pages when you learn something worth preserving.
+The following wiki pages are available in the personal knowledge base. When discussing a topic covered by a wiki page, load it with read_file for context. Use write_file or edit_file to create or update wiki pages when you learn something worth preserving. Raw source material for the wiki lives under sources/ — wiki pages can cite it in a ## Sources section.
 
 ${pageLines}
 </wiki_pages>`)
@@ -743,6 +844,7 @@ Memory files:
 - Today's daily file: ${path.join(dir, 'daily', `${today}.md`)}
 - User profiles directory: ${path.join(dir, 'users/')}
 - Wiki pages directory: ${path.join(dir, 'wiki/')}
+- Sources directory (immutable raw material): ${path.join(dir, 'sources/')}
 
 Config files:
 - AGENTS.md (agent rules): ${path.join(cfgDir, 'AGENTS.md')}
