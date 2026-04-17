@@ -22,13 +22,15 @@ export interface TelegramConfig {
  * Chat event emitted by the Telegram bot for cross-channel sync.
  */
 export interface TelegramChatEvent {
-  type: 'user_message' | 'text' | 'tool_call_start' | 'tool_call_end' | 'done' | 'error'
+  type: 'user_message' | 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'done' | 'error'
   /** OpenAgent user ID (integer) — only set for linked users */
   userId: number | null
   /** Session ID used for chat_messages */
   sessionId: string
   /** Text content */
   text?: string
+  /** Streamed thinking/reasoning delta (for `type: 'thinking'`) */
+  thinking?: string
   /** Tool name */
   toolName?: string
   /** Tool call ID */
@@ -901,6 +903,7 @@ export class TelegramBot {
             userId: numericUserId,
             sessionId,
             text: chunk.text,
+            thinking: chunk.thinking,
             toolName: chunk.toolName,
             toolCallId: chunk.toolCallId,
             toolArgs: chunk.toolArgs,

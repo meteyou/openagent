@@ -513,6 +513,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
       source: 'telegram',
       sessionId: event.sessionId,
       text: event.text,
+      thinking: event.thinking,
       toolName: event.toolName,
       toolCallId: event.toolCallId,
       toolArgs: event.toolArgs,
