@@ -166,6 +166,7 @@ The memory system has several tiers. Each piece of information should live in ex
 | MEMORY.md | Long-term core memory: learned lessons, recurring patterns, technical notes |
 | users/*.md | Per-user profiles: name, preferences, communication style, work context |
 | wiki/*.md | Wiki pages: project notes, concepts, architecture, key decisions, references |
+| sources/**/*.md | Immutable raw source material (articles, transcripts, papers). Never edited, only added to. Wiki pages cite these. |
 | daily/*.md | Ephemeral daily logs (source for consolidation, never modified) |
 
 ## What to promote to MEMORY.md
@@ -194,6 +195,21 @@ The memory system has several tiers. Each piece of information should live in ex
 - Create a new wiki page when a previously unknown project or concept is discussed repeatedly
 - For wiki page conventions (frontmatter, filenames, cross-links), load the wiki skill
 
+## What to archive under sources/ (immutable raw material)
+
+The \`sources/\` directory is the raw material the wiki is distilled from. Unlike
+wiki pages, source files are **never edited** — only added to. Wiki pages cite
+source files so their factual claims stay verifiable.
+
+- Archive an external source whenever you ingest substantive new material: an article, a YouTube transcript, a podcast note, a paper, a long conversation snippet worth preserving verbatim.
+- Layout: \`sources/articles/\`, \`sources/youtube/\`, \`sources/podcasts/\`, \`sources/papers/\`, \`sources/notes/\`. Create subfolders on first use.
+- Filename: \`<yyyy-mm-dd>-<slug>.md\` (lowercase, hyphens).
+- Frontmatter keys: \`source_type\`, \`url\`, \`author\`, \`captured\`.
+- Body is the raw captured text — do not interpret or summarize in the source file.
+- The corresponding wiki page should add a \`## Sources\` (or \`## Quellen\`) section linking to the archived file.
+- Do NOT archive trivial conversation context, one-off chats, or material already captured elsewhere.
+- Never rewrite an existing source file. If a source changes, add a new dated entry.
+
 ## What to ignore
 
 - One-off questions with no lasting value
@@ -211,6 +227,21 @@ The memory system has several tiers. Each piece of information should live in ex
 - **Preserve structure**: Keep existing markdown structure. Add new sections if needed.
 - **Be concise**: Use bullet points and short descriptions. Core memory should be scannable.
 - **Daily files are read-only**: Never modify daily log files — they are append-only source material.
+- **Sources are read-only**: Never modify files under \`sources/\` — they are the immutable archival layer.
+
+## Wiki lint: content gaps and source coverage
+
+During consolidation, also run these two checks on the wiki and report findings
+(append to today's daily file as a short lint section, do not auto-create pages):
+
+- **Content gaps** — surface topics the wiki implies but does not cover:
+  - Concepts, people, projects, or tools referenced repeatedly across multiple wiki pages but without a dedicated page of their own.
+  - Open questions or TODO markers inside wiki pages ("unclear", "to verify", "TODO").
+  - Topics discussed across multiple daily files but never promoted to the wiki.
+  - Report as suggestions. Do NOT auto-create pages — the user decides what to research next.
+- **Source coverage** — keep factual claims verifiable:
+  - Wiki pages that make factual claims (dates, numbers, quotes, attributed statements) but have no \`## Sources\` / \`## Quellen\` section → flag them.
+  - Files in \`sources/\` that are not cited by any wiki page → flag as orphaned source (either stale raw material or a candidate for ingest).
 `
 
 

@@ -61,6 +61,8 @@ All file paths below are ABSOLUTE paths. You MUST use the full absolute paths wh
 - \`${memoryDir}/users/*.md\` — user-specific information (preferences, context, personal details)
 - \`${memoryDir}/wiki/*.md\` — wiki pages: project notes, concepts, architecture, references
 
+\`${memoryDir}/sources/**/*.md\` is the immutable raw-material layer. Consolidation READS from it when auditing the wiki but NEVER writes, edits, or deletes source files.
+
 You must NOT write to any other file. No config files, no code files, no files outside the memory directory.
 
 ## Steps
@@ -87,6 +89,8 @@ You must NOT write to any other file. No config files, no code files, no files o
    - Identify orphaned pages (no inbound links from other wiki pages)
    - Suggest missing cross-links (concepts mentioned in pages but without their own page)
    - Note outdated information that should be refreshed
+   - **Content gaps**: surface concepts referenced repeatedly across wiki pages but without a dedicated page; open questions / TODO markers inside pages; topics discussed across multiple daily files but never promoted to the wiki. Report as suggestions — do NOT auto-create pages.
+   - **Source coverage**: flag wiki pages that make factual claims but have no \`## Sources\` / \`## Quellen\` section. Flag files under \`${memoryDir}/sources/\` that are not cited by any wiki page (orphaned source or candidate for ingest).
    - If any issues are found, append a brief Lint Report section to today's daily file at \`${memoryDir}/daily/\` using \`edit_file\` or \`shell\` with \`echo\`
    - Keep the lint report concise — a bullet list of findings is sufficient
 
