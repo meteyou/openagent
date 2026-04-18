@@ -1,5 +1,7 @@
 import { describe, it, expect, afterEach, vi, beforeEach } from 'vitest'
-import { SessionManager } from './session-manager.js'
+import { SessionManager, generateSessionId } from './session-manager.js'
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 import { initDatabase } from './database.js'
 import { logTokenUsage } from './token-logger.js'
 import type { Database } from './database.js'
@@ -41,7 +43,7 @@ describe('SessionManager', () => {
       await manager.init()
       const session = manager.getOrCreateSession('user1', 'telegram')
 
-      expect(session.id).toMatch(/^session-user1-/)
+      expect(session.id).toMatch(UUID_RE)
       expect(session.userId).toBe('user1')
       expect(session.source).toBe('telegram')
       expect(session.messageCount).toBe(0)
@@ -80,6 +82,8 @@ describe('SessionManager', () => {
       expect(metadata!.summary_written).toBe(0)
       expect(metadata!.last_activity).not.toBeNull()
       expect(metadata!.session_user).toBe('user1')
+      expect(metadata!.type).toBe('interactive')
+      expect(metadata!.parent_session_id).toBeNull()
       expect(metadata!.prompt_tokens).toBe(0)
       expect(metadata!.completion_tokens).toBe(0)
     })
@@ -513,6 +517,102 @@ describe('SessionManager', () => {
     })
   })
 
+  describe('UUID generation and session types', () => {
+    it('generateSessionId() returns a UUID v4-shaped string', () => {
+      const id = generateSessionId()
+      expect(id).toMatch(UUID_RE)
+      // Two calls should not collide
+      expect(generateSessionId()).not.toBe(id)
+    })
+
+    it('getOrCreateSession defaults to type=interactive', async () => {
+      const manager = new SessionManager({ db, memoryDir })
+      await manager.init()
+      const session = manager.getOrCreateSession('user1', 'web')
+      const meta = manager.getSessionMetadata(session.id)
+      expect(meta!.type).toBe('interactive')
+    })
+
+    it('getOrCreateSession accepts an explicit type parameter', async () => {
+      const manager = new SessionManager({ db, memoryDir })
+      await manager.init()
+      const session = manager.getOrCreateSession('worker', 'system', 'task')
+      const meta = manager.getSessionMetadata(session.id)
+      expect(meta!.type).toBe('task')
+      expect(session.id).toMatch(UUID_RE)
+    })
+
+    it('createSession() inserts a row with the requested type and parent FK', async () => {
+      const manager = new SessionManager({ db, memoryDir })
+      await manager.init()
+
+      const parent = manager.getOrCreateSession('user1', 'web')
+      const child = manager.createSession({
+        type: 'task',
+        source: 'system',
+        userId: 'user1',
+        parentSessionId: parent.id,
+      })
+
+      expect(child.id).toMatch(UUID_RE)
+      expect(child.id).not.toBe(parent.id)
+
+      const meta = manager.getSessionMetadata(child.id)
+      expect(meta).toBeDefined()
+      expect(meta!.type).toBe('task')
+      expect(meta!.parent_session_id).toBe(parent.id)
+      expect(meta!.source).toBe('system')
+      expect(meta!.session_user).toBe('user1')
+    })
+
+    it('createSession() works for heartbeat without parent', async () => {
+      const manager = new SessionManager({ db, memoryDir })
+      await manager.init()
+
+      const session = manager.createSession({ type: 'heartbeat', source: 'system' })
+      const meta = manager.getSessionMetadata(session.id)
+      expect(meta!.type).toBe('heartbeat')
+      expect(meta!.parent_session_id).toBeNull()
+      // No interactive timer should be associated — i.e. it does not occupy
+      // the per-user singleton slot.
+      expect(manager.hasActiveSession('system')).toBe(false)
+    })
+
+    it('createSession() rejects an invalid type via DB CHECK constraint', async () => {
+      const manager = new SessionManager({ db, memoryDir })
+      await manager.init()
+      expect(() => manager.createSession({
+        // @ts-expect-error — deliberately invalid
+        type: 'bogus',
+        source: 'system',
+      })).toThrow()
+    })
+
+    it('orphan handling does NOT auto-close non-interactive sessions', async () => {
+      const manager1 = new SessionManager({ db, memoryDir, timeoutMinutes: 15 })
+      await manager1.init()
+
+      // A background "task" session left open in DB (e.g. crash mid-task)
+      const taskSession = manager1.createSession({ type: 'task', source: 'system', userId: '1' })
+      const longAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
+      db.prepare(
+        `UPDATE sessions SET last_activity = datetime(? / 1000, 'unixepoch') WHERE id = ?`
+      ).run(longAgo.getTime(), taskSession.id)
+
+      const onSummarize = vi.fn().mockResolvedValue('should not be called')
+      const manager2 = new SessionManager({
+        db, memoryDir, timeoutMinutes: 15, onSummarize,
+      })
+      await manager2.init()
+
+      // Background session must NOT be summarized or closed by the
+      // interactive-session lifecycle.
+      expect(onSummarize).not.toHaveBeenCalled()
+      const meta = manager2.getSessionMetadata(taskSession.id)
+      expect(meta!.ended_at).toBeNull()
+    })
+  })
+
   describe('orphaned session handling', () => {
     it('summarizes orphaned sessions with elapsed timeout on init', async () => {
       // Create a session and simulate a crash (don't call dispose/endSession)
@@ -829,10 +929,10 @@ describe('SessionManager', () => {
 
     it('handles pre-migration sessions without last_activity (falls back to started_at)', async () => {
       // Manually insert a session without last_activity (simulating pre-migration data)
-      const sessionId = 'session-olduser-1234567890123-abc123'
+      const sessionId = generateSessionId()
       db.prepare(
-        `INSERT INTO sessions (id, user_id, source, started_at, message_count, summary_written)
-         VALUES (?, NULL, 'web', datetime('now', '-2 hours'), 3, 0)`
+        `INSERT INTO sessions (id, user_id, source, session_user, started_at, message_count, summary_written)
+         VALUES (?, NULL, 'web', 'olduser', datetime('now', '-2 hours'), 3, 0)`
       ).run(sessionId)
 
       // Add chat messages
