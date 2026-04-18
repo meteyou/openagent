@@ -89,7 +89,13 @@ export class TasksService {
       throw new TaskNotFoundError()
     }
 
-    const sessionId = task.sessionId ?? `task-${task.id}`
+    // Tasks created since PRD #11 always have a UUID sessionId registered
+    // in the `sessions` table. Legacy tasks without a sessionId have no
+    // historical events to load.
+    const sessionId = task.sessionId
+    if (!sessionId) {
+      return { task, events: [] }
+    }
 
     const toolCalls: TaskToolCallTimelineEvent[] = getToolCalls(this.options.db, { sessionId })
       .reverse()
