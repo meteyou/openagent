@@ -182,7 +182,8 @@ export class AgentHeartbeatService {
       return null
     }
 
-    // Create a task
+    // Create a task — sessionId is created by the TaskRunner via
+    // SessionManager (with type='heartbeat') when the task starts.
     const task: Task = this.taskRuntime.create({
       name: 'Agent Heartbeat',
       prompt: HEARTBEAT_PROMPT,
@@ -190,7 +191,6 @@ export class AgentHeartbeatService {
       triggerSourceId: 'agent-heartbeat',
       provider: provider.name,
       model: provider.defaultModel,
-      sessionId: `agent-heartbeat-${Date.now()}`,
     })
 
     try {
