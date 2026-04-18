@@ -130,11 +130,20 @@ describe('database', () => {
     expect(sessionCols.map(col => col.name)).toContain('prompt_tokens')
     expect(sessionCols.map(col => col.name)).toContain('completion_tokens')
 
-    const migratedSession = db.prepare(
-      'SELECT prompt_tokens, completion_tokens FROM sessions WHERE id = ?'
-    ).get('legacy-session') as { prompt_tokens: number, completion_tokens: number }
-    expect(migratedSession.prompt_tokens).toBe(0)
-    expect(migratedSession.completion_tokens).toBe(0)
+    // After PRD #11 Task 2 migration, the legacy session id is remapped to a UUID.
+    const migratedSessions = db.prepare(
+      'SELECT id, prompt_tokens, completion_tokens FROM sessions'
+    ).all() as Array<{ id: string, prompt_tokens: number, completion_tokens: number }>
+    expect(migratedSessions).toHaveLength(1)
+    expect(migratedSessions[0].id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+    expect(migratedSessions[0].prompt_tokens).toBe(0)
+    expect(migratedSessions[0].completion_tokens).toBe(0)
+    // chat_messages FK must have been remapped to the new UUID.
+    const remappedChatSessions = db.prepare(
+      'SELECT DISTINCT session_id FROM chat_messages'
+    ).all() as Array<{ session_id: string }>
+    expect(remappedChatSessions).toHaveLength(1)
+    expect(remappedChatSessions[0].session_id).toBe(migratedSessions[0].id)
 
     const migratedObjects = db.prepare(
       "SELECT type, name FROM sqlite_master WHERE name IN ('memories', 'memories_fts', 'chat_messages_fts', 'chat_messages_fts_insert', 'chat_messages_fts_delete', 'chat_messages_fts_update') ORDER BY type, name"
@@ -273,15 +282,24 @@ describe('database', () => {
 
     let db = initDatabase(dbPath)
 
+    // After PRD #11 Task 2 migration the ids are remapped to UUIDs. Resolve the
+    // new id for 'legacy-with-usage' via the token_usage FK, which is also remapped.
+    const withUsageSessionId = (db.prepare(
+      "SELECT session_id FROM token_usage WHERE provider = 'openai' AND model = 'gpt-4o' LIMIT 1"
+    ).get() as { session_id: string }).session_id
+    expect(withUsageSessionId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
     const backfilledSession = db.prepare(
       'SELECT prompt_tokens, completion_tokens FROM sessions WHERE id = ?'
-    ).get('legacy-with-usage') as { prompt_tokens: number, completion_tokens: number }
+    ).get(withUsageSessionId) as { prompt_tokens: number, completion_tokens: number }
     expect(backfilledSession.prompt_tokens).toBe(125)
     expect(backfilledSession.completion_tokens).toBe(50)
 
-    const untouchedSession = db.prepare(
-      'SELECT prompt_tokens, completion_tokens FROM sessions WHERE id = ?'
-    ).get('legacy-without-usage') as { prompt_tokens: number, completion_tokens: number }
+    // There must be a second session remapped from 'legacy-without-usage' with zero tokens.
+    const allSessions = db.prepare(
+      'SELECT id, prompt_tokens, completion_tokens FROM sessions ORDER BY id'
+    ).all() as Array<{ id: string, prompt_tokens: number, completion_tokens: number }>
+    expect(allSessions).toHaveLength(2)
+    const untouchedSession = allSessions.find(s => s.id !== withUsageSessionId)!
     expect(untouchedSession.prompt_tokens).toBe(0)
     expect(untouchedSession.completion_tokens).toBe(0)
 
@@ -290,7 +308,7 @@ describe('database', () => {
     db = initDatabase(dbPath)
     const idempotentSession = db.prepare(
       'SELECT prompt_tokens, completion_tokens FROM sessions WHERE id = ?'
-    ).get('legacy-with-usage') as { prompt_tokens: number, completion_tokens: number }
+    ).get(withUsageSessionId) as { prompt_tokens: number, completion_tokens: number }
     expect(idempotentSession.prompt_tokens).toBe(125)
     expect(idempotentSession.completion_tokens).toBe(50)
 
@@ -455,5 +473,233 @@ describe('database', () => {
     expect(session.source).toBe('telegram')
 
     db.close()
+  })
+
+  describe('PRD #11 Task 2 — legacy session id → UUID migration', () => {
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+    function seedLegacySessions(dbPath: string, rows: Array<{
+      id: string
+      source?: string
+      parent?: string | null
+      withChatMessage?: boolean
+      withTokenUsage?: boolean
+      withToolCall?: boolean
+      withTask?: boolean
+      withMemory?: boolean
+    }>): void {
+      const seed = new BetterSqlite3(dbPath)
+      seed.pragma('foreign_keys = OFF')
+      seed.exec(`
+        CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'user');
+        CREATE TABLE sessions (
+          id TEXT PRIMARY KEY,
+          user_id INTEGER,
+          source TEXT NOT NULL DEFAULT 'web',
+          started_at TEXT NOT NULL DEFAULT (datetime('now')),
+          ended_at TEXT,
+          message_count INTEGER NOT NULL DEFAULT 0,
+          summary_written INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE chat_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, user_id INTEGER, role TEXT NOT NULL CHECK(role IN ('user','assistant','tool')), content TEXT NOT NULL, timestamp TEXT NOT NULL DEFAULT (datetime('now')));
+        CREATE TABLE token_usage (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT NOT NULL DEFAULT (datetime('now')), provider TEXT NOT NULL, model TEXT NOT NULL, prompt_tokens INTEGER NOT NULL DEFAULT 0, completion_tokens INTEGER NOT NULL DEFAULT 0, estimated_cost REAL NOT NULL DEFAULT 0.0, session_id TEXT);
+        CREATE TABLE tool_calls (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT NOT NULL DEFAULT (datetime('now')), session_id TEXT, tool_name TEXT NOT NULL, input TEXT, output TEXT, duration_ms INTEGER);
+        CREATE TABLE tasks (id TEXT PRIMARY KEY, name TEXT NOT NULL, prompt TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN ('running','paused','completed','failed')), trigger_type TEXT NOT NULL CHECK(trigger_type IN ('user','agent','cronjob','heartbeat','consolidation')), trigger_source_id TEXT, provider TEXT, model TEXT, max_duration_minutes INTEGER, prompt_tokens INTEGER NOT NULL DEFAULT 0, completion_tokens INTEGER NOT NULL DEFAULT 0, estimated_cost REAL NOT NULL DEFAULT 0.0, tool_call_count INTEGER NOT NULL DEFAULT 0, result_summary TEXT, result_status TEXT CHECK(result_status IS NULL OR result_status IN ('completed','failed','question','silent')), error_message TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')), started_at TEXT, completed_at TEXT, session_id TEXT);
+        CREATE TABLE memories (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, session_id TEXT, content TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'session', timestamp TEXT NOT NULL DEFAULT (datetime('now')));
+      `)
+      seed.prepare('INSERT INTO users (username, password_hash) VALUES (?, ?)').run('alice', 'hash')
+      for (const row of rows) {
+        seed.prepare(
+          "INSERT INTO sessions (id, user_id, source, started_at, message_count, summary_written) VALUES (?, ?, ?, datetime('now'), 0, 0)"
+        ).run(row.id, 1, row.source ?? 'web')
+        if (row.withChatMessage) {
+          seed.prepare("INSERT INTO chat_messages (session_id, user_id, role, content) VALUES (?, 1, 'user', 'hi')").run(row.id)
+        }
+        if (row.withTokenUsage) {
+          seed.prepare("INSERT INTO token_usage (provider, model, prompt_tokens, completion_tokens, session_id) VALUES ('openai','gpt-4',10,5,?)").run(row.id)
+        }
+        if (row.withToolCall) {
+          seed.prepare("INSERT INTO tool_calls (session_id, tool_name, input, output, duration_ms) VALUES (?, 'test', '{}', 'ok', 1)").run(row.id)
+        }
+        if (row.withTask) {
+          seed.prepare("INSERT INTO tasks (id, name, prompt, status, trigger_type, session_id) VALUES (?, 'n', 'p', 'running', 'user', ?)").run('task-row-' + row.id, row.id)
+        }
+        if (row.withMemory) {
+          seed.prepare("INSERT INTO memories (user_id, session_id, content) VALUES (1, ?, 'mem')").run(row.id)
+        }
+      }
+      seed.close()
+    }
+
+    it('remaps existing legacy session ids to UUIDs and backfills type from prefix', () => {
+      const dbPath = tmpDbPath()
+      seedLegacySessions(dbPath, [
+        { id: 'session-alice-123', withChatMessage: true, withTokenUsage: true },
+        { id: 'web-alice-456', withChatMessage: true },
+        { id: 'task-abc', withToolCall: true, withTask: true },
+        { id: 'task-result-xyz', withToolCall: true },
+        { id: 'task-injection-xyz', withChatMessage: true },
+        { id: 'cronjob-nightly-1', withToolCall: true },
+        { id: 'agent-heartbeat-789', withTokenUsage: true },
+        { id: 'nightly-consolidation-2025-01-01', withTokenUsage: true },
+        { id: 'loop-detection-abc', withTokenUsage: true },
+      ])
+
+      const db = initDatabase(dbPath)
+
+      const sessions = db.prepare('SELECT id, type, source FROM sessions').all() as Array<{ id: string, type: string, source: string }>
+      expect(sessions).toHaveLength(9)
+      for (const s of sessions) {
+        expect(s.id).toMatch(UUID_RE)
+      }
+      // Every child-table session_id must now also be a UUID.
+      for (const table of ['chat_messages', 'token_usage', 'tool_calls', 'tasks', 'memories']) {
+        const rows = db.prepare(`SELECT DISTINCT session_id FROM ${table} WHERE session_id IS NOT NULL`).all() as Array<{ session_id: string }>
+        for (const r of rows) {
+          expect(r.session_id).toMatch(UUID_RE)
+        }
+      }
+      // Type distribution must match prefix inference rules.
+      const typeCounts = db.prepare('SELECT type, COUNT(*) as c FROM sessions GROUP BY type').all() as Array<{ type: string, c: number }>
+      const countByType = Object.fromEntries(typeCounts.map(r => [r.type, r.c]))
+      expect(countByType['interactive']).toBe(4) // session-, web-, task-result-, task-injection-
+      expect(countByType['task']).toBe(2)        // task-abc, cronjob-nightly-1
+      expect(countByType['heartbeat']).toBe(1)
+      expect(countByType['consolidation']).toBe(1)
+      expect(countByType['loop_detection']).toBe(1)
+
+      db.close()
+    })
+
+    it('recovers orphaned session ids found only in child tables', () => {
+      const dbPath = tmpDbPath()
+      // Seed with NO entry in sessions, only FK references.
+      const seed = new BetterSqlite3(dbPath)
+      seed.pragma('foreign_keys = OFF')
+      seed.exec(`
+        CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'user');
+        CREATE TABLE sessions (id TEXT PRIMARY KEY, user_id INTEGER, source TEXT NOT NULL DEFAULT 'web', started_at TEXT NOT NULL DEFAULT (datetime('now')), ended_at TEXT, message_count INTEGER NOT NULL DEFAULT 0, summary_written INTEGER NOT NULL DEFAULT 0);
+        CREATE TABLE chat_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, user_id INTEGER, role TEXT NOT NULL CHECK(role IN ('user','assistant','tool')), content TEXT NOT NULL, timestamp TEXT NOT NULL DEFAULT (datetime('now')));
+        CREATE TABLE token_usage (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT NOT NULL DEFAULT (datetime('now')), provider TEXT NOT NULL, model TEXT NOT NULL, prompt_tokens INTEGER NOT NULL DEFAULT 0, completion_tokens INTEGER NOT NULL DEFAULT 0, estimated_cost REAL NOT NULL DEFAULT 0.0, session_id TEXT);
+        CREATE TABLE tool_calls (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT NOT NULL DEFAULT (datetime('now')), session_id TEXT, tool_name TEXT NOT NULL, input TEXT, output TEXT, duration_ms INTEGER);
+        CREATE TABLE tasks (id TEXT PRIMARY KEY, name TEXT NOT NULL, prompt TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN ('running','paused','completed','failed')), trigger_type TEXT NOT NULL CHECK(trigger_type IN ('user','agent','cronjob','heartbeat','consolidation')), trigger_source_id TEXT, provider TEXT, model TEXT, max_duration_minutes INTEGER, prompt_tokens INTEGER NOT NULL DEFAULT 0, completion_tokens INTEGER NOT NULL DEFAULT 0, estimated_cost REAL NOT NULL DEFAULT 0.0, tool_call_count INTEGER NOT NULL DEFAULT 0, result_summary TEXT, result_status TEXT CHECK(result_status IS NULL OR result_status IN ('completed','failed','question','silent')), error_message TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')), started_at TEXT, completed_at TEXT, session_id TEXT);
+        CREATE TABLE memories (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, session_id TEXT, content TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'session', timestamp TEXT NOT NULL DEFAULT (datetime('now')));
+      `)
+      seed.prepare('INSERT INTO users (username, password_hash) VALUES (?, ?)').run('bob', 'hash')
+      // Orphan interactive session referenced from chat_messages only.
+      seed.prepare("INSERT INTO chat_messages (session_id, user_id, role, content, timestamp) VALUES (?, 1, 'user', 'hi', '2024-01-01T00:00:00')").run('web-bob-1')
+      seed.prepare("INSERT INTO chat_messages (session_id, user_id, role, content, timestamp) VALUES (?, 1, 'assistant', 'hi', '2024-01-02T00:00:00')").run('web-bob-1')
+      // Orphan task referenced only from tool_calls.
+      seed.prepare("INSERT INTO tool_calls (session_id, tool_name, input, output, duration_ms, timestamp) VALUES (?, 'test', '{}', 'ok', 1, '2024-02-01T00:00:00')").run('task-orphan')
+      // Orphan heartbeat referenced only from token_usage.
+      seed.prepare("INSERT INTO token_usage (provider, model, prompt_tokens, completion_tokens, session_id, timestamp) VALUES ('x','m',1,1,?,'2024-03-01T00:00:00')").run('agent-heartbeat-orphan')
+      // Orphan referenced only from memories.
+      seed.prepare("INSERT INTO memories (user_id, session_id, content, timestamp) VALUES (1, ?, 'm', '2024-04-01T00:00:00')").run('session-mem-orphan')
+      // Orphan referenced only from tasks.
+      seed.prepare("INSERT INTO tasks (id, name, prompt, status, trigger_type, session_id, created_at) VALUES ('t-orphan','n','p','running','user',?, '2024-05-01T00:00:00')").run('cronjob-orphan')
+      seed.close()
+
+      const db = initDatabase(dbPath)
+
+      const sessions = db.prepare('SELECT id, type, source, started_at, user_id, session_user FROM sessions ORDER BY started_at').all() as Array<{ id: string, type: string, source: string, started_at: string, user_id: number | null, session_user: string | null }>
+      expect(sessions).toHaveLength(5)
+      for (const s of sessions) {
+        expect(s.id).toMatch(UUID_RE)
+      }
+      const typesAndSources = sessions.map(s => ({ type: s.type, source: s.source }))
+      expect(typesAndSources).toEqual(expect.arrayContaining([
+        { type: 'interactive', source: 'web' },
+        { type: 'task', source: 'task' },
+        { type: 'heartbeat', source: 'system' },
+        { type: 'interactive', source: 'web' },
+        { type: 'task', source: 'task' },
+      ]))
+      // Earliest timestamp of orphan chat_messages should be used.
+      const webSession = sessions.find(s => s.type === 'interactive' && s.started_at.startsWith('2024-01-01'))
+      expect(webSession).toBeDefined()
+      // user_id + session_user should be populated from child rows / users table when available.
+      expect(webSession!.user_id).toBe(1)
+      expect(webSession!.session_user).toBe('bob')
+
+      db.close()
+    })
+
+    it('is idempotent on mixed UUID + legacy datasets and leaves UUIDs untouched', () => {
+      const dbPath = tmpDbPath()
+      const existingUuid = '11111111-2222-3333-4444-555555555555'
+      seedLegacySessions(dbPath, [
+        { id: 'session-legacy-mix', withChatMessage: true },
+        { id: existingUuid, source: 'telegram', withChatMessage: true },
+      ])
+
+      let db = initDatabase(dbPath)
+
+      const afterFirst = db.prepare('SELECT id, source FROM sessions ORDER BY id').all() as Array<{ id: string, source: string }>
+      expect(afterFirst).toHaveLength(2)
+      // The pre-existing UUID id must still be present unchanged.
+      expect(afterFirst.some(r => r.id === existingUuid)).toBe(true)
+      // The legacy id must have been replaced with a UUID.
+      expect(afterFirst.some(r => r.id !== existingUuid && UUID_RE.test(r.id))).toBe(true)
+
+      // Re-running init is a no-op for IDs.
+      db.close()
+      db = initDatabase(dbPath)
+      const afterSecond = db.prepare('SELECT id FROM sessions ORDER BY id').all() as Array<{ id: string }>
+      expect(afterSecond.map(r => r.id).sort()).toEqual(afterFirst.map(r => r.id).sort())
+      // No duplicate recovered sessions on rerun.
+      expect(afterSecond).toHaveLength(2)
+      db.close()
+    })
+
+    it('remaps parent_session_id through the same old→new mapping', () => {
+      const dbPath = tmpDbPath()
+      // Seed legacy DB with parent linkage. The legacy schema (pre-migration)
+      // did not have parent_session_id; the migration path adds the column
+      // then expects us to populate it. Seed directly post-ALTER by creating
+      // the DB once (triggers migration & adds the column), then inserting
+      // legacy rows with parent_session_id set, then rerunning initDatabase.
+      //
+      // Simpler: create the DB once to get the new schema, then insert legacy-
+      // shaped rows (legacy ids but using the current schema), then re-init.
+      {
+        const init = initDatabase(dbPath)
+        init.prepare("INSERT INTO users (username, password_hash) VALUES ('carol', 'h')").run()
+        init.prepare(
+          "INSERT INTO sessions (id, user_id, source, type, parent_session_id, started_at, message_count, summary_written) VALUES (?, 1, 'web', 'interactive', NULL, datetime('now'), 0, 0)"
+        ).run('session-parent-1')
+        init.prepare(
+          "INSERT INTO sessions (id, user_id, source, type, parent_session_id, started_at, message_count, summary_written) VALUES (?, 1, 'task', 'task', ?, datetime('now'), 0, 0)"
+        ).run('task-child-1', 'session-parent-1')
+        init.close()
+      }
+
+      const db = initDatabase(dbPath)
+      const parent = db.prepare("SELECT id FROM sessions WHERE type = 'interactive'").get() as { id: string }
+      const child = db.prepare("SELECT id, parent_session_id FROM sessions WHERE type = 'task'").get() as { id: string, parent_session_id: string }
+      expect(parent.id).toMatch(UUID_RE)
+      expect(child.id).toMatch(UUID_RE)
+      expect(child.parent_session_id).toBe(parent.id)
+      db.close()
+    })
+
+    it('backfills cronjob-* and task-injection-* prefixes correctly', () => {
+      const dbPath = tmpDbPath()
+      seedLegacySessions(dbPath, [
+        { id: 'cronjob-daily-42', withToolCall: true },
+        { id: 'task-injection-abc', withChatMessage: true },
+      ])
+      const db = initDatabase(dbPath)
+      const sessions = db.prepare('SELECT id, type, source FROM sessions ORDER BY type').all() as Array<{ id: string, type: string, source: string }>
+      expect(sessions).toHaveLength(2)
+      for (const s of sessions) {
+        expect(s.id).toMatch(UUID_RE)
+      }
+      const byType = Object.fromEntries(sessions.map(s => [s.type, s]))
+      // cronjob-* legacy ids must be typed as 'task'.
+      expect(byType['task']).toBeDefined()
+      // task-injection-* legacy ids must be typed as 'interactive'.
+      expect(byType['interactive']).toBeDefined()
+      db.close()
+    })
   })
 })
