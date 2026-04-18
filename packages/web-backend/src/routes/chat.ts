@@ -1,11 +1,25 @@
 import { Router } from 'express'
-import type { Database } from '@openagent/core'
+import type { Database, AgentCore } from '@openagent/core'
 import { saveUpload, serializeUploadsMetadata } from '@openagent/core'
 import { jwtMiddleware } from '../auth.js'
 import type { AuthenticatedRequest } from '../auth.js'
 import { uploadMiddleware } from '../uploads.js'
 
-export function createChatRouter(db: Database): Router {
+export interface ChatRouterOptions {
+  db: Database
+  /** Resolves the live AgentCore (and via it, SessionManager). May return null
+   * if the agent isn't available yet — in which case the REST upload endpoint
+   * cannot create a tracked session and will return an error. */
+  getAgentCore?: () => AgentCore | null
+}
+
+export function createChatRouter(options: ChatRouterOptions | Database): Router {
+  // Backwards-compat: allow `createChatRouter(db)` (used by older callers/tests)
+  const opts: ChatRouterOptions = ('db' in (options as ChatRouterOptions)
+    ? (options as ChatRouterOptions)
+    : { db: options as Database })
+  const { db } = opts
+  const getAgentCore = opts.getAgentCore ?? (() => null)
   const router = Router()
 
   router.use(jwtMiddleware)
@@ -20,7 +34,16 @@ export function createChatRouter(db: Database): Router {
       return
     }
 
-    const sessionId = `web-${userId}-${Date.now()}`
+    // Resolve a tracked interactive session via SessionManager. Source = 'rest'
+    // so the originating channel is preserved on the `sessions` row.
+    const agentCore = getAgentCore()
+    if (!agentCore) {
+      res.status(503).json({ error: 'Agent core not available' })
+      return
+    }
+    const session = agentCore.getSessionManager().getOrCreateSession(String(userId), 'rest')
+    const sessionId = session.id
+
     const uploads = files.map(file => saveUpload({
       buffer: file.buffer,
       originalName: file.originalname,
@@ -50,7 +73,9 @@ export function createChatRouter(db: Database): Router {
   /**
    * GET /api/chat/history
    * Query: ?session_id=xxx&page=1&limit=50
-   * Returns paginated chat messages
+   * Returns paginated chat messages, joined with `sessions` so each message
+   * carries the originating `source` (web, telegram, rest, ...). The frontend
+   * uses `source` instead of inferring from session-ID prefixes.
    */
   router.get('/history', (req: AuthenticatedRequest, res) => {
     const sessionId = req.query.session_id as string | undefined
@@ -64,7 +89,12 @@ export function createChatRouter(db: Database): Router {
 
     if (sessionId) {
       messages = db.prepare(
-        'SELECT id, session_id, user_id, role, content, metadata, timestamp FROM chat_messages WHERE user_id = ? AND session_id = ? ORDER BY timestamp DESC LIMIT ? OFFSET ?'
+        `SELECT cm.id, cm.session_id, cm.user_id, cm.role, cm.content, cm.metadata, cm.timestamp,
+                s.source AS source, s.type AS session_type
+         FROM chat_messages cm
+         LEFT JOIN sessions s ON s.id = cm.session_id
+         WHERE cm.user_id = ? AND cm.session_id = ?
+         ORDER BY cm.timestamp DESC LIMIT ? OFFSET ?`
       ).all(userId, sessionId, limit, offset)
 
       total = (db.prepare(
@@ -72,7 +102,12 @@ export function createChatRouter(db: Database): Router {
       ).get(userId, sessionId) as { count: number }).count
     } else {
       messages = db.prepare(
-        'SELECT id, session_id, user_id, role, content, metadata, timestamp FROM chat_messages WHERE user_id = ? ORDER BY timestamp DESC LIMIT ? OFFSET ?'
+        `SELECT cm.id, cm.session_id, cm.user_id, cm.role, cm.content, cm.metadata, cm.timestamp,
+                s.source AS source, s.type AS session_type
+         FROM chat_messages cm
+         LEFT JOIN sessions s ON s.id = cm.session_id
+         WHERE cm.user_id = ?
+         ORDER BY cm.timestamp DESC LIMIT ? OFFSET ?`
       ).all(userId, limit, offset)
 
       total = (db.prepare(

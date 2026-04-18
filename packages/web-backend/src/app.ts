@@ -86,7 +86,7 @@ export function createApp(options?: AppOptions): express.Express {
     ensureAdminUser(options.db)
     app.use('/api/uploads', createUploadsRouter())
     app.use('/api/auth', createAuthRouter(options.db))
-    app.use('/api/chat', createChatRouter(options.db))
+    app.use('/api/chat', createChatRouter({ db: options.db, getAgentCore }))
     app.use('/api/logs', createLogsRouter(options.db))
     app.use('/api/providers', createProvidersRouter({
       onActiveProviderChanged: () => {
