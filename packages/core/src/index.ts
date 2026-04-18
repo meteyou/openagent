@@ -52,8 +52,8 @@ export { getUserProfileDir, ensureUserProfile, readUserProfile, ensureWikiDir, e
 export type { SkillPromptEntry } from './memory.js'
 export { consolidateMemory, readDailyFilesForConsolidation, buildConsolidationPrompt } from './memory-consolidation.js'
 export type { MemoryConsolidationOptions, ConsolidationResult } from './memory-consolidation.js'
-export { SessionManager } from './session-manager.js'
-export type { SessionInfo, SessionManagerOptions } from './session-manager.js'
+export { SessionManager, generateSessionId } from './session-manager.js'
+export type { SessionInfo, SessionManagerOptions, SessionType, CreateSessionOptions } from './session-manager.js'
 export {
   loadProviders,
   loadProvidersDecrypted,
