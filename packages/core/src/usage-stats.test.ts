@@ -124,6 +124,44 @@ describe('usage-stats', () => {
     expect(daily.availableModels).toEqual(['gpt-4o', 'gpt-4o-mini'])
   })
 
+  it('filters by sessionType via sessions.type JOIN', () => {
+    const testDb = setup()
+
+    // Seed sessions with explicit types — no prefix matching.
+    testDb.prepare("INSERT INTO sessions (id, source, type) VALUES ('sess-main', 'web', 'interactive')").run()
+    testDb.prepare("INSERT INTO sessions (id, source, type) VALUES ('sess-task', 'system', 'task')").run()
+    testDb.prepare("INSERT INTO sessions (id, source, type) VALUES ('sess-hb',   'system', 'heartbeat')").run()
+    testDb.prepare("INSERT INTO sessions (id, source, type) VALUES ('sess-cons', 'system', 'consolidation')").run()
+
+    const ts = createTimestamp(new Date('2026-03-22T10:00:00Z'))
+    const insert = testDb.prepare(
+      'INSERT INTO token_usage (timestamp, provider, model, prompt_tokens, completion_tokens, estimated_cost, session_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    )
+    insert.run(ts, 'openai', 'gpt-4o', 100, 50, 0.001, 'sess-main')
+    insert.run(ts, 'openai', 'gpt-4o', 200, 100, 0.002, 'sess-task')
+    insert.run(ts, 'openai', 'gpt-4o', 300, 150, 0.003, 'sess-hb')
+    insert.run(ts, 'openai', 'gpt-4o', 400, 200, 0.004, 'sess-cons')
+    // NULL session_id — should be treated as 'main' for backward compat.
+    testDb.prepare(
+      'INSERT INTO token_usage (timestamp, provider, model, prompt_tokens, completion_tokens, estimated_cost) VALUES (?, ?, ?, ?, ?, ?)',
+    ).run(ts, 'openai', 'gpt-4o', 10, 5, 0.0001)
+
+    const main = queryUsageStats(testDb, { sessionType: 'main' })
+    expect(main.totals.requests).toBe(2) // sess-main + NULL
+    expect(main.totals.totalTokens).toBe(100 + 50 + 10 + 5)
+
+    const task = queryUsageStats(testDb, { sessionType: 'task' })
+    expect(task.totals.requests).toBe(1)
+    expect(task.totals.totalTokens).toBe(200 + 100)
+
+    const hb = queryUsageStats(testDb, { sessionType: 'heartbeat' })
+    expect(hb.totals.requests).toBe(1)
+    expect(hb.totals.totalTokens).toBe(300 + 150)
+
+    const all = queryUsageStats(testDb)
+    expect(all.totals.requests).toBe(5)
+  })
+
   it('returns today/week/month/all-time totals', () => {
     const testDb = setup()
     const now = new Date('2026-03-27T15:30:00Z')
