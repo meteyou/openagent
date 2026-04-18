@@ -20,14 +20,22 @@ export function useLogDisplay() {
     return isEntrySkillLoad(entry) ? 'Load Skill' : entry.toolName
   }
 
-  /** Whether the entry originates from a task sub-session */
-  function isTaskSession(sessionId: string | null | undefined): boolean {
-    return !!sessionId && sessionId.startsWith('task-')
+  /**
+   * Whether the entry originates from a background (task) sub-session.
+   *
+   * Uses the joined `sessionType` metadata from the backend instead of
+   * parsing the session_id string (session IDs are UUIDs after PRD #11).
+   */
+  function isTaskSession(entryOrType: LogEntry | string | null | undefined): boolean {
+    if (!entryOrType) return false
+    const type = typeof entryOrType === 'string' ? entryOrType : entryOrType.sessionType
+    if (!type) return false
+    return type === 'task' || type === 'heartbeat' || type === 'consolidation' || type === 'loop_detection'
   }
 
   /** Translated source label for the session badge */
-  function getSourceLabel(sessionId: string | null | undefined): string {
-    return isTaskSession(sessionId) ? t('logs.sourceTask') : t('logs.sourceMainAgent')
+  function getSourceLabel(entryOrType: LogEntry | string | null | undefined): string {
+    return isTaskSession(entryOrType) ? t('logs.sourceTask') : t('logs.sourceMainAgent')
   }
 
   /** Tailwind classes for the tool badge */

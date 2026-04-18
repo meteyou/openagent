@@ -7,6 +7,10 @@ export interface LogEntry {
   output: string
   durationMs: number
   status: 'success' | 'error'
+  /** Joined from `sessions.type` — drives source badge rendering. */
+  sessionType?: string | null
+  /** Joined from `sessions.source`. */
+  sessionSource?: string | null
 }
 
 interface LogsResponse {
@@ -55,6 +59,8 @@ export function useLogs() {
     search?: string
     dateFrom?: string
     dateTo?: string
+    sessionType?: 'main' | 'task' | ''
+    /** @deprecated use `sessionType`. */
     sourceFilter?: 'main' | 'task' | ''
   } = {}) {
     loading.value = true
@@ -65,7 +71,8 @@ export function useLogs() {
       if (options.sessionId) params.set('session_id', options.sessionId)
       if (options.toolName) params.set('tool_name', options.toolName)
       if (options.search) params.set('search', options.search)
-      if (options.sourceFilter) params.set('source', options.sourceFilter)
+      const sessionType = options.sessionType ?? options.sourceFilter
+      if (sessionType) params.set('session_type', sessionType)
       if (options.dateFrom) {
         // Convert local date to UTC start-of-day: "2026-03-28" → "2026-03-27 23:00:00" (for UTC+1)
         const fromLocal = new Date(`${options.dateFrom}T00:00:00`)

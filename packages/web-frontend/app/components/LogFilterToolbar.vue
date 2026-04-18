@@ -2,7 +2,7 @@
 const { t } = useI18n()
 
 const searchQuery = defineModel<string>('search', { required: true })
-const selectedSourceFilter = defineModel<'' | 'main' | 'task'>('sourceFilter', { required: true })
+const selectedSessionType = defineModel<'' | 'main' | 'task'>('sessionType', { required: true })
 const selectedToolName = defineModel<string>('toolName', { required: true })
 const dateFrom = defineModel<string>('dateFrom', { required: true })
 const dateTo = defineModel<string>('dateTo', { required: true })
@@ -28,7 +28,7 @@ const emit = defineEmits<{
         @input="emit('search')"
       />
 
-      <Select v-model="selectedSourceFilter" @update:model-value="emit('apply')">
+      <Select v-model="selectedSessionType" @update:model-value="emit('apply')">
         <SelectTrigger class="w-[150px]">
           <SelectValue />
         </SelectTrigger>

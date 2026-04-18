@@ -33,7 +33,7 @@
     <!-- Filter toolbar -->
     <LogFilterToolbar
       v-model:search="searchQuery"
-      v-model:source-filter="selectedSourceFilter"
+      v-model:session-type="selectedSessionType"
       v-model:tool-name="selectedToolName"
       v-model:date-from="dateFrom"
       v-model:date-to="dateTo"
@@ -139,7 +139,7 @@ const {
 
 const searchQuery = ref('')
 const selectedToolName = ref('')
-const selectedSourceFilter = ref<'main' | 'task' | ''>('')
+const selectedSessionType = ref<'main' | 'task' | ''>('')
 const dateFrom = ref('')
 const dateTo = ref('')
 const expandedId = ref<number | null>(null)
@@ -164,7 +164,7 @@ async function applyFilters() {
     toolName: selectedToolName.value || undefined,
     dateFrom: dateFrom.value || undefined,
     dateTo: dateTo.value || undefined,
-    sourceFilter: selectedSourceFilter.value || undefined,
+    sessionType: selectedSessionType.value || undefined,
   })
 }
 
@@ -201,7 +201,7 @@ function goToPage(page: number) {
     toolName: selectedToolName.value || undefined,
     dateFrom: dateFrom.value || undefined,
     dateTo: dateTo.value || undefined,
-    sourceFilter: selectedSourceFilter.value || undefined,
+    sessionType: selectedSessionType.value || undefined,
   })
 }
 
