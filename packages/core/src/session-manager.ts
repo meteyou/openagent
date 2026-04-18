@@ -1,6 +1,30 @@
+import { randomUUID } from 'node:crypto'
 import type { Database } from './database.js'
 import { appendToDailyFile } from './memory.js'
 import { logToolCall } from './token-logger.js'
+
+/**
+ * The single canonical session ID generator. All new sessions — interactive,
+ * task, heartbeat, consolidation, loop_detection — must obtain their ID from
+ * this function so that ID format is uniform across the system.
+ */
+export function generateSessionId(): string {
+  return randomUUID()
+}
+
+export type SessionType =
+  | 'interactive'
+  | 'task'
+  | 'heartbeat'
+  | 'consolidation'
+  | 'loop_detection'
+
+export interface CreateSessionOptions {
+  type: SessionType
+  source: string
+  userId?: string
+  parentSessionId?: string
+}
 
 export interface SessionInfo {
   id: string
@@ -66,13 +90,18 @@ export class SessionManager {
    * Handle sessions left open from a previous server run.
    */
   private async handleOrphanedSessions(): Promise<void> {
+    // Only interactive sessions go through the inactivity-timeout / summarize
+    // lifecycle. Background session types (task, heartbeat, consolidation,
+    // loop_detection) are owned by their respective producers and must not be
+    // auto-summarized or auto-closed by SessionManager on startup.
     const orphaned = this.db.prepare(
-      `SELECT id, session_user, source, started_at, last_activity, message_count, summary_written
-       FROM sessions WHERE ended_at IS NULL`
+      `SELECT id, session_user, source, type, started_at, last_activity, message_count, summary_written
+       FROM sessions WHERE ended_at IS NULL AND type = 'interactive'`
     ).all() as Array<{
       id: string
       session_user: string | null
       source: string
+      type: string
       started_at: string
       last_activity: string | null
       message_count: number
@@ -89,8 +118,8 @@ export class SessionManager {
       const lastActivity = this.parseSqliteTimestamp(lastActivityStr)
       const elapsed = Date.now() - lastActivity
 
-      // Recover userId from DB column or parse from session id
-      const userId = row.session_user ?? this.parseUserIdFromSessionId(row.id)
+      // session_user is the authoritative source of truth for the user.
+      const userId = row.session_user ?? 'unknown'
 
       if (elapsed >= this.timeoutMs) {
         // Timeout already elapsed → summarize and close
@@ -110,14 +139,6 @@ export class SessionManager {
     // Append 'Z' to treat as UTC if no timezone info present
     const normalized = str.includes('Z') || str.includes('+') ? str : str + 'Z'
     return new Date(normalized).getTime()
-  }
-
-  /**
-   * Best-effort extraction of userId from session id format: session-{userId}-{timestamp}-{random}
-   */
-  private parseUserIdFromSessionId(sessionId: string): string {
-    const match = sessionId.match(/^session-(.+?)-\d{13,}-/)
-    return match?.[1] ?? 'unknown'
   }
 
   /**
@@ -351,11 +372,11 @@ export class SessionManager {
   /**
    * Get or create a session for a user. Resets the inactivity timer.
    */
-  getOrCreateSession(userId: string, source: string = 'web'): SessionInfo {
+  getOrCreateSession(userId: string, source: string = 'web', type: SessionType = 'interactive'): SessionInfo {
     let session = this.sessions.get(userId)
 
     if (!session) {
-      const id = `session-${userId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      const id = generateSessionId()
       session = {
         id,
         userId,
@@ -368,11 +389,11 @@ export class SessionManager {
       }
       this.sessions.set(userId, session)
 
-      // Insert into SQLite (including last_activity and session_user)
+      // Insert into SQLite (including last_activity, session_user, type)
       this.db.prepare(
-        `INSERT INTO sessions (id, user_id, source, started_at, last_activity, session_user, message_count, summary_written)
-         VALUES (?, ?, ?, datetime(? / 1000, 'unixepoch'), datetime(? / 1000, 'unixepoch'), ?, 0, 0)`
-      ).run(session.id, null, source, session.startedAt, session.lastActivity, userId)
+        `INSERT INTO sessions (id, user_id, source, type, parent_session_id, started_at, last_activity, session_user, message_count, summary_written)
+         VALUES (?, ?, ?, ?, NULL, datetime(? / 1000, 'unixepoch'), datetime(? / 1000, 'unixepoch'), ?, 0, 0)`
+      ).run(session.id, null, source, type, session.startedAt, session.lastActivity, userId)
 
       // Log session start to tool_calls for activity log visibility
       logToolCall(this.db, {
@@ -387,6 +408,42 @@ export class SessionManager {
       // Start inactivity timer for the new session
       this.resetTimer(userId)
     }
+
+    return session
+  }
+
+  /**
+   * Create a non-interactive session (task, heartbeat, consolidation,
+   * loop_detection). Unlike `getOrCreateSession`, this does NOT cache the
+   * session per-user and does NOT start an inactivity timer — background
+   * sessions are owned and closed by their producers.
+   */
+  createSession(options: CreateSessionOptions): SessionInfo {
+    const id = generateSessionId()
+    const now = Date.now()
+    const session: SessionInfo = {
+      id,
+      userId: options.userId ?? 'system',
+      source: options.source,
+      startedAt: now,
+      lastActivity: now,
+      messageCount: 0,
+      summaryWritten: false,
+      restored: false,
+    }
+
+    this.db.prepare(
+      `INSERT INTO sessions (id, user_id, source, type, parent_session_id, started_at, last_activity, session_user, message_count, summary_written)
+       VALUES (?, NULL, ?, ?, ?, datetime(? / 1000, 'unixepoch'), datetime(? / 1000, 'unixepoch'), ?, 0, 0)`
+    ).run(
+      id,
+      options.source,
+      options.type,
+      options.parentSessionId ?? null,
+      now,
+      now,
+      options.userId ?? null,
+    )
 
     return session
   }
@@ -587,13 +644,15 @@ export class SessionManager {
     message_count: number
     summary_written: number
     source: string
+    type: string
+    parent_session_id: string | null
     last_activity: string | null
     session_user: string | null
     prompt_tokens: number
     completion_tokens: number
   } | undefined {
     return this.db.prepare(
-      `SELECT id, started_at, ended_at, message_count, summary_written, source, last_activity, session_user, prompt_tokens, completion_tokens
+      `SELECT id, started_at, ended_at, message_count, summary_written, source, type, parent_session_id, last_activity, session_user, prompt_tokens, completion_tokens
        FROM sessions WHERE id = ?`
     ).get(sessionId) as {
       id: string
@@ -602,6 +661,8 @@ export class SessionManager {
       message_count: number
       summary_written: number
       source: string
+      type: string
+      parent_session_id: string | null
       last_activity: string | null
       session_user: string | null
       prompt_tokens: number
