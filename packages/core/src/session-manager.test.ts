@@ -940,6 +940,31 @@ describe('SessionManager', () => {
       expect(metadata!.ended_at).not.toBeNull()
     })
 
+    it('restores orphaned sessions with NULL session_user using user_id fallback', async () => {
+      db.prepare(
+        `INSERT INTO users (id, username, password_hash, role) VALUES (42, 'user42', 'hash', 'user')`
+      ).run()
+
+      const sessionId = generateSessionId()
+      db.prepare(
+        `INSERT INTO sessions (id, user_id, source, type, session_user, started_at, last_activity, message_count, summary_written)
+         VALUES (?, 42, 'web', 'interactive', NULL, datetime('now'), datetime('now'), 1, 0)`
+      ).run(sessionId)
+
+      const manager = new SessionManager({
+        db,
+        memoryDir,
+        timeoutMinutes: 15,
+      })
+      await manager.init()
+
+      expect(manager.hasActiveSession('42')).toBe(true)
+      expect(manager.hasActiveSession('unknown')).toBe(false)
+      expect(manager.getSession('42')?.id).toBe(sessionId)
+
+      await manager.dispose()
+    })
+
     it('handles pre-migration sessions without last_activity (falls back to started_at)', async () => {
       // Manually insert a session without last_activity (simulating pre-migration data)
       const sessionId = generateSessionId()

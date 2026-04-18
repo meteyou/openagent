@@ -95,10 +95,11 @@ export class SessionManager {
     // loop_detection) are owned by their respective producers and must not be
     // auto-summarized or auto-closed by SessionManager on startup.
     const orphaned = this.db.prepare(
-      `SELECT id, session_user, source, type, started_at, last_activity, message_count, summary_written
+      `SELECT id, user_id, session_user, source, type, started_at, last_activity, message_count, summary_written
        FROM sessions WHERE ended_at IS NULL AND type = 'interactive'`
     ).all() as Array<{
       id: string
+      user_id: number | null
       session_user: string | null
       source: string
       type: string
@@ -118,8 +119,11 @@ export class SessionManager {
       const lastActivity = this.parseSqliteTimestamp(lastActivityStr)
       const elapsed = Date.now() - lastActivity
 
-      // session_user is the authoritative source of truth for the user.
-      const userId = row.session_user ?? 'unknown'
+      // Prefer session_user; fall back to user_id for legacy rows where
+      // session_user was never backfilled. Final fallback keeps sessions
+      // distinct to avoid timer collisions.
+      const userId = row.session_user
+        ?? (row.user_id != null ? String(row.user_id) : `orphan:${row.id}`)
 
       if (elapsed >= this.timeoutMs) {
         // Timeout already elapsed → summarize and close
