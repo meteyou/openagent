@@ -11,7 +11,13 @@ export interface UsageStatsQueryOptions {
   provider?: string
   model?: string
   priceTable?: TokenPriceTable
-  /** Filter by session type: 'main' (non-task/non-heartbeat sessions), 'task' (task-* sessions), 'heartbeat' (agent-heartbeat-* sessions), or undefined (all) */
+  /**
+   * Filter by session type (resolved via JOIN on `sessions.type`):
+   * - 'main' — interactive sessions (or NULL/orphan session_ids)
+   * - 'task' — background task sessions (`sessions.type = 'task'`)
+   * - 'heartbeat' — agent heartbeat sessions (`sessions.type = 'heartbeat'`)
+   * - undefined — all
+   */
   sessionType?: 'main' | 'task' | 'heartbeat'
 }
 
@@ -122,12 +128,14 @@ function buildWhereClause(options: UsageStatsQueryOptions, whereOptions: WhereOp
     params.push(options.model)
   }
 
+  // Session type filter: JOIN on sessions.type (NULL session_ids / orphan
+  // FKs are treated as 'interactive' for backward compatibility with 'main').
   if (options.sessionType === 'task') {
-    clauses.push("session_id LIKE 'task-%' AND session_id NOT LIKE 'agent-heartbeat-%'")
+    clauses.push("EXISTS (SELECT 1 FROM sessions s WHERE s.id = token_usage.session_id AND s.type = 'task')")
   } else if (options.sessionType === 'heartbeat') {
-    clauses.push("session_id LIKE 'agent-heartbeat-%'")
+    clauses.push("EXISTS (SELECT 1 FROM sessions s WHERE s.id = token_usage.session_id AND s.type = 'heartbeat')")
   } else if (options.sessionType === 'main') {
-    clauses.push("(session_id IS NULL OR (session_id NOT LIKE 'task-%' AND session_id NOT LIKE 'agent-heartbeat-%'))")
+    clauses.push("(token_usage.session_id IS NULL OR NOT EXISTS (SELECT 1 FROM sessions s WHERE s.id = token_usage.session_id AND s.type IN ('task', 'heartbeat', 'consolidation', 'loop_detection')))")
   }
 
   return {
