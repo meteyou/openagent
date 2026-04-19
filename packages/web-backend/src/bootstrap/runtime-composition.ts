@@ -287,6 +287,16 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
    * task's session lineage back to the triggering interactive session.
    * Returns null when the task has no interactive parent (cronjob,
    * heartbeat, consolidation) — callers fall back to a default user.
+   *
+   * User-id precedence when both columns are populated:
+   *   1. `session_user` (the canonical identity written by
+   *      `SessionManager.getOrCreateSession`, always matches the runtime
+   *      userId; for numeric web/telegram users this is `String(n)`).
+   *   2. `user_id` (only populated for sessions recovered by the legacy
+   *      migration — derived from child-table user_id columns).
+   *
+   * `session_user` is preferred because it reflects the caller's identity
+   * at session creation time; `user_id` is a best-effort backfill.
    */
   function resolveTargetUserIdForTask(taskSessionId: string | null | undefined): number | null {
     if (!taskSessionId) return null
@@ -297,12 +307,19 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
     let safety = 10
     while (currentId && safety-- > 0) {
       const row = db.prepare(
-        'SELECT parent_session_id, session_user FROM sessions WHERE id = ?'
-      ).get(currentId) as { parent_session_id: string | null; session_user: string | null } | undefined
+        'SELECT parent_session_id, user_id, session_user FROM sessions WHERE id = ?'
+      ).get(currentId) as {
+        parent_session_id: string | null
+        user_id: number | null
+        session_user: string | null
+      } | undefined
       if (!row) return null
       if (!row.parent_session_id) {
-        const uid = row.session_user ? Number.parseInt(row.session_user, 10) : NaN
-        return Number.isSafeInteger(uid) ? uid : null
+        // Prefer session_user (canonical identity) over user_id (backfill).
+        const parsedSessionUser = row.session_user ? Number.parseInt(row.session_user, 10) : NaN
+        if (Number.isSafeInteger(parsedSessionUser)) return parsedSessionUser
+        if (Number.isSafeInteger(row.user_id)) return row.user_id
+        return null
       }
       currentId = row.parent_session_id
     }
@@ -311,16 +328,18 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
 
   /**
    * Fallback user when a task has no interactive lineage (cronjob,
-   * heartbeat). Uses the lowest-id user in the users table.
+   * heartbeat). Uses the lowest-id user in the `users` table. Throws if
+   * the query fails or no user exists — an empty users table means the
+   * system is misconfigured (admin is provisioned by `ensureAdminUser`
+   * during bootstrap), and a DB error must not be silently hidden by
+   * returning a hardcoded id that may not exist.
    */
   function getFallbackUserId(): number {
-    try {
-      const row = db.prepare('SELECT id FROM users ORDER BY id ASC LIMIT 1').get() as { id: number } | undefined
-      if (row && Number.isSafeInteger(row.id)) return row.id
-    } catch {
-      // ignore
+    const row = db.prepare('SELECT id FROM users ORDER BY id ASC LIMIT 1').get() as { id: number } | undefined
+    if (!row || !Number.isSafeInteger(row.id)) {
+      throw new Error('getFallbackUserId: no users in database (admin not provisioned?)')
     }
-    return 1
+    return row.id
   }
 
   function handleTaskNotification(taskId: string, injection: string, taskRuntime: TaskRuntimeTaskBoundary): void {
