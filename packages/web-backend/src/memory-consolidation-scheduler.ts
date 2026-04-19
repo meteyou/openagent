@@ -277,13 +277,22 @@ export class MemoryConsolidationScheduler {
     const startTime = Date.now()
     // Create the consolidation session up-front so both the task and the
     // scheduler's tool-call logging share the same session ID (registered
-    // in the `sessions` table with type='consolidation').
-    const sessionId = this.sessionManager
-      ? this.sessionManager.createSession({
-          type: 'consolidation',
-          source: 'system',
-        }).id
-      : generateSessionId()
+    // in the `sessions` table with type='consolidation'). The session row
+    // is always written, even in the test-mode fallback path, so child
+    // rows (tool_calls, token_usage) never dangle with an orphan FK.
+    let sessionId: string
+    if (this.sessionManager) {
+      sessionId = this.sessionManager.createSession({
+        type: 'consolidation',
+        source: 'system',
+      }).id
+    } else {
+      sessionId = generateSessionId()
+      this.db.prepare(
+        `INSERT INTO sessions (id, user_id, source, type, started_at, last_activity, message_count, summary_written)
+         VALUES (?, NULL, 'system', 'consolidation', datetime('now'), datetime('now'), 0, 0)`,
+      ).run(sessionId)
+    }
 
     const taskRuntime = this.resolveTaskRuntime()
 
