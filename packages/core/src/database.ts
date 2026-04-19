@@ -680,6 +680,12 @@ function migrateLegacySessionIds(db: Database): void {
 
     // Step C: Recover orphaned sessions. For each orphan ID, gather earliest
     // timestamp and any available user_id from child tables, then insert.
+    //
+    // Precedence of the reconstructed user_id is determined by the iteration
+    // order of `childTables` above: `chat_messages` -> `token_usage` ->
+    // `tool_calls` -> `tasks` -> `memories`. The first table that yields a
+    // non-null `user_id` wins. Reorder `childTables` deliberately if this
+    // precedence needs to change.
     const insertOrphanStmt = db.prepare(
       `INSERT INTO sessions (id, user_id, session_user, source, type, started_at, message_count, summary_written)
        VALUES (?, ?, ?, ?, ?, ?, 0, 0)`
@@ -689,19 +695,31 @@ function migrateLegacySessionIds(db: Database): void {
       const type = inferSessionTypeFromLegacyId(orphanId)
       const source = inferSessionSourceFromLegacyId(orphanId)
 
-      // Earliest timestamp across all child tables for this session_id.
+      // Earliest timestamp + first available user_id across child tables.
+      // Use two explicit queries per table so we never rely on SQLite's
+      // "bare column paired with MIN()" extension to keep the results
+      // coherent — a bare column combined with an aggregate in the same
+      // SELECT returns an arbitrary row otherwise.
       let earliest: string | null = null
       let userId: number | null = null
       let sessionUser: string | null = null
       for (const { table, userCol, timeCol } of childTables) {
-        const timeExpr = timeCol ? `MIN(${timeCol})` : 'NULL'
-        const userExpr = userCol ? userCol : 'NULL'
-        const row = db.prepare(
-          `SELECT ${timeExpr} AS t, ${userExpr} AS u FROM ${table} WHERE session_id = ? LIMIT 1`
-        ).get(orphanId) as { t: string | null, u: number | null } | undefined
-        if (!row) continue
-        if (row.t && (!earliest || row.t < earliest)) earliest = row.t
-        if (row.u != null && userId == null) userId = row.u
+        if (timeCol) {
+          const timeRow = db.prepare(
+            `SELECT MIN(${timeCol}) AS t FROM ${table} WHERE session_id = ?`
+          ).get(orphanId) as { t: string | null } | undefined
+          if (timeRow?.t && (!earliest || timeRow.t < earliest)) {
+            earliest = timeRow.t
+          }
+        }
+        if (userCol && userId == null) {
+          const userRow = db.prepare(
+            `SELECT ${userCol} AS u FROM ${table} WHERE session_id = ? AND ${userCol} IS NOT NULL LIMIT 1`
+          ).get(orphanId) as { u: number | null } | undefined
+          if (userRow?.u != null) {
+            userId = userRow.u
+          }
+        }
       }
       // Keep session_user semantics aligned with runtime SessionManager:
       // it stores the canonical string user key (for web users: numeric ID).
