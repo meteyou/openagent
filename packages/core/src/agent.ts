@@ -249,7 +249,17 @@ export class AgentCore {
    * `buildConversationHistory()`.
    */
   private async *processTaskInjection(targetUserId: string, injection: string): AsyncIterable<ResponseChunk> {
-    const session = this.sessionManager.getOrCreateSession(targetUserId, 'task', 'interactive')
+    // Never create interactive sessions with source='task' — this breaks
+    // source-based history/usage filters. Resolution order:
+    //   1. Active in-memory session (covers the common case).
+    //   2. Most recent interactive session row for this user in the DB
+    //      (covers users whose session cache expired — e.g. a Telegram-only
+    //      user receiving a delayed task result).
+    //   3. 'web' fallback only if the user has never had a session.
+    const source = this.sessionManager.getSession(targetUserId)?.source
+      ?? this.resolveLastInteractiveSource(targetUserId)
+      ?? 'web'
+    const session = this.sessionManager.getOrCreateSession(targetUserId, source, 'interactive')
     const sessionId = session.id
     this.currentInteractiveSessionId = sessionId
 
@@ -267,6 +277,22 @@ export class AgentCore {
 
     // Count the agent response as a message too
     this.sessionManager.recordMessage(targetUserId)
+  }
+
+  /**
+   * Look up the user's most recent interactive session source in the
+   * `sessions` table. Used when no session is cached in memory so a
+   * Telegram-only user (or any user whose session cache expired) does not
+   * get a new web-source session minted on task-result injection — which
+   * would otherwise permanently mistag subsequent activity.
+   */
+  private resolveLastInteractiveSource(userId: string): string | null {
+    const row = this.db.prepare(
+      `SELECT source FROM sessions
+       WHERE session_user = ? AND type = 'interactive'
+       ORDER BY started_at DESC LIMIT 1`
+    ).get(userId) as { source: string } | undefined
+    return row?.source ?? null
   }
 
   /**
