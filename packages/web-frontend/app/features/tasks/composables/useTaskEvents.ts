@@ -16,7 +16,9 @@ export function useTaskEvents() {
   const isLive = ref(false)
 
   let ws: WebSocket | null = null
-  const pendingToolCalls = new Map<string, TaskEventItem>()
+  // Maps toolCallId -> index in `events.value` so `tool_call_end` can merge
+  // into the existing `tool_call_start` entry (same panel, like the chat view).
+  const pendingToolCalls = new Map<string, number>()
 
   const textBuffer = ref('')
 
@@ -110,15 +112,38 @@ export function useTaskEvents() {
         loading.value = false
         break
 
-      case 'tool_call_start':
-        pendingToolCalls.set((data.toolCallId as string) ?? '', data as unknown as TaskEventItem)
+      case 'tool_call_start': {
+        const toolCallId = (data.toolCallId as string) ?? ''
         events.value.push(data as unknown as TaskEventItem)
+        if (toolCallId) {
+          pendingToolCalls.set(toolCallId, events.value.length - 1)
+        }
         break
+      }
 
-      case 'tool_call_end':
-        pendingToolCalls.delete((data.toolCallId as string) ?? '')
-        events.value.push(data as unknown as TaskEventItem)
+      case 'tool_call_end': {
+        const toolCallId = (data.toolCallId as string) ?? ''
+        const existingIdx = toolCallId ? pendingToolCalls.get(toolCallId) : undefined
+        const endEvent = data as unknown as TaskEventItem
+        if (existingIdx !== undefined && events.value[existingIdx]) {
+          // Merge result into the existing start entry so it renders as a
+          // single panel with args + result, matching the chat view.
+          const existing = events.value[existingIdx]!
+          events.value[existingIdx] = {
+            ...existing,
+            ...endEvent,
+            type: 'tool_call_end',
+            // Preserve args from start in case end payload omits them.
+            toolArgs: endEvent.toolArgs ?? existing.toolArgs,
+            toolName: endEvent.toolName ?? existing.toolName,
+          }
+          pendingToolCalls.delete(toolCallId)
+        } else {
+          // No matching start (e.g. missed backlog entry) — append as-is.
+          events.value.push(endEvent)
+        }
         break
+      }
 
       case 'text_delta':
         events.value.push(data as unknown as TaskEventItem)
