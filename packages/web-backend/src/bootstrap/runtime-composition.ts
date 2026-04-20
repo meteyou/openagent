@@ -5,6 +5,7 @@ import {
   createBaseAgentTools,
   createCronjobTool,
   createReminderTool,
+  createSendFileTool,
   createResumeTaskTool,
   createTaskRuntime,
   createTaskTool,
@@ -727,6 +728,16 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
     listCronjobsTool(cronjobToolsOptions),
     getCronjobTool(cronjobToolsOptions),
     createReminderTool(cronjobToolsOptions),
+    // `send_file_to_user` needs late-bound access to the active turn's user
+    // id and interactive session id — both are set on `agentCore` at the
+    // start of every `processUserMessage`/`processTaskInjection` call.
+    // Agents built without a running AgentCore (e.g. background task
+    // runner) never invoke this tool because its `getCurrentToolUserId`
+    // returns `undefined` and the tool refuses to run.
+    createSendFileTool({
+      getCurrentToolUserId: () => agentCore?.getCurrentToolUserId(),
+      getCurrentInteractiveSessionId: () => agentCore?.getCurrentInteractiveSessionId() ?? null,
+    }),
   ]
 
   taskRuntime.schedules.start()
@@ -764,6 +775,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
       toolResult: event.toolResult,
       toolIsError: event.toolIsError,
       senderName: event.senderName,
+      attachment: event.attachment,
     })
   }
 
