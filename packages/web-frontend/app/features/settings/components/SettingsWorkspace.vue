@@ -185,6 +185,22 @@
                   <p class="text-xs text-muted-foreground">{{ $t('settings.timezoneHint') }}</p>
                 </div>
 
+                <!-- Active Provider -->
+                <div class="flex flex-col gap-2">
+                  <Label for="active-provider">{{ $t('settings.activeProvider') }}</Label>
+                  <Select :model-value="activeProviderModelValue" @update:model-value="(v) => handleActivateProvider(v as string)">
+                    <SelectTrigger id="active-provider">
+                      <SelectValue :placeholder="$t('settings.activeProviderPlaceholder')" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem v-for="opt in providerModelOptions" :key="opt.value" :value="opt.value">
+                        {{ opt.label }}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p class="text-xs text-muted-foreground">{{ $t('settings.activeProviderHint') }}</p>
+                </div>
+
                 <!-- Thinking level (main chat agent) -->
                 <div class="flex flex-col gap-2">
                   <Label for="thinking-level">{{ $t('settings.thinkingLevel') }}</Label>
@@ -1747,8 +1763,25 @@ const {
   clearMessages,
 } = useSettings()
 
-/* ── Providers (consolidation dropdown) ── */
-const { providers, fetchProviders } = useProviders()
+/* ── Providers (consolidation dropdown + active provider) ── */
+const { providers, fetchProviders, activateProvider, activeProviderId, activeModelId } = useProviders()
+
+/** Current active provider:model composite value for the select dropdown */
+const activeProviderModelValue = computed(() => {
+  if (!activeProviderId.value) return ''
+  const provider = providers.value.find(p => p.id === activeProviderId.value)
+  const model = activeModelId.value ?? provider?.defaultModel ?? ''
+  return `${activeProviderId.value}:${model}`
+})
+
+async function handleActivateProvider(value: string) {
+  const parts = value.split(':')
+  const providerId = parts[0]
+  const modelId = parts.slice(1).join(':') || undefined
+  if (!providerId) return
+  await activateProvider(providerId, modelId)
+  await fetchProviders()
+}
 
 /** Flattened list of provider+model combinations for all provider select dropdowns */
 const providerModelOptions = computed(() => {
