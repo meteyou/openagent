@@ -73,20 +73,18 @@ function escapeHtml(text: string): string {
  *   (typically the user's interactive session that triggered the task).
  * - Otherwise fall back to the task's own session (cronjob, heartbeat,
  *   consolidation — background tasks without an interactive trigger).
+ * - Returns `null` when the task has no `session_id` at all (legacy
+ *   pre-migration rows). Callers decide whether to skip persistence
+ *   entirely or route to a caller-provided fallback session; throwing
+ *   from this helper would corrupt task completion state because the
+ *   error propagates into `TaskRunner.notifyTaskComplete`'s catch path
+ *   and re-marks a completed task as failed.
  *
- * Replaces the legacy `task-result-<taskId>` pseudo-session IDs — the
- * function always returns a real session UUID (either the task's own
- * session or the linked interactive parent session).
+ * Replaces the legacy `task-result-<taskId>` pseudo-session IDs — when
+ * non-null, the returned value is always a real session id.
  */
-export function resolveTaskNotificationSessionId(db: Database, task: Task): string {
-  if (!task.sessionId) {
-    // Every task created via TaskRunner has a session_id. If this invariant
-    // is ever violated we want to fail loudly rather than silently invent a
-    // new legacy-style pseudo ID.
-    throw new Error(
-      `Cannot resolve notification session: task ${task.id} has no session_id`,
-    )
-  }
+export function resolveTaskNotificationSessionId(db: Database, task: Task): string | null {
+  if (!task.sessionId) return null
 
   const row = db.prepare(
     'SELECT parent_session_id FROM sessions WHERE id = ?'
@@ -128,6 +126,15 @@ export function persistTaskResultMessage(
   })
 
   const resolvedSessionId = sessionId ?? resolveTaskNotificationSessionId(db, task)
+  if (!resolvedSessionId) {
+    // No session available — skip persistence rather than invent a synthetic
+    // pseudo-session ID. The task notification still reaches the user via
+    // broadcast / Telegram delivery.
+    console.warn(
+      `[task-notification] Skipping persist for task ${task.id}: no session_id available (legacy task?)`,
+    )
+    return
+  }
 
   db.prepare(
     'INSERT INTO chat_messages (session_id, user_id, role, content, metadata) VALUES (?, ?, ?, ?, ?)'
