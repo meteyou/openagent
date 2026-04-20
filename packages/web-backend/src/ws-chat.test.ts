@@ -263,6 +263,101 @@ describe('setupWebSocketChat kill switch', () => {
     }
   })
 
+  it('forwards uploads attached to a tool_call_end chunk as an `attachment` ws message and persists them on the assistant row', async () => {
+    const db = initDatabase(':memory:')
+    const chatEventBus = new ChatEventBus()
+    const mockSessionManager = {
+      getOrCreateSession: vi.fn(() => ({ id: 'session-file', userId: '1', source: 'web', startedAt: Date.now(), lastActivity: Date.now(), messageCount: 0, summaryWritten: false, restored: false })),
+    }
+    const uploadDescriptor = {
+      kind: 'file' as const,
+      originalName: 'report.md',
+      storedName: 'abc-report.md',
+      relativePath: '2026/04/20/abc-report.md',
+      urlPath: '/api/uploads/2026/04/20/abc-report.md',
+      mimeType: 'text/markdown',
+      size: 42,
+    }
+    const agentCore = {
+      sendMessage: vi.fn(async function* (): AsyncGenerator<ResponseChunk> {
+        yield { type: 'tool_call_start', toolName: 'send_file_to_user', toolCallId: 'tc-1', toolArgs: { path: 'report.md' } }
+        yield {
+          type: 'tool_call_end',
+          toolName: 'send_file_to_user',
+          toolCallId: 'tc-1',
+          toolResult: { details: { uploadedFile: uploadDescriptor } },
+        }
+        yield { type: 'text', text: 'Here you go.' }
+        yield { type: 'done' }
+      }),
+      abort: vi.fn(),
+      resetSession: vi.fn(),
+      getSessionManager: vi.fn(() => mockSessionManager),
+    } as unknown as AgentCore
+
+    const app = createApp({ db })
+    const server = http.createServer(app)
+    const { wss } = setupWebSocketChat(server, db, agentCore, undefined, chatEventBus)
+
+    await new Promise<void>((resolve) => server.listen(0, resolve))
+    const port = (server.address() as { port: number }).port
+    const token = generateAccessToken({ userId: 1, username: 'admin', role: 'admin' })
+
+    const busEvents: Array<{ type: string; attachment?: unknown }> = []
+    chatEventBus.subscribe((ev) => {
+      busEvents.push({ type: ev.type, attachment: ev.attachment })
+    })
+
+    try {
+      const { ws, waitForMessage } = await connectWs(port, token)
+      await waitForMessage() // authenticated
+
+      ws.send(JSON.stringify({ type: 'message', content: 'send me the report' }))
+
+      // Drain chunks until we see both the attachment ws msg and the done.
+      const seen: string[] = []
+      let attachmentMsg: Record<string, unknown> | null = null
+      for (let i = 0; i < 20; i++) {
+        const msg = await waitForMessage()
+        seen.push(msg.type as string)
+        if (msg.type === 'attachment') attachmentMsg = msg
+        if (msg.type === 'done') break
+      }
+
+      expect(seen).toContain('attachment')
+      expect(seen).toContain('done')
+      expect(attachmentMsg?.attachment).toMatchObject({
+        relativePath: uploadDescriptor.relativePath,
+        originalName: uploadDescriptor.originalName,
+      })
+
+      // Attachment is also broadcast on the event bus for other tabs
+      const busAttachments = busEvents.filter(e => e.type === 'attachment')
+      expect(busAttachments.length).toBe(1)
+
+      // Assistant row persists the upload as metadata.files so history reload
+      // shows the download card
+      const assistantRow = db.prepare(
+        "SELECT content, metadata FROM chat_messages WHERE session_id = 'session-file' AND role = 'assistant'"
+      ).get() as { content: string; metadata: string } | undefined
+      expect(assistantRow).toBeDefined()
+      expect(assistantRow!.content).toBe('Here you go.')
+      const meta = JSON.parse(assistantRow!.metadata) as { files: Array<{ relativePath: string }> }
+      expect(meta.files).toHaveLength(1)
+      expect(meta.files[0]!.relativePath).toBe(uploadDescriptor.relativePath)
+
+      ws.close()
+    } finally {
+      for (const client of wss.clients) {
+        client.terminate()
+      }
+      wss.close()
+      await new Promise<void>((resolve, reject) =>
+        server.close((err) => (err ? reject(err) : resolve()))
+      )
+    }
+  })
+
   it('treats /kill as an alias for /stop over web chat', async () => {
     const db = initDatabase(':memory:')
     const mockSessionManager2 = {
