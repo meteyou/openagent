@@ -2,6 +2,7 @@ import { WebSocketServer, WebSocket } from 'ws'
 import type { Server } from 'node:http'
 import type { Database, UploadDescriptor } from '@openagent/core'
 import type { AgentCore, ResponseChunk } from '@openagent/core'
+import { extractUploadsFromToolResult, serializeUploadsMetadata } from '@openagent/core'
 import { verifyToken } from './auth.js'
 import type { JwtPayload } from './auth.js'
 import { URL } from 'node:url'
@@ -19,8 +20,10 @@ interface ChatMessage {
 }
 
 interface ChatResponse {
-  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'task_completed' | 'task_failed' | 'task_question' | 'reminder' | 'pong'
+  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'task_completed' | 'task_failed' | 'task_question' | 'reminder' | 'pong' | 'attachment'
   text?: string
+  /** Uploaded file attached to the current assistant turn (for type='attachment') */
+  attachment?: UploadDescriptor
   /** Streamed thinking delta (for type='thinking') */
   thinking?: string
   toolName?: string
@@ -301,6 +304,16 @@ export function setupWebSocketChat(
       let doneSent = false
       // Track pending tool calls to save input+output together
       const pendingToolCalls = new Map<string, { toolName: string; toolArgs: unknown }>()
+      // Collect any uploads produced by tools during this turn (e.g.
+      // `send_file_to_user`). These are:
+      //   1. streamed live to the client via `attachment` ws messages so
+      //      the download card appears next to the assistant bubble
+      //      without a reload, and
+      //   2. merged into the saved assistant message's metadata so a
+      //      history reload shows the same attachment(s).
+      // Channel-agnostic extraction (via `extractUploadsFromToolResult`)
+      // means any tool can produce files, not just the built-in sender.
+      const assistantUploads: UploadDescriptor[] = []
       // Buffer thinking deltas between thinking_start/thinking_end boundaries. Because
       // the core runtime only surfaces `thinking_delta` today, we treat each contiguous
       // run of thinking chunks (i.e. uninterrupted by text/tool/done) as a single block
@@ -366,6 +379,26 @@ export function setupWebSocketChat(
             })
             saveChatMessage(db, resolvedSessionId, currentUser.userId, 'tool', `Tool: ${toolName}`, metadata)
             pendingToolCalls.delete(chunk.toolCallId)
+
+            // Harvest any uploads produced by this tool and forward them as
+            // `attachment` events so the frontend can render them inline
+            // on the active assistant message.
+            const newUploads = extractUploadsFromToolResult(chunk.toolResult)
+            for (const upload of newUploads) {
+              assistantUploads.push(upload)
+              sendMessage(ws, { type: 'attachment', attachment: upload })
+              // Fan out to other tabs of the same user so every connected
+              // client renders the attachment, not just the one that drove
+              // the turn.
+              chatEventBus?.broadcast({
+                type: 'attachment',
+                userId: currentUser.userId,
+                source: 'web',
+                sourceConnectionId: connId,
+                sessionId: resolvedSessionId,
+                attachment: upload,
+              })
+            }
           }
 
           sendMessage(ws, chunkToResponse(chunk))
@@ -388,9 +421,22 @@ export function setupWebSocketChat(
           })
         }
 
-        // Save the full assistant response
-        if (fullResponse) {
-          saveChatMessage(db, resolvedSessionId, currentUser.userId, 'assistant', fullResponse)
+        // Save the full assistant response, including attachment metadata.
+        // If the turn produced only attachments (no text), we still persist
+        // an assistant row with empty content so the download card is
+        // recoverable on history reload.
+        if (fullResponse || assistantUploads.length > 0) {
+          const metadata = assistantUploads.length > 0
+            ? serializeUploadsMetadata(assistantUploads)
+            : undefined
+          saveChatMessage(
+            db,
+            resolvedSessionId,
+            currentUser.userId,
+            'assistant',
+            fullResponse,
+            metadata,
+          )
         }
       } catch (err) {
         if (!abortController.signal.aborted) {
@@ -484,6 +530,11 @@ export function setupWebSocketChat(
             reminderMessage: event.reminderMessage,
             reminderName: event.reminderName,
             cronjobId: event.cronjobId,
+          })
+        } else if (event.type === 'attachment') {
+          sendMessage(client, {
+            type: 'attachment',
+            attachment: event.attachment,
           })
         } else {
           sendMessage(client, {
