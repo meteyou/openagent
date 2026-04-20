@@ -481,6 +481,7 @@ describe('database', () => {
     function seedLegacySessions(dbPath: string, rows: Array<{
       id: string
       source?: string
+      userId?: number | null
       parent?: string | null
       withChatMessage?: boolean
       withTokenUsage?: boolean
@@ -511,7 +512,7 @@ describe('database', () => {
       for (const row of rows) {
         seed.prepare(
           "INSERT INTO sessions (id, user_id, source, started_at, message_count, summary_written) VALUES (?, ?, ?, datetime('now'), 0, 0)"
-        ).run(row.id, 1, row.source ?? 'web')
+        ).run(row.id, row.userId !== undefined ? row.userId : 1, row.source ?? 'web')
         if (row.withChatMessage) {
           seed.prepare("INSERT INTO chat_messages (session_id, user_id, role, content) VALUES (?, 1, 'user', 'hi')").run(row.id)
         }
@@ -567,6 +568,30 @@ describe('database', () => {
       expect(countByType['heartbeat']).toBe(1)
       expect(countByType['consolidation']).toBe(1)
       expect(countByType['loop_detection']).toBe(1)
+
+      db.close()
+    })
+
+    it('backfills session_user from legacy interactive IDs when user_id/session_user are NULL', () => {
+      const dbPath = tmpDbPath()
+      seedLegacySessions(dbPath, [
+        {
+          id: 'session-alice-1234567890123-abc123',
+          userId: null,
+          withChatMessage: true,
+        },
+      ])
+
+      const db = initDatabase(dbPath)
+      const row = db.prepare('SELECT id, user_id, session_user FROM sessions LIMIT 1').get() as {
+        id: string
+        user_id: number | null
+        session_user: string | null
+      }
+
+      expect(row.id).toMatch(UUID_RE)
+      expect(row.user_id).toBeNull()
+      expect(row.session_user).toBe('alice')
 
       db.close()
     })
@@ -699,6 +724,55 @@ describe('database', () => {
       expect(byType['task']).toBeDefined()
       // task-injection-* legacy ids must be typed as 'interactive'.
       expect(byType['interactive']).toBeDefined()
+      db.close()
+    })
+
+    it('recovers orphans whose child rows reference a deleted user without failing FK at commit', () => {
+      // Pre-existing DB corruption: a tool_calls row references an orphan
+      // session whose child rows in turn reference user 999 who was deleted
+      // (possible via FK=OFF sessions or manual cleanup). The migration
+      // must not crash with a deferred-FK violation at COMMIT; it must
+      // instead drop the dangling user_id on the recovered session row
+      // while keeping the canonical identity in session_user so the row
+      // is still attributable.
+      //
+      // Seed with the modern chat_messages CHECK so we don't also trip the
+      // pre-existing `chat_messages` CHECK-recreation path (which has its
+      // own FK-enforcement behaviour unrelated to this fix).
+      const dbPath = tmpDbPath()
+      const seed = new BetterSqlite3(dbPath)
+      seed.pragma('foreign_keys = OFF')
+      seed.exec(`
+        CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'user');
+        CREATE TABLE sessions (id TEXT PRIMARY KEY, user_id INTEGER, source TEXT NOT NULL DEFAULT 'web', started_at TEXT NOT NULL DEFAULT (datetime('now')), ended_at TEXT, message_count INTEGER NOT NULL DEFAULT 0, summary_written INTEGER NOT NULL DEFAULT 0);
+        CREATE TABLE chat_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, user_id INTEGER, role TEXT NOT NULL CHECK(role IN ('user','assistant','tool','system')), content TEXT NOT NULL, metadata TEXT, timestamp TEXT NOT NULL DEFAULT (datetime('now')), FOREIGN KEY (user_id) REFERENCES users(id));
+        CREATE TABLE token_usage (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT NOT NULL DEFAULT (datetime('now')), provider TEXT NOT NULL, model TEXT NOT NULL, prompt_tokens INTEGER NOT NULL DEFAULT 0, completion_tokens INTEGER NOT NULL DEFAULT 0, estimated_cost REAL NOT NULL DEFAULT 0.0, session_id TEXT);
+        CREATE TABLE tool_calls (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT NOT NULL DEFAULT (datetime('now')), session_id TEXT, tool_name TEXT NOT NULL, input TEXT, output TEXT, duration_ms INTEGER);
+        CREATE TABLE tasks (id TEXT PRIMARY KEY, name TEXT NOT NULL, prompt TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN ('running','paused','completed','failed')), trigger_type TEXT NOT NULL CHECK(trigger_type IN ('user','agent','cronjob','heartbeat','consolidation')), trigger_source_id TEXT, provider TEXT, model TEXT, max_duration_minutes INTEGER, prompt_tokens INTEGER NOT NULL DEFAULT 0, completion_tokens INTEGER NOT NULL DEFAULT 0, estimated_cost REAL NOT NULL DEFAULT 0.0, tool_call_count INTEGER NOT NULL DEFAULT 0, result_summary TEXT, result_status TEXT CHECK(result_status IS NULL OR result_status IN ('completed','failed','question','silent')), error_message TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')), started_at TEXT, completed_at TEXT, session_id TEXT);
+        CREATE TABLE memories (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, session_id TEXT, content TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'session', timestamp TEXT NOT NULL DEFAULT (datetime('now')));
+      `)
+      // The orphan ghost session is referenced only from memories, whose
+      // user_id column points at user 999 which does NOT exist. The
+      // migration will try to recover the session with user_id=999 and
+      // trip the deferred users FK unless the recovery path checks
+      // existence first.
+      seed.prepare("INSERT INTO memories (user_id, session_id, content, timestamp) VALUES (999, ?, 'm', '2024-06-01T00:00:00')").run('session-ghost-1')
+      seed.close()
+
+      // Must not throw (previously would fail the deferred users FK at COMMIT).
+      const db = initDatabase(dbPath)
+
+      const row = db.prepare('SELECT id, user_id, session_user FROM sessions').get() as {
+        id: string
+        user_id: number | null
+        session_user: string | null
+      }
+      expect(row.id).toMatch(UUID_RE)
+      // Deleted-user reference is dropped so the FK check passes …
+      expect(row.user_id).toBeNull()
+      // … while the canonical identity is preserved on session_user.
+      expect(row.session_user).toBe('999')
+
       db.close()
     })
   })
