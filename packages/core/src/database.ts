@@ -608,6 +608,31 @@ function inferSessionSourceFromLegacyId(id: string): string {
 }
 
 /**
+ * Best-effort recovery of the user key stored by legacy interactive session IDs.
+ *
+ * Legacy interactive IDs encoded the user in the prefix form
+ * `session-<user>-<timestamp>-...` (and in a few historical paths as
+ * `web-<user>-<timestamp>-...`). We backfill this into `session_user` before
+ * remapping the ID to UUID so orphan restoration can still attach the session
+ * to the correct in-memory user after a restart.
+ */
+function inferSessionUserFromLegacyId(id: string): string | null {
+  const patterns = [
+    /^session-(.+?)-\d+(?:-|$)/,
+    /^web-(.+?)-\d+(?:-|$)/,
+    /^telegram-group-(.+?)-\d+(?:-|$)/,
+    /^telegram-(.+?)-\d+(?:-|$)/,
+  ]
+
+  for (const pattern of patterns) {
+    const match = id.match(pattern)
+    if (match?.[1]) return match[1]
+  }
+
+  return null
+}
+
+/**
  * One-time migration: convert prefix-based legacy session IDs to UUIDs,
  * backfill `sessions.type`, remap FK references across child tables, and
  * recover orphaned session IDs (IDs referenced by child rows but missing
@@ -679,12 +704,14 @@ function migrateLegacySessionIds(db: Database): void {
 
     // Step A: Backfill type + remap id for existing legacy sessions.
     const updateSessionStmt = db.prepare(
-      "UPDATE sessions SET id = ?, type = ? WHERE id = ?"
+      "UPDATE sessions SET id = ?, type = ?, session_user = ? WHERE id = ?"
     )
     for (const row of legacyInSessions) {
       const newId = idMap.get(row.id)!
       const newType = inferSessionTypeFromLegacyId(row.id)
-      updateSessionStmt.run(newId, newType, row.id)
+      const recoveredSessionUser = row.session_user
+        ?? (row.user_id != null ? String(row.user_id) : inferSessionUserFromLegacyId(row.id))
+      updateSessionStmt.run(newId, newType, recoveredSessionUser, row.id)
     }
 
     // Step B: Remap parent_session_id references through the map. Do this
@@ -745,10 +772,21 @@ function migrateLegacySessionIds(db: Database): void {
           }
         }
       }
-      // Keep session_user semantics aligned with runtime SessionManager:
-      // it stores the canonical string user key (for web users: numeric ID).
+      // Verify the reconstructed user_id actually exists in `users` before
+      // inserting. If a child row references a deleted user (possible on
+      // DBs that ran with `foreign_keys = OFF` at any point, or across
+      // historical manual cleanups), leaving the dangling id on the new
+      // session row would fail the deferred users FK at COMMIT and abort
+      // the entire migration — blocking boot. Keep the canonical identity
+      // in `session_user` even when we drop `user_id`, so runtime code
+      // can still attribute the row.
       if (userId != null) {
+        const userExists = db.prepare('SELECT 1 AS present FROM users WHERE id = ?')
+          .get(userId) as { present: number } | undefined
         sessionUser = String(userId)
+        if (!userExists) {
+          userId = null
+        }
       }
 
       insertOrphanStmt.run(
