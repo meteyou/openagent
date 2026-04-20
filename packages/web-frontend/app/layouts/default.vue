@@ -229,19 +229,25 @@
     <!-- Main area -->
     <div class="flex min-w-0 flex-1 flex-col overflow-hidden">
       <!-- Header -->
-      <header class="flex h-12 shrink-0 items-center gap-3 border-b border-border bg-background/90 px-6 backdrop-blur-md">
+      <!--
+        Mobile left padding is `pl-1` (4px) so the hamburger icon sits
+        with equal top and left distance to the header edge (both = 12px
+        given h-12 header, h-10 button, xl 24px icon). Desktop keeps the
+        normal px-6. Right side stays pr-4 for the teleported action row.
+      -->
+      <header class="flex h-12 shrink-0 items-center gap-3 border-b border-border bg-background/90 pl-1 pr-4 backdrop-blur-md md:px-6">
         <!-- Mobile hamburger -->
         <button
           type="button"
-          class="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:hidden"
+          class="inline-flex h-10 w-10 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:h-9 md:w-9 md:hidden"
           :aria-label="$t('aria.toggleSidebar')"
           @click="sidebarOpen = !sidebarOpen"
         >
           <AppIcon name="menu" size="xl" />
         </button>
 
-        <!-- Connection status -->
-        <div class="flex items-center gap-2">
+        <!-- Connection status (desktop only) -->
+        <div class="hidden items-center gap-2 md:flex">
           <span
             class="h-2 w-2 shrink-0 rounded-full"
             :class="statusDotClass"
@@ -250,10 +256,10 @@
           <span class="hidden text-sm text-muted-foreground sm:block">{{ statusText }}</span>
         </div>
 
-        <!-- Fallback mode indicator -->
+        <!-- Fallback mode indicator (desktop only) -->
         <Tooltip v-if="isInFallbackMode">
           <TooltipTrigger as-child>
-            <div class="flex items-center gap-1.5 rounded-md bg-warning/10 px-2.5 py-1 ring-1 ring-warning/30">
+            <div class="hidden items-center gap-1.5 rounded-md bg-warning/10 px-2.5 py-1 ring-1 ring-warning/30 md:flex">
               <span class="h-2 w-2 shrink-0 rounded-full bg-warning shadow-[0_0_6px_hsl(var(--warning))]" />
               <span class="text-xs font-medium text-warning">{{ t('status.fallback') }}</span>
             </div>
@@ -269,12 +275,22 @@
         <!-- Spacer -->
         <div class="flex-1" />
 
-        <!-- Theme toggle -->
+        <!--
+          Mobile teleport target for page-specific actions.
+          Pages render their <PageHeader #actions> content here on mobile via <Teleport>.
+          Kept md:hidden so the same slot content can appear in its own desktop toolbar without duplication.
+        -->
+        <div
+          id="page-toolbar-actions"
+          class="flex items-center gap-1.5 md:hidden"
+        />
+
+        <!-- Theme toggle (desktop only — mobile follows OS preference) -->
         <Tooltip>
           <TooltipTrigger as-child>
             <button
               type="button"
-              class="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              class="hidden h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:inline-flex"
               :aria-label="$t('aria.themeToggle')"
               @click="toggleTheme"
             >
@@ -305,10 +321,20 @@ const { user, logout } = useAuth()
 const { status: globalStatus, providerName: globalProviderName, operatingMode: globalOperatingMode, fallbackProviderName: globalFallbackProviderName, start: startStatusPolling, stop: stopStatusPolling } = useConnectionStatus()
 
 const isInFallbackMode = computed(() => globalOperatingMode.value === 'fallback')
-const { isDark, toggle: toggleTheme } = useTheme()
+const { isDark, toggle: toggleTheme, mode: themeMode } = useTheme()
 
 const sidebarOpen = ref(false)
 const isMobile = useMediaQuery('(max-width: 767px)')
+
+// On mobile, hard-lock the theme to the OS preference.
+// `auto` is what useColorMode calls "follow system" — we reset the stored
+// preference whenever mobile is active so an explicit desktop choice
+// (dark/light) doesn't leak into the mobile view.
+watch(isMobile, (mobile) => {
+  if (mobile && themeMode.value !== 'auto') {
+    themeMode.value = 'auto'
+  }
+}, { immediate: true })
 
 const isAdmin = computed(() => user.value?.role === 'admin')
 const { userAvatarUrl, avatarFailed, userInitial, onAvatarError } = useUserAvatar()
