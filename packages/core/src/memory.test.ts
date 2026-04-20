@@ -423,6 +423,8 @@ describe('memory', () => {
       expect(prompt).toContain('OpenAgent')
       expect(prompt).toContain('open-agent')
       expect(prompt).toContain('load it with read_file')
+      expect(prompt).toContain('Maintain and organize it autonomously')
+      expect(prompt).toContain('genuine contradiction')
       expect(prompt).toContain('</wiki_pages>')
     })
 
