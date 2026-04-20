@@ -546,12 +546,15 @@ describe('SessionManager', () => {
       expect(meta!.type).toBe('interactive')
     })
 
-    it('getOrCreateSession accepts an explicit type parameter', async () => {
+    it('getOrCreateSession always creates interactive sessions (no type override)', async () => {
+      // Interactive-session lifecycle is reserved for `getOrCreateSession`.
+      // Background types (task/heartbeat/consolidation/loop_detection) go
+      // through `createSession`, which does NOT cache per-user.
       const manager = new SessionManager({ db, memoryDir })
       await manager.init()
-      const session = manager.getOrCreateSession('worker', 'system', 'task')
+      const session = manager.getOrCreateSession('worker', 'system')
       const meta = manager.getSessionMetadata(session.id)
-      expect(meta!.type).toBe('task')
+      expect(meta!.type).toBe('interactive')
       expect(session.id).toMatch(UUID_RE)
     })
 
@@ -599,6 +602,42 @@ describe('SessionManager', () => {
         type: 'bogus',
         source: 'system',
       })).toThrow()
+    })
+
+    it('init() throws when timed-out orphans need summarization but onSummarize is missing', async () => {
+      // Seed an interactive orphan whose timeout has elapsed and has
+      // unsummarized messages — the exact case where silent closure would
+      // lose the daily-file summary. The guard must surface the misuse
+      // instead of silently closing the session.
+      const sessionId = generateSessionId()
+      const longAgo = Date.now() - 2 * 60 * 60 * 1000
+      db.prepare(
+        `INSERT INTO sessions (id, user_id, source, type, session_user, started_at, last_activity, message_count, summary_written)
+         VALUES (?, NULL, 'web', 'interactive', 'user1', datetime(? / 1000, 'unixepoch'), datetime(? / 1000, 'unixepoch'), 3, 0)`,
+      ).run(sessionId, longAgo, longAgo)
+
+      const manager = new SessionManager({ db, memoryDir, timeoutMinutes: 15 })
+      await expect(manager.init()).rejects.toThrow(/need summarization/)
+    })
+
+    it('init() does NOT throw when orphans are empty or already summarized (no onSummarize needed)', async () => {
+      // Empty orphan (message_count = 0) and already-summarized orphans
+      // are safely closed without onSummarize — only lossy paths should
+      // trigger the guard.
+      const emptyId = generateSessionId()
+      const summarizedId = generateSessionId()
+      const longAgo = Date.now() - 2 * 60 * 60 * 1000
+      db.prepare(
+        `INSERT INTO sessions (id, user_id, source, type, session_user, started_at, last_activity, message_count, summary_written)
+         VALUES (?, NULL, 'web', 'interactive', 'user1', datetime(? / 1000, 'unixepoch'), datetime(? / 1000, 'unixepoch'), 0, 0)`,
+      ).run(emptyId, longAgo, longAgo)
+      db.prepare(
+        `INSERT INTO sessions (id, user_id, source, type, session_user, started_at, last_activity, message_count, summary_written)
+         VALUES (?, NULL, 'web', 'interactive', 'user2', datetime(? / 1000, 'unixepoch'), datetime(? / 1000, 'unixepoch'), 5, 1)`,
+      ).run(summarizedId, longAgo, longAgo)
+
+      const manager = new SessionManager({ db, memoryDir, timeoutMinutes: 15 })
+      await expect(manager.init()).resolves.toBeUndefined()
     })
 
     it('orphan handling does NOT auto-close non-interactive sessions', async () => {
