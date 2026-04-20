@@ -52,7 +52,7 @@ export interface ChatMessage {
 }
 
 interface WsMessage {
-  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'reminder' | 'task_completed' | 'task_failed' | 'task_question'
+  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'reminder' | 'task_completed' | 'task_failed' | 'task_question' | 'pong'
   text?: string
   /** Thinking delta (for type='thinking') */
   thinking?: string
@@ -149,8 +149,30 @@ function parseAttachments(metadata?: string): ChatAttachment[] {
 // Module-level singletons so multiple useChat() calls share the same WebSocket
 let ws: WebSocket | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+let heartbeatInterval: ReturnType<typeof setInterval> | null = null
+let pongTimeout: ReturnType<typeof setTimeout> | null = null
+/** Current reconnect delay in ms — doubles on each failed attempt (max 30 s) */
+let reconnectDelay = 2000
 /** Set to true during intentional disconnect (navigation away) to suppress auto-reconnect */
 let intentionalDisconnect = false
+/** Ensure the global online/visibilitychange listeners are registered only once */
+let globalListenersRegistered = false
+
+function stopHeartbeat() {
+  if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null }
+  if (pongTimeout) { clearTimeout(pongTimeout); pongTimeout = null }
+}
+
+function startHeartbeat(wsRef: () => WebSocket | null) {
+  stopHeartbeat()
+  heartbeatInterval = setInterval(() => {
+    const socket = wsRef()
+    if (!socket || socket.readyState !== WebSocket.OPEN) return
+    socket.send(JSON.stringify({ type: 'ping' }))
+    // If no pong arrives within 10 s the connection is silently dead — force close
+    pongTimeout = setTimeout(() => { wsRef()?.close() }, 10_000)
+  }, 10_000)
+}
 
 export function useChat() {
   const messages = useState<ChatMessage[]>('chat_messages', () => [])
@@ -171,13 +193,36 @@ export function useChat() {
 
     connectionStatus.value = 'connecting'
 
+    // Register global event listeners once so we reconnect on network recovery
+    // or when the browser tab becomes visible again after a long sleep.
+    if (!globalListenersRegistered && typeof window !== 'undefined') {
+      globalListenersRegistered = true
+
+      window.addEventListener('online', () => {
+        if (intentionalDisconnect) return
+        if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+          reconnectDelay = 2000 // reset backoff on explicit network recovery
+          connect()
+        }
+      })
+
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState !== 'visible' || intentionalDisconnect) return
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+          connect()
+        }
+      })
+    }
+
     // Determine WebSocket URL from API base
     const apiBase = config.public.apiBase as string
     const wsBase = apiBase.replace(/^http/, 'ws')
     ws = new WebSocket(`${wsBase}/ws/chat?token=${encodeURIComponent(token)}`)
 
     ws.onopen = () => {
+      reconnectDelay = 2000 // reset exponential backoff after successful connect
       connectionStatus.value = 'connected'
+      startHeartbeat(() => ws)
 
       // Clean up stale streaming messages from before the reconnect.
       // If we lost the connection mid-stream, those messages will never
@@ -201,17 +246,15 @@ export function useChat() {
     }
 
     ws.onclose = () => {
+      stopHeartbeat()
       connectionStatus.value = 'disconnected'
       ws = null
       // Only auto-reconnect if this was NOT an intentional disconnect
       // (e.g. navigating away from the chat page)
       if (!intentionalDisconnect) {
-        reconnectTimer = setTimeout(() => {
-          const { isAuthenticated } = useAuth()
-          if (isAuthenticated.value) {
-            connect()
-          }
-        }, 3000)
+        reconnectTimer = setTimeout(() => connect(), reconnectDelay)
+        // Exponential backoff: 2 s → 4 s → 8 s → … capped at 30 s
+        reconnectDelay = Math.min(reconnectDelay * 2, 30_000)
       }
       intentionalDisconnect = false
     }
@@ -414,6 +457,11 @@ export function useChat() {
         }
         break
 
+      case 'pong':
+        // Clear the pong-timeout so the heartbeat knows the connection is alive
+        if (pongTimeout) { clearTimeout(pongTimeout); pongTimeout = null }
+        break
+
       case 'tool_call_end':
         if (msg.toolCallId) {
           const updated = [...messages.value]
@@ -494,6 +542,7 @@ export function useChat() {
 
   function disconnect() {
     intentionalDisconnect = true
+    stopHeartbeat()
     if (reconnectTimer) {
       clearTimeout(reconnectTimer)
       reconnectTimer = null
