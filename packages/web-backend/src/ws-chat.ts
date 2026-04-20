@@ -10,7 +10,7 @@ import type { RuntimeMetrics } from './runtime-metrics.js'
 import type { ChatEventBus, ChatEvent } from './chat-event-bus.js'
 
 interface ChatMessage {
-  type: 'message' | 'command'
+  type: 'message' | 'command' | 'ping'
   content: string
   /** When true, skip saving to DB (message already persisted via HTTP upload) */
   skipSave?: boolean
@@ -19,7 +19,7 @@ interface ChatMessage {
 }
 
 interface ChatResponse {
-  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'task_completed' | 'task_failed' | 'task_question' | 'reminder'
+  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'task_completed' | 'task_failed' | 'task_question' | 'reminder' | 'pong'
   text?: string
   /** Streamed thinking delta (for type='thinking') */
   thinking?: string
@@ -179,6 +179,12 @@ export function setupWebSocketChat(
       }
 
       const currentUser = authenticatedClients.get(ws)!
+
+      // Respond to heartbeat pings immediately
+      if (parsed.type === 'ping') {
+        sendMessage(ws, { type: 'pong' })
+        return
+      }
 
       // Handle commands
       if (parsed.type === 'command' || parsed.content.startsWith('/')) {
