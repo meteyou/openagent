@@ -318,22 +318,103 @@
 
     <div class="shrink-0 border-t border-border bg-background p-3">
       <form class="flex flex-col gap-2" @submit.prevent="handleSend">
+        <!-- Pending files row -->
         <div v-if="pendingFiles.length" class="flex flex-wrap gap-2">
-          <div v-for="(file, index) in pendingFiles" :key="`${file.name}-${index}`" class="inline-flex items-center gap-2 rounded-full border border-border bg-muted px-3 py-1 text-xs">
+          <div
+            v-for="(file, index) in pendingFiles"
+            :key="`${file.name}-${index}`"
+            class="inline-flex items-center gap-2 rounded-full border border-border bg-muted px-3 py-1 text-xs"
+          >
             <span>{{ file.name }}</span>
             <button type="button" class="text-muted-foreground hover:text-foreground" @click="removePendingFile(index)">×</button>
           </div>
         </div>
+
         <div class="flex items-end gap-2">
-          <label class="inline-flex h-[42px] cursor-pointer items-center rounded-xl border border-input px-3 text-sm text-muted-foreground hover:bg-muted">
-            <input class="hidden" type="file" multiple @change="handleFileSelection">
-            <AppIcon name="paperclip" class="h-4 w-4" />
-          </label>
+          <!-- ── Composer box ────────────────────────────────────────────────
+               Brain button (left, admin-only) | Textarea | Paperclip (right)
+               Buttons use mb-[7px] so they sit centered against the
+               single-line textarea height of 42px: (42-28)/2 = 7px -->
+          <div class="flex flex-1 items-end rounded-xl border border-input bg-background px-1 transition-colors focus-within:border-ring focus-within:ring-1 focus-within:ring-ring">
+            <!-- Thinking-level / Brain button (left inside box, admin-only) -->
+            <Popover v-if="isAdmin" v-model:open="thinkingLevelPickerOpen">
+              <PopoverTrigger as-child>
+                <button
+                  type="button"
+                  class="mb-[7px] flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-muted/60 disabled:cursor-not-allowed disabled:opacity-40"
+                  :class="thinkingBrainColorClass"
+                  :disabled="thinkingLevelSaving"
+                  :title="$t('chat.thinkingLevelTooltip')"
+                  :aria-label="$t('chat.thinkingLevelTooltip')"
+                >
+                  <AppIcon
+                    :name="thinkingLevelSaving ? 'loader' : 'brain'"
+                    class="h-4 w-4 transition-colors"
+                    :class="thinkingLevelSaving ? 'animate-spin' : ''"
+                  />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="start" class="w-56 p-1">
+                <p class="px-2 pb-1 pt-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  {{ $t('settings.thinkingLevel') }}
+                </p>
+                <button
+                  v-for="lvl in THINKING_LEVELS"
+                  :key="lvl"
+                  type="button"
+                  class="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+                  :class="currentThinkingLevel === lvl ? 'bg-accent/60 text-accent-foreground' : 'text-foreground'"
+                  :disabled="thinkingLevelSaving"
+                  @click="handleThinkingLevelChange(lvl)"
+                >
+                  <div class="flex items-center gap-2">
+                    <span
+                      class="h-2 w-2 shrink-0 rounded-full"
+                      :class="{
+                        'bg-muted-foreground': lvl === 'off',
+                        'bg-foreground': lvl === 'minimal',
+                        'bg-yellow-500': lvl === 'low',
+                        'bg-orange-500': lvl === 'medium',
+                        'bg-red-500': lvl === 'high',
+                        'bg-red-600': lvl === 'xhigh',
+                      }"
+                    />
+                    <span>{{ $t(`chat.thinkingLevelMenu.${lvl}`) }}</span>
+                  </div>
+                  <AppIcon v-if="currentThinkingLevel === lvl" name="check" class="h-4 w-4 text-primary" />
+                </button>
+              </PopoverContent>
+            </Popover>
+
+            <!-- Textarea -->
+            <textarea
+              ref="inputRef"
+              v-model="inputText"
+              class="min-h-[42px] max-h-[150px] flex-1 resize-none bg-transparent py-2.5 pr-1 text-sm outline-none placeholder:text-muted-foreground"
+              :class="isAdmin ? 'pl-2' : 'pl-3'"
+              :placeholder="$t('chat.placeholder')"
+              rows="1"
+              @keydown.enter.exact.prevent="handleSend"
+              @input="autoResize"
+            />
+
+            <!-- File attachment button (right inside box) -->
+            <label class="mb-[7px] flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground">
+              <input class="hidden" type="file" multiple @change="handleFileSelection">
+              <AppIcon name="paperclip" class="h-4 w-4" />
+            </label>
+          </div>
+
+          <!-- ── Mic button ─────────────────────────────────────────────────
+               Mobile: shown only when textarea is empty (swaps to send button
+               as soon as the user starts typing — Telegram/WhatsApp style).
+               Desktop (sm+): always shown alongside the send button. -->
           <button
             v-if="sttEnabled"
             type="button"
-            class="inline-flex h-[42px] select-none items-center rounded-xl border px-3 text-sm transition-colors"
+            class="h-[42px] w-[42px] shrink-0 select-none items-center justify-center rounded-xl border transition-colors"
             :class="[
+              hasText ? 'hidden sm:inline-flex' : 'inline-flex',
               sttRecording
                 ? 'border-destructive bg-destructive/10 text-destructive animate-pulse-recording'
                 : sttTranscribing
@@ -353,52 +434,20 @@
             <AppIcon v-if="sttTranscribing" name="loader" class="h-4 w-4 animate-spin" />
             <AppIcon v-else name="mic" class="h-4 w-4" />
           </button>
-          <textarea ref="inputRef" v-model="inputText" class="min-h-[42px] max-h-[150px] flex-1 resize-none rounded-xl border border-input bg-background px-3.5 py-2.5 text-sm" :placeholder="$t('chat.placeholder')" rows="1" @keydown.enter.exact.prevent="handleSend" @input="autoResize" />
 
-          <!-- Thinking-level quick switch (admin-only; the main agent is single-tenant, so changing this affects everyone's next turn) -->
-          <Popover v-if="isAdmin" v-model:open="thinkingLevelPickerOpen">
-            <PopoverTrigger as-child>
-              <button
-                type="button"
-                class="inline-flex h-[42px] shrink-0 select-none items-center gap-1.5 rounded-xl border border-input px-3 text-sm text-muted-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
-                :disabled="thinkingLevelSaving"
-                :title="$t('chat.thinkingLevelTooltip')"
-                :aria-label="$t('chat.thinkingLevelTooltip')"
-              >
-                <AppIcon
-                  :name="thinkingLevelSaving ? 'loader' : 'brain'"
-                  class="h-4 w-4"
-                  :class="[
-                    thinkingLevelSaving ? 'animate-spin' : '',
-                    currentThinkingLevel !== 'off' && !thinkingLevelSaving ? 'text-foreground' : '',
-                  ]"
-                />
-                <span
-                  class="text-xs font-medium uppercase tracking-wide"
-                  :class="currentThinkingLevel !== 'off' ? 'text-foreground' : ''"
-                >{{ thinkingLevelShortLabel(currentThinkingLevel) }}</span>
-              </button>
-            </PopoverTrigger>
-            <PopoverContent align="end" class="w-56 p-1">
-              <p class="px-2 pb-1 pt-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                {{ $t('settings.thinkingLevel') }}
-              </p>
-              <button
-                v-for="lvl in THINKING_LEVELS"
-                :key="lvl"
-                type="button"
-                class="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
-                :class="currentThinkingLevel === lvl ? 'bg-accent/60 text-accent-foreground' : 'text-foreground'"
-                :disabled="thinkingLevelSaving"
-                @click="handleThinkingLevelChange(lvl)"
-              >
-                <span>{{ $t(`chat.thinkingLevelMenu.${lvl}`) }}</span>
-                <AppIcon v-if="currentThinkingLevel === lvl" name="check" class="h-4 w-4 text-primary" />
-              </button>
-            </PopoverContent>
-          </Popover>
-
-          <Button type="submit" size="sm" :disabled="(!inputText.trim() && pendingFiles.length === 0) || connectionStatus !== 'connected'" class="h-[42px] shrink-0 px-4">{{ $t('chat.send') }}</Button>
+          <!-- ── Send button ─────────────────────────────────────────────────
+               Mobile: icon-only square button, shown when text is present
+               (or when STT is disabled — then always visible as sole action).
+               Desktop (sm+): text label, always shown alongside the mic. -->
+          <Button
+            type="submit"
+            :disabled="!hasText || connectionStatus !== 'connected'"
+            class="h-[42px] w-[42px] shrink-0 rounded-xl p-0 sm:w-auto sm:px-4"
+            :class="(!hasText && sttEnabled) ? 'hidden sm:inline-flex' : 'inline-flex'"
+          >
+            <AppIcon name="send" class="h-4 w-4 sm:hidden" />
+            <span class="hidden sm:inline">{{ $t('chat.send') }}</span>
+          </Button>
         </div>
       </form>
     </div>
@@ -425,18 +474,19 @@ const currentThinkingLevel = ref<SettingsThinkingLevel>('off')
 const thinkingLevelPickerOpen = ref(false)
 const thinkingLevelSaving = ref(false)
 
-function thinkingLevelShortLabel(level: SettingsThinkingLevel): string {
-  // Short labels avoid the dropdown trigger growing too wide.
+// Brain button color encodes thinking intensity (no text label needed):
+// off=gray, minimal=white, low→xhigh progressively to red
+const thinkingBrainColorClass = computed(() => {
   const map: Record<SettingsThinkingLevel, string> = {
-    off: 'off',
-    minimal: 'min',
-    low: 'low',
-    medium: 'med',
-    high: 'high',
-    xhigh: 'x-hi',
+    off: 'text-muted-foreground',
+    minimal: 'text-foreground',
+    low: 'text-yellow-500 dark:text-yellow-400',
+    medium: 'text-orange-500 dark:text-orange-400',
+    high: 'text-red-500 dark:text-red-400',
+    xhigh: 'text-red-600 dark:text-red-500',
   }
-  return map[level]
-}
+  return map[currentThinkingLevel.value] ?? 'text-muted-foreground'
+})
 
 async function loadThinkingLevel() {
   if (!isAdmin.value) return
@@ -559,6 +609,8 @@ function handleTtsPlay(content: string, index: number) {
 const chatStatusText = computed(() => connectionStatus.value === 'connected' ? t('chat.statusConnected') : connectionStatus.value === 'connecting' ? t('chat.statusConnecting') : t('chat.statusDisconnected'))
 const inputText = ref('')
 const pendingFiles = ref<File[]>([])
+// True when there's text or pending files — drives mic↔send swap on mobile
+const hasText = computed(() => inputText.value.trim().length > 0 || pendingFiles.value.length > 0)
 const inputRef = ref<HTMLTextAreaElement | null>(null)
 const messagesContainer = ref<HTMLDivElement | null>(null)
 const loadingHistory = ref(false)
