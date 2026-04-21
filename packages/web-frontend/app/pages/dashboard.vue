@@ -94,7 +94,7 @@
         </section>
 
         <!-- ─── Provider health + Health history (2-col) ─── -->
-        <section class="grid grid-cols-1 gap-6 md:grid-cols-2">
+        <section v-if="healthMonitorEnabled" class="grid grid-cols-1 gap-6 md:grid-cols-2">
           <!-- Provider health -->
           <Card>
             <CardHeader class="pb-3">
@@ -260,6 +260,7 @@ const {
   providerModel,
   providerStatus,
   agentStatus,
+  healthMonitorEnabled,
   operatingMode,
   primaryProvider,
   fallbackProviderInfo,
