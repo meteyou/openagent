@@ -615,6 +615,24 @@
               </div>
 
               <div class="flex flex-col gap-8">
+                <!-- Enable toggle -->
+                <div class="flex items-center justify-between rounded-lg border border-border px-4 py-3">
+                  <div class="flex flex-col gap-0.5 pr-4">
+                    <Label for="health-monitor-enabled" class="cursor-pointer">
+                      {{ $t('settings.healthMonitorEnabled') }}
+                    </Label>
+                    <p class="text-xs text-muted-foreground">
+                      {{ $t('settings.healthMonitorEnabledHint') }}
+                    </p>
+                  </div>
+                  <Switch
+                    id="health-monitor-enabled"
+                    v-model:checked="form.healthMonitor.enabled"
+                  />
+                </div>
+
+                <!-- Configuration — progressive disclosure -->
+                <template v-if="form.healthMonitor.enabled">
                 <!-- Health check interval -->
                 <div class="flex flex-col gap-2">
                   <Label for="health-monitor-interval">{{ $t('settings.healthMonitorInterval') }}</Label>
@@ -718,6 +736,7 @@
                     />
                   </div>
                 </div>
+                </template>
               </div>
             </div>
 
@@ -2036,6 +2055,7 @@ function hydrateForm() {
     telegramEnabled: s.telegramEnabled,
     telegramBotToken: s.telegramBotToken,
     healthMonitor: {
+      enabled: s.healthMonitor.enabled,
       fallbackTrigger: s.healthMonitor.fallbackTrigger,
       failuresBeforeFallback: s.healthMonitor.failuresBeforeFallback,
       recoveryCheckIntervalMinutes: s.healthMonitor.recoveryCheckIntervalMinutes,
