@@ -285,4 +285,52 @@ describe('Cronjobs REST API', () => {
       expect(res.status).toBe(401)
     })
   })
+
+  describe('GET /api/cronjobs/meta', () => {
+    it('returns empty lists when no tool provider is wired and no skills exist', async () => {
+      const res = await apiFetch('/api/cronjobs/meta')
+      expect(res.status).toBe(200)
+      const body = await res.json() as {
+        tools: string[]
+        installedSkills: unknown[]
+        agentSkills: unknown[]
+      }
+      // No `getBackgroundTaskToolNames` wired on the test app → tools is empty.
+      expect(Array.isArray(body.tools)).toBe(true)
+      expect(body.tools).toEqual([])
+      expect(Array.isArray(body.installedSkills)).toBe(true)
+      expect(Array.isArray(body.agentSkills)).toBe(true)
+    })
+
+    it('surfaces the tool names provided by getBackgroundTaskToolNames', async () => {
+      // Build a second app with the hook wired so we verify the plumbing end
+      // to end. A fresh server avoids mutating the shared suite state.
+      const wiredDb = initDatabase(':memory:')
+      const wiredApp = createApp({
+        db: wiredDb,
+        getBackgroundTaskToolNames: () => ['shell', 'read_file', 'web_fetch'],
+      })
+      const wiredServer = http.createServer(wiredApp)
+      await new Promise<void>((resolve) => wiredServer.listen(0, resolve))
+      const wiredPort = (wiredServer.address() as { port: number }).port
+      try {
+        const res = await fetch(`http://localhost:${wiredPort}/api/cronjobs/meta`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        expect(res.status).toBe(200)
+        const body = await res.json() as { tools: string[] }
+        expect(body.tools).toEqual(['shell', 'read_file', 'web_fetch'])
+      } finally {
+        await new Promise<void>((resolve, reject) => {
+          wiredServer.close((err) => (err ? reject(err) : resolve()))
+        })
+        wiredDb.close()
+      }
+    })
+
+    it('rejects requests without auth', async () => {
+      const res = await fetch(`${baseUrl}/api/cronjobs/meta`)
+      expect(res.status).toBe(401)
+    })
+  })
 })
