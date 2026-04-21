@@ -14,6 +14,14 @@ export interface ScheduledTask {
   toolsOverride: string | null
   skillsOverride: string | null
   systemPromptOverride: string | null
+  /**
+   * Optional list of agent-skill names (matching directories under
+   * `/data/skills_agent/<name>/`) whose `SKILL.md` content should be
+   * injected verbatim into the task prompt under an `<attached_skills>`
+   * block. Lets cronjobs bake skill rules into the prompt deterministically
+   * instead of requiring the task agent to `read_file` them on every run.
+   */
+  attachedSkills: string[] | null
   lastRunAt: string | null
   lastRunTaskId: string | null
   lastRunStatus: string | null
@@ -28,6 +36,7 @@ export interface CreateScheduledTaskInput {
   actionType?: ScheduledTaskActionType
   provider?: string
   enabled?: boolean
+  attachedSkills?: string[] | null
 }
 
 export interface UpdateScheduledTaskInput {
@@ -40,6 +49,7 @@ export interface UpdateScheduledTaskInput {
   toolsOverride?: string | null
   skillsOverride?: string | null
   systemPromptOverride?: string | null
+  attachedSkills?: string[] | null
   lastRunAt?: string
   lastRunTaskId?: string
   lastRunStatus?: string
@@ -56,11 +66,31 @@ interface ScheduledTaskRow {
   tools_override: string | null
   skills_override: string | null
   system_prompt_override: string | null
+  attached_skills: string | null
   last_run_at: string | null
   last_run_task_id: string | null
   last_run_status: string | null
   created_at: string
   updated_at: string
+}
+
+function parseAttachedSkills(raw: string | null): string[] | null {
+  if (raw === null || raw === undefined) return null
+  try {
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed) && parsed.every(v => typeof v === 'string')) {
+      return parsed as string[]
+    }
+  } catch {
+    // Fall through — treat as null on malformed data
+  }
+  return null
+}
+
+function serializeAttachedSkills(value: string[] | null | undefined): string | null {
+  if (value === null || value === undefined) return null
+  if (!Array.isArray(value)) return null
+  return JSON.stringify(value.filter(v => typeof v === 'string'))
 }
 
 function rowToScheduledTask(row: ScheduledTaskRow): ScheduledTask {
@@ -75,6 +105,7 @@ function rowToScheduledTask(row: ScheduledTaskRow): ScheduledTask {
     toolsOverride: row.tools_override,
     skillsOverride: row.skills_override,
     systemPromptOverride: row.system_prompt_override,
+    attachedSkills: parseAttachedSkills(row.attached_skills),
     lastRunAt: row.last_run_at,
     lastRunTaskId: row.last_run_task_id,
     lastRunStatus: row.last_run_status,
@@ -98,6 +129,7 @@ export function initScheduledTasksTable(db: Database): void {
       tools_override TEXT,
       skills_override TEXT,
       system_prompt_override TEXT,
+      attached_skills TEXT,
       last_run_at TEXT,
       last_run_task_id TEXT,
       last_run_status TEXT,
@@ -121,8 +153,8 @@ export class ScheduledTaskStore {
     const now = new Date().toISOString().replace('T', ' ').slice(0, 19)
 
     this.db.prepare(`
-      INSERT INTO scheduled_tasks (id, name, prompt, schedule, action_type, provider, enabled, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO scheduled_tasks (id, name, prompt, schedule, action_type, provider, enabled, attached_skills, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       input.name,
@@ -131,6 +163,7 @@ export class ScheduledTaskStore {
       input.actionType ?? 'task',
       input.provider ?? null,
       input.enabled !== undefined ? (input.enabled ? 1 : 0) : 1,
+      serializeAttachedSkills(input.attachedSkills ?? null),
       now,
       now,
     )
@@ -204,6 +237,10 @@ export class ScheduledTaskStore {
     if (input.systemPromptOverride !== undefined) {
       setClauses.push('system_prompt_override = ?')
       params.push(input.systemPromptOverride)
+    }
+    if (input.attachedSkills !== undefined) {
+      setClauses.push('attached_skills = ?')
+      params.push(serializeAttachedSkills(input.attachedSkills))
     }
     if (input.lastRunAt !== undefined) {
       setClauses.push('last_run_at = ?')

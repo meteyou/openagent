@@ -304,6 +304,11 @@ export function initDatabase(dbPath?: string): Database {
     db.exec("ALTER TABLE scheduled_tasks ADD COLUMN action_type TEXT NOT NULL DEFAULT 'task'")
   }
 
+  // Migration: add attached_skills column to scheduled_tasks (JSON array of skill names)
+  if (!scheduledCols.find(c => c.name === 'attached_skills')) {
+    db.exec("ALTER TABLE scheduled_tasks ADD COLUMN attached_skills TEXT")
+  }
+
   // Migration: add 'paused' to tasks status CHECK constraint
   // Test by inserting a paused row — if CHECK fails, recreate the table
   try {

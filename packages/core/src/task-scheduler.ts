@@ -373,6 +373,7 @@ export class TaskScheduler {
       toolsOverride: scheduledTask.toolsOverride,
       skillsOverride: scheduledTask.skillsOverride,
       systemPromptOverride: scheduledTask.systemPromptOverride,
+      attachedSkills: scheduledTask.attachedSkills,
     }
 
     // Start the task

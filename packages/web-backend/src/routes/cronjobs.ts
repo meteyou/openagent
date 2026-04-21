@@ -44,13 +44,14 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
    */
   router.post('/', (req: AuthenticatedRequest, res) => {
     try {
-      const { name, prompt, schedule, actionType, provider, enabled } = req.body as {
+      const { name, prompt, schedule, actionType, provider, enabled, attachedSkills } = req.body as {
         name?: string
         prompt?: string
         schedule?: string
         actionType?: string
         provider?: string
         enabled?: boolean
+        attachedSkills?: string[] | null
       }
 
       if (!name || !prompt || !schedule) {
@@ -65,6 +66,22 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
         return
       }
 
+      // Validate attachedSkills if provided
+      let normalizedAttachedSkills: string[] | null | undefined = undefined
+      if (attachedSkills !== undefined) {
+        if (attachedSkills === null) {
+          normalizedAttachedSkills = null
+        } else if (!Array.isArray(attachedSkills) || !attachedSkills.every((v: unknown) => typeof v === 'string')) {
+          res.status(400).json({ error: 'attachedSkills must be an array of strings' })
+          return
+        } else {
+          normalizedAttachedSkills = Array.from(new Set(
+            attachedSkills.map(v => v.trim()).filter(v => v.length > 0),
+          ))
+          if (normalizedAttachedSkills.length === 0) normalizedAttachedSkills = null
+        }
+      }
+
       const taskRuntime = getTaskRuntime()
       const cronjob = taskRuntime
         ? taskRuntime.create({
@@ -74,6 +91,7 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
             actionType: actionType === 'injection' ? 'injection' : 'task',
             provider: provider || undefined,
             enabled: enabled !== undefined ? enabled : true,
+            attachedSkills: normalizedAttachedSkills,
           })
         : store.create({
             name,
@@ -82,6 +100,7 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
             actionType: actionType === 'injection' ? 'injection' : 'task',
             provider: provider || undefined,
             enabled: enabled !== undefined ? enabled : true,
+            attachedSkills: normalizedAttachedSkills,
           })
 
       // Register with scheduler boundary when available
@@ -114,7 +133,7 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
         return
       }
 
-      const { name, prompt, schedule, actionType, provider, enabled, toolsOverride, skillsOverride, systemPromptOverride } = req.body as {
+      const { name, prompt, schedule, actionType, provider, enabled, toolsOverride, skillsOverride, systemPromptOverride, attachedSkills } = req.body as {
         name?: string
         prompt?: string
         schedule?: string
@@ -124,6 +143,7 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
         toolsOverride?: string | null
         skillsOverride?: string | null
         systemPromptOverride?: string | null
+        attachedSkills?: string[] | null
       }
 
       // Validate cron expression if provided
@@ -167,6 +187,22 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
         return
       }
 
+      // Validate + normalize attachedSkills if provided
+      let attachedSkillsUpdate: string[] | null | undefined = undefined
+      if (attachedSkills !== undefined) {
+        if (attachedSkills === null) {
+          attachedSkillsUpdate = null
+        } else if (!Array.isArray(attachedSkills) || !attachedSkills.every((v: unknown) => typeof v === 'string')) {
+          res.status(400).json({ error: 'attachedSkills must be an array of strings' })
+          return
+        } else {
+          const normalized = Array.from(new Set(
+            attachedSkills.map(v => v.trim()).filter(v => v.length > 0),
+          ))
+          attachedSkillsUpdate = normalized.length === 0 ? null : normalized
+        }
+      }
+
       const updated = taskRuntime
         ? taskRuntime.update(id, {
             name,
@@ -178,6 +214,7 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
             toolsOverride: toolsOverride !== undefined ? toolsOverride : undefined,
             skillsOverride: skillsOverride !== undefined ? skillsOverride : undefined,
             systemPromptOverride: systemPromptOverride !== undefined ? systemPromptOverride : undefined,
+            attachedSkills: attachedSkillsUpdate,
           })
         : store.update(id, {
             name,
@@ -189,6 +226,7 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
             toolsOverride: toolsOverride !== undefined ? toolsOverride : undefined,
             skillsOverride: skillsOverride !== undefined ? skillsOverride : undefined,
             systemPromptOverride: systemPromptOverride !== undefined ? systemPromptOverride : undefined,
+            attachedSkills: attachedSkillsUpdate,
           })
 
       if (!updated) {

@@ -910,4 +910,128 @@ describe('TaskRunner', () => {
       expect(updated.status).toBe('completed')
     })
   })
+
+  describe('attached skills injection', () => {
+    let skillsTmpDir: string
+    let originalDataDir: string | undefined
+
+    beforeEach(() => {
+      originalDataDir = process.env.DATA_DIR
+      skillsTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openagent-skills-'))
+      process.env.DATA_DIR = skillsTmpDir
+      // Create two skills
+      const nitterDir = path.join(skillsTmpDir, 'skills_agent', 'nitter')
+      fs.mkdirSync(nitterDir, { recursive: true })
+      fs.writeFileSync(
+        path.join(nitterDir, 'SKILL.md'),
+        '---\nname: nitter\ndescription: Fetch tweets via Nitter.\n---\n\n# Nitter Skill\nAlways rotate Nitter mirrors.',
+        'utf-8',
+      )
+      const redditDir = path.join(skillsTmpDir, 'skills_agent', 'reddit')
+      fs.mkdirSync(redditDir, { recursive: true })
+      fs.writeFileSync(
+        path.join(redditDir, 'SKILL.md'),
+        '---\nname: reddit\ndescription: Fetch Reddit threads.\n---\n\n# Reddit Skill\nUse .json endpoints.',
+        'utf-8',
+      )
+    })
+
+    afterEach(() => {
+      if (originalDataDir === undefined) {
+        delete process.env.DATA_DIR
+      } else {
+        process.env.DATA_DIR = originalDataDir
+      }
+      try { fs.rmSync(skillsTmpDir, { recursive: true, force: true }) } catch { /* ignore */ }
+    })
+
+    async function captureSystemPrompt(overrides: TaskOverrides): Promise<string> {
+      const { Agent } = await import('@mariozechner/pi-agent-core')
+      const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
+
+      type Captured = { initialState: { systemPrompt: string } }
+      const captured: { value: Captured | null } = { value: null }
+      const messages: unknown[] = []
+      MockAgent.mockImplementationOnce((options: unknown) => {
+        captured.value = options as Captured
+        return {
+          subscribe: vi.fn(() => () => {}),
+          prompt: vi.fn(async () => {
+            messages.push({
+              role: 'assistant',
+              content: [{ type: 'text', text: 'STATUS: completed\nSUMMARY: ok' }],
+            })
+          }),
+          abort: vi.fn(),
+          state: { get messages() { return messages } },
+        }
+      })
+
+      const task = store.create({
+        name: 'Attached Skills Task',
+        prompt: 'Do work',
+        triggerType: 'cronjob',
+      })
+      await runner.startTask(task, mockProvider, overrides)
+      await new Promise(resolve => setTimeout(resolve, 100))
+
+      if (!captured.value) throw new Error('Agent was not instantiated')
+      return captured.value.initialState.systemPrompt
+    }
+
+    it('injects <attached_skills> block with SKILL.md content before the base prompt', async () => {
+      const systemPrompt = await captureSystemPrompt({ attachedSkills: ['nitter', 'reddit'] })
+
+      expect(systemPrompt.startsWith('<attached_skills>')).toBe(true)
+      expect(systemPrompt).toContain('<skill name="nitter">')
+      expect(systemPrompt).toContain('Nitter Skill')
+      expect(systemPrompt).toContain('Always rotate Nitter mirrors.')
+      expect(systemPrompt).toContain('<skill name="reddit">')
+      expect(systemPrompt).toContain('Use .json endpoints.')
+      expect(systemPrompt).toContain('</attached_skills>')
+
+      // Base task prompt must still follow the attached-skills block
+      expect(systemPrompt).toContain('background task agent')
+      expect(systemPrompt).toContain('Do work')
+      const blockEnd = systemPrompt.indexOf('</attached_skills>')
+      const baseStart = systemPrompt.indexOf('background task agent')
+      expect(blockEnd).toBeGreaterThan(-1)
+      expect(baseStart).toBeGreaterThan(blockEnd)
+    })
+
+    it('skips missing SKILL.md files with a warning and still runs the task', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      try {
+        const systemPrompt = await captureSystemPrompt({ attachedSkills: ['nitter', 'does-not-exist'] })
+
+        expect(systemPrompt).toContain('<skill name="nitter">')
+        expect(systemPrompt).not.toContain('<skill name="does-not-exist">')
+        expect(warnSpy).toHaveBeenCalled()
+        const warned = warnSpy.mock.calls.some(args => String(args[0] ?? '').includes('does-not-exist'))
+        expect(warned).toBe(true)
+      } finally {
+        warnSpy.mockRestore()
+      }
+    })
+
+    it('does not add an attached-skills block when attachedSkills is empty/null', async () => {
+      const systemPromptNull = await captureSystemPrompt({ attachedSkills: null })
+      expect(systemPromptNull).not.toContain('<attached_skills>')
+
+      const systemPromptEmpty = await captureSystemPrompt({ attachedSkills: [] })
+      expect(systemPromptEmpty).not.toContain('<attached_skills>')
+    })
+
+    it('rejects unsafe skill names containing path separators', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      try {
+        const systemPrompt = await captureSystemPrompt({ attachedSkills: ['../etc/passwd', 'nitter'] })
+        expect(systemPrompt).toContain('<skill name="nitter">')
+        expect(systemPrompt).not.toContain('../etc/passwd')
+        expect(warnSpy).toHaveBeenCalled()
+      } finally {
+        warnSpy.mockRestore()
+      }
+    })
+  })
 })
