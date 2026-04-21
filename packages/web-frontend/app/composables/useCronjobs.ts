@@ -28,6 +28,26 @@ interface CronjobResponse {
   cronjob: Cronjob
 }
 
+/**
+ * Shape returned by `GET /api/cronjobs/meta`. Used by the cronjob form
+ * to render tool/skill lists dynamically so toggles always reflect the
+ * current runtime instead of a hardcoded copy.
+ */
+export interface CronjobMeta {
+  /** Tool names available to background task agents. */
+  tools: string[]
+  /** Installed skills (`owner/name`). Used for skill overrides + attached skills. */
+  installedSkills: Array<{
+    id: string
+    name: string
+    description: string
+    emoji?: string
+    enabled: boolean
+  }>
+  /** Agent skills (self-created, under `/data/skills_agent/<name>/`). */
+  agentSkills: Array<{ name: string; description: string }>
+}
+
 export interface CronjobFormData {
   name: string
   prompt: string
@@ -48,6 +68,10 @@ export function useCronjobs() {
   const loading = ref(false)
   const error = ref<string | null>(null)
   const success = ref<string | null>(null)
+
+  async function fetchCronjobMeta(): Promise<CronjobMeta> {
+    return apiFetch<CronjobMeta>('/api/cronjobs/meta')
+  }
 
   async function loadCronjobs() {
     loading.value = true
@@ -151,6 +175,7 @@ export function useCronjobs() {
     deleteCronjob,
     toggleCronjob,
     triggerCronjob,
+    fetchCronjobMeta,
     clearSuccess,
   }
 }
