@@ -129,7 +129,7 @@
                 </Badge>
               </TableCell>
               <TableCell class="text-muted-foreground">
-                {{ cj.actionType === 'injection' ? '—' : (cj.provider || $t('cronjobs.defaultProvider')) }}
+                {{ cj.actionType === 'injection' ? '—' : (formatProvider(cj.provider) || $t('cronjobs.defaultProvider')) }}
               </TableCell>
               <TableCell @click.stop>
                 <Switch
@@ -208,6 +208,28 @@ import type { Cronjob } from '~/composables/useCronjobs'
 const { t, locale } = useI18n()
 const { user } = useAuth()
 const isAdmin = computed(() => user.value?.role === 'admin')
+
+// Providers (needed to format `providerId:modelId` into a human label in the table)
+const { providers, fetchProviders } = useProviders()
+
+/**
+ * Format a stored cronjob provider value for display. Accepts both the modern
+ * `providerId:modelId` composite and the legacy plain provider name/id.
+ * Returns the provider name (with model in parens when known), or the raw
+ * value when the provider cannot be resolved.
+ */
+function formatProvider(raw: string | null | undefined): string {
+  if (!raw) return ''
+  const colonIdx = raw.indexOf(':')
+  const providerKey = colonIdx === -1 ? raw : raw.slice(0, colonIdx)
+  const modelId = colonIdx === -1 ? undefined : raw.slice(colonIdx + 1) || undefined
+  const match = providers.value.find(
+    p => p.id === providerKey || p.name.toLowerCase() === providerKey.toLowerCase(),
+  )
+  if (!match) return raw
+  const model = modelId ?? match.defaultModel
+  return model ? `${match.name} (${model})` : match.name
+}
 
 // === Cronjobs ===
 const {
@@ -320,6 +342,6 @@ function formatCreatedAt(dateStr: string): string {
 
 onMounted(async () => {
   if (!isAdmin.value) return
-  await loadCronjobs()
+  await Promise.all([loadCronjobs(), fetchProviders()])
 })
 </script>
