@@ -43,6 +43,7 @@ export interface HealthMonitorNotificationTogglesContract {
 }
 
 export interface HealthMonitorSettingsContract {
+  enabled: boolean
   fallbackTrigger: HealthMonitorFallbackTrigger
   failuresBeforeFallback: number
   recoveryCheckIntervalMinutes: number
@@ -205,6 +206,7 @@ export const DEFAULT_SETTINGS_CONTRACT: SettingsContract = {
   telegramEnabled: false,
   telegramBotToken: '',
   healthMonitor: {
+    enabled: true,
     fallbackTrigger: 'down',
     failuresBeforeFallback: 1,
     recoveryCheckIntervalMinutes: 1,
@@ -294,6 +296,7 @@ export function normalizeSettingsContract(input: DeepPartial<SettingsContract> |
     telegramEnabled: source.telegramEnabled ?? DEFAULT_SETTINGS_CONTRACT.telegramEnabled,
     telegramBotToken: source.telegramBotToken ?? DEFAULT_SETTINGS_CONTRACT.telegramBotToken,
     healthMonitor: {
+      enabled: source.healthMonitor?.enabled ?? DEFAULT_SETTINGS_CONTRACT.healthMonitor.enabled,
       fallbackTrigger: source.healthMonitor?.fallbackTrigger ?? DEFAULT_SETTINGS_CONTRACT.healthMonitor.fallbackTrigger,
       failuresBeforeFallback:
         source.healthMonitor?.failuresBeforeFallback ?? DEFAULT_SETTINGS_CONTRACT.healthMonitor.failuresBeforeFallback,
