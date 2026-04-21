@@ -174,6 +174,11 @@
     "deleteCancel": "Abbrechen",
     "deleteConfirmButton": "Löschen",
     "cannotDeleteActive": "Der aktive Anbieter kann nicht gelöscht werden",
+    "removeModel": "Modell entfernen",
+    "removeModelConfirm": "Modell \"{model}\" von Anbieter \"{provider}\" entfernen? Das Modell wird dadurch nicht deinstalliert, sondern nur aus der Liste dieses Anbieters entfernt.",
+    "removeModelConfirmButton": "Entfernen",
+    "cannotRemoveDefaultModel": "Das Standardmodell kann nicht entfernt werden",
+    "cannotRemoveActiveModel": "Das aktive Modell kann nicht entfernt werden",
     "save": "Speichern",
     "cancel": "Abbrechen",
     "columns": {
