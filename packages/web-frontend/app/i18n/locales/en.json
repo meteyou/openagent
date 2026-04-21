@@ -360,6 +360,8 @@
     },
     "agentSection": "Agent behavior",
     "agentSectionDescription": "Fine-tune health monitoring and message batching for connected channels.",
+    "healthMonitorEnabled": "Enable Health Monitor",
+    "healthMonitorEnabledHint": "When enabled, the agent periodically checks provider health and can fail over to a fallback provider. Status indicators and dashboard widgets are hidden when disabled.",
     "healthMonitorInterval": "Health check interval",
     "healthMonitorHint": "Defines how often provider health checks should run.",
     "healthMonitorFallbackTrigger": "Fallback trigger",

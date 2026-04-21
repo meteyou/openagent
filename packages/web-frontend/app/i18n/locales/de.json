@@ -360,6 +360,8 @@
     },
     "agentSection": "Agent-Verhalten",
     "agentSectionDescription": "Feinabstimmung für Health-Monitoring und Nachrichten-Batching verbundener Kanäle.",
+    "healthMonitorEnabled": "Health Monitor aktivieren",
+    "healthMonitorEnabledHint": "Wenn aktiviert, prüft der Agent regelmäßig den Zustand der Provider und kann auf einen Fallback-Provider umschalten. Bei deaktiviertem Monitor werden Status-Anzeigen und Dashboard-Widgets ausgeblendet.",
     "healthMonitorInterval": "Health-Check-Intervall",
     "healthMonitorHint": "Legt fest, wie oft Provider-Health-Checks ausgeführt werden.",
     "healthMonitorFallbackTrigger": "Fallback-Auslöser",
