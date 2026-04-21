@@ -32,6 +32,13 @@ export interface ProviderTypePresetContract {
   requiresApiKey: boolean
   urlEditable: boolean
   piAiProvider: string | null
+  /**
+   * True if the provider type has a known catalog of models (either via
+   * pi-ai's registry or via local PROVIDER_TYPE_MODEL_OVERRIDES). The UI
+   * uses this to decide whether to render the checkbox list of enabled
+   * models instead of a free-text model input.
+   */
+  hasKnownModels: boolean
   authMethod: ProviderAuthMethodContract
   oauthProviderId?: string
 }

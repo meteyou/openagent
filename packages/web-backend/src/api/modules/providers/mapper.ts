@@ -1,4 +1,4 @@
-import { buildModel, PROVIDER_TYPE_PRESETS } from '@openagent/core'
+import { buildModel, PROVIDER_TYPE_MODEL_OVERRIDES, PROVIDER_TYPE_PRESETS } from '@openagent/core'
 import type {
   ProviderConfig,
   ProviderType,
@@ -75,7 +75,13 @@ export function mapProvidersListResponse(masked: ProvidersFile, decrypted: Provi
   })
 
   const presets = Object.fromEntries(
-    Object.entries(PROVIDER_TYPE_PRESETS).filter(([key]) => key !== 'ollama-local' && key !== 'ollama-cloud'),
+    Object.entries(PROVIDER_TYPE_PRESETS)
+      .filter(([key]) => key !== 'ollama-local' && key !== 'ollama-cloud')
+      .map(([key, preset]) => {
+        const overrides = PROVIDER_TYPE_MODEL_OVERRIDES[key as ProviderType]
+        const hasKnownModels = preset.piAiProvider != null || (overrides?.length ?? 0) > 0
+        return [key, { ...preset, hasKnownModels }]
+      }),
   )
 
   return {
