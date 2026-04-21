@@ -3,6 +3,30 @@ import { Type } from '@mariozechner/pi-ai'
 import type { ScheduledTaskActionType } from './scheduled-task-store.js'
 import type { TaskRuntimeScheduleBoundary } from './task-runtime.js'
 import { validateCronExpression, cronToHumanReadable, parseCronExpression, getNextRunTime } from './cron-parser.js'
+import { resolveProviderModelInput } from './provider-config.js'
+
+/**
+ * Resolve the (provider, model) pair a user may pass to a cronjob tool into
+ * the composite `providerId:modelId` string we persist in `scheduled_tasks.provider`.
+ *
+ * Returns `undefined` when neither field is set (caller should store `undefined`,
+ * which means "use the task default provider at fire time").
+ * Returns an error string when the input is set but cannot be resolved.
+ */
+function resolveCronjobProviderValue(provider?: string, model?: string):
+  | { ok: true; value: string | undefined; label: string | null }
+  | { ok: false; error: string } {
+  if (!provider && !model) {
+    return { ok: true, value: undefined, label: null }
+  }
+  const resolved = resolveProviderModelInput({ provider, model })
+  if (!resolved.ok) return resolved
+  return {
+    ok: true,
+    value: resolved.composite,
+    label: `${resolved.providerName} (${resolved.modelId})`,
+  }
+}
 
 export interface CronjobToolsOptions {
   taskRuntime: TaskRuntimeScheduleBoundary
@@ -54,7 +78,12 @@ export function createCronjobTool(options: CronjobToolsOptions): AgentTool {
       ),
       provider: Type.Optional(
         Type.String({
-          description: 'Provider to use for this cronjob. Only specify if the user explicitly requests a specific provider. Only relevant for action_type "task".',
+          description: 'Provider name or id to use for this cronjob (e.g. "Kimi.ai", "OpenAI"). Only specify if the user explicitly requests a specific provider. Can be combined with `model` to pin both. Only relevant for action_type "task".',
+        })
+      ),
+      model: Type.Optional(
+        Type.String({
+          description: 'Specific model id to use for this cronjob (e.g. "kimi-k2.6", "gpt-5", "claude-sonnet-4-5"). Only specify if the user explicitly requests a specific model. If `provider` is omitted, the provider is auto-detected from the configured providers (requires a unique match). Only relevant for action_type "task".',
         })
       ),
       attached_skills: Type.Optional(
@@ -64,12 +93,13 @@ export function createCronjobTool(options: CronjobToolsOptions): AgentTool {
       ),
     }),
     execute: async (_toolCallId, params) => {
-      const { prompt, name, schedule, action_type, provider, attached_skills } = params as {
+      const { prompt, name, schedule, action_type, provider, model, attached_skills } = params as {
         prompt: string
         name: string
         schedule: string
         action_type?: string
         provider?: string
+        model?: string
         attached_skills?: string[]
       }
 
@@ -85,6 +115,18 @@ export function createCronjobTool(options: CronjobToolsOptions): AgentTool {
 
         // Validate action_type
         const actionType: ScheduledTaskActionType = action_type === 'injection' ? 'injection' : 'task'
+
+        // Resolve provider + model into the composite `providerId:modelId`
+        // form used everywhere else (settings, task-scheduler, UI).
+        const providerResolved = resolveCronjobProviderValue(provider, model)
+        if (!providerResolved.ok) {
+          return {
+            content: [{ type: 'text' as const, text: `Error: ${providerResolved.error}` }],
+            details: { error: true },
+          }
+        }
+        const providerValue = providerResolved.value
+        const providerLabel = providerResolved.label
 
         // Normalize attached skills: keep only non-empty strings, drop duplicates, trim
         const normalizedAttachedSkills = Array.isArray(attached_skills)
@@ -102,7 +144,7 @@ export function createCronjobTool(options: CronjobToolsOptions): AgentTool {
           prompt,
           schedule,
           actionType,
-          provider: provider ?? undefined,
+          provider: providerValue,
           enabled: true,
           attachedSkills: normalizedAttachedSkills && normalizedAttachedSkills.length > 0 ? normalizedAttachedSkills : undefined,
         })
@@ -121,7 +163,7 @@ export function createCronjobTool(options: CronjobToolsOptions): AgentTool {
         return {
           content: [{
             type: 'text' as const,
-            text: `Cronjob created successfully.\n\nID: ${scheduledTask.id}\nName: ${name}\nSchedule: ${humanSchedule} (${schedule})\nAction: ${actionLabel}\n${provider ? `Provider: ${provider}\n` : ''}${attachedSkillsLine}Status: Enabled\n\nThe cronjob is now active and will run on the specified schedule.`,
+            text: `Cronjob created successfully.\n\nID: ${scheduledTask.id}\nName: ${name}\nSchedule: ${humanSchedule} (${schedule})\nAction: ${actionLabel}\n${providerLabel ? `Provider: ${providerLabel}\n` : ''}${attachedSkillsLine}Status: Enabled\n\nThe cronjob is now active and will run on the specified schedule.`,
           }],
           details: {
             cronjobId: scheduledTask.id,
@@ -129,7 +171,8 @@ export function createCronjobTool(options: CronjobToolsOptions): AgentTool {
             schedule,
             humanSchedule,
             actionType,
-            provider: provider ?? null,
+            provider: providerValue ?? null,
+            providerLabel,
             attachedSkills: scheduledTask.attachedSkills ?? null,
           },
         }
@@ -180,7 +223,12 @@ export function editCronjobTool(options: CronjobToolsOptions): AgentTool {
       ),
       provider: Type.Optional(
         Type.String({
-          description: 'New provider for the cronjob.',
+          description: 'New provider name or id for the cronjob (e.g. "Kimi.ai"). Pair with `model` to change both at once.',
+        })
+      ),
+      model: Type.Optional(
+        Type.String({
+          description: 'New model id for the cronjob (e.g. "kimi-k2.6"). If `provider` is omitted, the provider is auto-detected from the configured providers (requires a unique match).',
         })
       ),
       enabled: Type.Optional(
@@ -195,13 +243,14 @@ export function editCronjobTool(options: CronjobToolsOptions): AgentTool {
       ),
     }),
     execute: async (_toolCallId, params) => {
-      const { id, prompt, name, schedule, action_type, provider, enabled, attached_skills } = params as {
+      const { id, prompt, name, schedule, action_type, provider, model, enabled, attached_skills } = params as {
         id: string
         prompt?: string
         name?: string
         schedule?: string
         action_type?: string
         provider?: string
+        model?: string
         enabled?: boolean
         attached_skills?: string[]
       }
@@ -232,6 +281,24 @@ export function editCronjobTool(options: CronjobToolsOptions): AgentTool {
           ? (action_type === 'injection' ? 'injection' : 'task')
           : undefined
 
+        // Resolve provider/model update (only when at least one was passed).
+        // When neither is passed we must leave the field untouched (`undefined`
+        // means "no change" in the store update API), not reset it.
+        let providerUpdate: string | undefined
+        if (provider !== undefined || model !== undefined) {
+          const providerResolved = resolveCronjobProviderValue(provider, model)
+          if (!providerResolved.ok) {
+            return {
+              content: [{ type: 'text' as const, text: `Error: ${providerResolved.error}` }],
+              details: { error: true },
+            }
+          }
+          // `resolveCronjobProviderValue` returns `undefined` only when both
+          // inputs are empty — that branch is unreachable here because the
+          // outer condition requires at least one to be defined.
+          providerUpdate = providerResolved.value
+        }
+
         // Normalize attached skills if provided: [] explicitly clears, undefined leaves unchanged.
         let attachedSkillsUpdate: string[] | null | undefined
         if (attached_skills === undefined) {
@@ -254,7 +321,7 @@ export function editCronjobTool(options: CronjobToolsOptions): AgentTool {
           name,
           schedule,
           actionType,
-          provider,
+          provider: providerUpdate,
           enabled,
           attachedSkills: attachedSkillsUpdate,
         })
