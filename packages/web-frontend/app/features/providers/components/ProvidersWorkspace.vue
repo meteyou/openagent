@@ -200,6 +200,15 @@
                           <AppIcon name="close" class="h-4 w-4" />
                           {{ $t('providers.removeFallback') }}
                         </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          destructive
+                          :disabled="!canRemoveModel(provider, modelId)"
+                          @click="openRemoveModel(provider, modelId)"
+                        >
+                          <AppIcon name="trash" class="h-4 w-4" />
+                          {{ $t('providers.removeModel') }}
+                        </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>
@@ -234,6 +243,18 @@
     @confirm="handleDelete"
     @cancel="deleteTarget = null"
   />
+
+  <!-- Remove model confirmation dialog -->
+  <ConfirmDialog
+    :open="!!removeModelTarget"
+    :title="$t('providers.removeModel')"
+    :description="$t('providers.removeModelConfirm', { model: removeModelTarget?.modelId ?? '', provider: removeModelTarget?.provider.name ?? '' })"
+    :confirm-label="$t('providers.removeModelConfirmButton')"
+    :cancel-label="$t('providers.deleteCancel')"
+    destructive
+    @confirm="handleRemoveModel"
+    @cancel="removeModelTarget = null"
+  />
 </template>
 
 <script setup lang="ts">
@@ -267,6 +288,7 @@ const showForm = ref(false)
 const formMode = ref<'create' | 'edit'>('create')
 const editingProvider = ref<Provider | null>(null)
 const deleteTarget = ref<Provider | null>(null)
+const removeModelTarget = ref<{ provider: Provider; modelId: string } | null>(null)
 const successMessage = ref<string | null>(null)
 
 const sortedProviders = computed(() =>
@@ -445,5 +467,47 @@ async function handleSetFallback(id: string | null) {
 async function handleSetFallbackModel(providerId: string, modelId: string) {
   await setFallbackProvider(providerId, modelId)
   await fetchProviders()
+}
+
+/* ── Remove model from provider ── */
+function canRemoveModel(provider: Provider, modelId: string): boolean {
+  // Cannot remove the currently active model (would break the running agent)
+  if (isActiveModel(provider.id, modelId)) return false
+  // Cannot remove the last remaining model; delete the provider instead
+  const enabled = getDisplayModels(provider)
+  if (enabled.length <= 1) return false
+  return true
+}
+
+function openRemoveModel(provider: Provider, modelId: string) {
+  if (!canRemoveModel(provider, modelId)) return
+  removeModelTarget.value = { provider, modelId }
+}
+
+async function handleRemoveModel() {
+  const target = removeModelTarget.value
+  if (!target) return
+  const { provider, modelId } = target
+
+  // If the model to remove is the fallback, clear the fallback first.
+  if (isFallbackModel(provider.id, modelId)) {
+    await setFallbackProvider(null)
+  }
+
+  const nextEnabled = getDisplayModels(provider).filter(m => m !== modelId)
+
+  // If we're removing the provider's default model, pick another one so the
+  // backend doesn't silently re-add it to enabledModels.
+  const payload: { enabledModels: string[]; defaultModel?: string } = {
+    enabledModels: nextEnabled,
+  }
+  if (modelId === provider.defaultModel && nextEnabled.length > 0) {
+    payload.defaultModel = nextEnabled[0]
+  }
+
+  const result = await updateProvider(provider.id, payload)
+  if (result) {
+    removeModelTarget.value = null
+  }
 }
 </script>
