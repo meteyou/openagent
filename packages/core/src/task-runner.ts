@@ -1,7 +1,10 @@
+import fs from 'node:fs'
+import path from 'node:path'
 import { Agent as PiAgent } from '@mariozechner/pi-agent-core'
 import type { AgentEvent, AgentTool } from '@mariozechner/pi-agent-core'
 import type { AssistantMessage, Message, Model, Api } from '@mariozechner/pi-ai'
 import type { Database } from './database.js'
+import { getAgentSkillsDir } from './agent-skills.js'
 import type { SettingsThinkingLevel } from './contracts/settings.js'
 import { readBackgroundThinkingLevelFromConfig } from './thinking-level.js'
 import { TaskStore } from './task-store.js'
@@ -28,6 +31,13 @@ export interface TaskOverrides {
   skillsOverride?: string | null
   /** Custom system prompt — replaces default entirely when set */
   systemPromptOverride?: string | null
+  /**
+   * Names of agent skills (directories under `/data/skills_agent/<name>/`)
+   * whose `SKILL.md` content is injected verbatim into the task system
+   * prompt under an `<attached_skills>` block. Missing files are skipped
+   * with a warning so the task still runs.
+   */
+  attachedSkills?: string[] | null
 }
 
 export interface TaskRunnerOptions {
@@ -113,6 +123,51 @@ interface PausedTask {
 const CLEANUP_INTERVAL_MS = 60 * 60 * 1000
 /** Max time a task can remain paused before being cleaned up (24 hours) */
 const MAX_PAUSE_DURATION_MS = 24 * 60 * 60 * 1000
+
+/**
+ * Read an agent skill's SKILL.md and return its content, or null if not found / unreadable.
+ * Logs a warning but never throws — missing skills must not crash a task.
+ */
+export function loadAttachedSkillContent(skillName: string, skillsDir: string = getAgentSkillsDir()): string | null {
+  // Reject obviously unsafe names (path traversal / absolute paths).
+  if (!skillName || skillName.includes('/') || skillName.includes('\\') || skillName === '.' || skillName === '..') {
+    console.warn(`[task-runner] attachedSkills: ignoring invalid skill name "${skillName}"`)
+    return null
+  }
+
+  const skillPath = path.join(skillsDir, skillName, 'SKILL.md')
+  try {
+    return fs.readFileSync(skillPath, 'utf-8')
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err)
+    console.warn(`[task-runner] attachedSkills: could not read ${skillPath}: ${reason}`)
+    return null
+  }
+}
+
+/**
+ * Render an `<attached_skills>` XML-ish block for injection into a task prompt.
+ * Returns an empty string if no skills were loaded successfully so callers can
+ * unconditionally concatenate the result.
+ */
+export function renderAttachedSkillsBlock(
+  skillNames: readonly string[] | null | undefined,
+  skillsDir: string = getAgentSkillsDir(),
+): string {
+  if (!skillNames || skillNames.length === 0) return ''
+
+  const parts: string[] = []
+  for (const name of skillNames) {
+    const content = loadAttachedSkillContent(name, skillsDir)
+    if (content === null) continue
+    // Escape any closing tag in the content so the block stays well-formed.
+    const safe = content.replace(/<\/skill>/gi, '</ skill>')
+    parts.push(`<skill name="${name}">\n${safe.trim()}\n</skill>`)
+  }
+
+  if (parts.length === 0) return ''
+  return `<attached_skills>\n${parts.join('\n\n')}\n</attached_skills>`
+}
 
 /**
  * Build the system prompt for a task agent
@@ -284,9 +339,16 @@ export class TaskRunner {
     const apiKey = await this.options.getApiKey(provider)
 
     // Determine effective system prompt
-    const systemPrompt = overrides?.systemPromptOverride
+    const baseSystemPrompt = overrides?.systemPromptOverride
       ? overrides.systemPromptOverride
       : buildTaskSystemPrompt(task.prompt, this.options.memoryDir)
+
+    // Inject attached-skills block (before the base prompt) so skill rules are
+    // anchored at the top and apply regardless of the rest of the prompt.
+    const attachedSkillsBlock = renderAttachedSkillsBlock(overrides?.attachedSkills ?? null)
+    const systemPrompt = attachedSkillsBlock
+      ? `${attachedSkillsBlock}\n\n${baseSystemPrompt}`
+      : baseSystemPrompt
 
     // Determine effective tools (filter out disabled tools)
     let effectiveTools = this.options.tools
