@@ -81,6 +81,7 @@ export {
   estimateCost,
   parseProviderModelId,
   resolveProviderModelId,
+  resolveProviderModelInput,
   resolveModelTemperature,
   DEFAULT_PRICE_TABLE,
   getConfiguredPriceTable,

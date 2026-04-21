@@ -1081,6 +1081,81 @@ export function resolveProviderModelId(value?: string): {
 }
 
 /**
+ * Resolve a user-friendly `(provider, model)` pair into a concrete provider
+ * and model id. Used by agent tools like `create_cronjob`, `edit_cronjob`,
+ * and `create_task` where the user may specify any combination of:
+ *
+ *   - both provider + model   → validate the model is enabled for that provider
+ *   - provider only           → use the provider's default model
+ *   - model only              → search providers for one whose enabledModels (or
+ *                               defaultModel) contains the model; unique match wins
+ *   - neither                 → `{ ok: false, error: 'none-specified' }`
+ *
+ * Provider lookup is case-insensitive on both `id` and `name`, matching the
+ * pattern used by `resolveProvider` in runtime-composition.
+ */
+export function resolveProviderModelInput(input: {
+  provider?: string | null
+  model?: string | null
+}): { ok: true; providerId: string; providerName: string; modelId: string; composite: string } | { ok: false; error: string } {
+  const providerKey = input.provider?.trim() || ''
+  const modelKey = input.model?.trim() || ''
+
+  if (!providerKey && !modelKey) {
+    return { ok: false, error: 'No provider or model specified.' }
+  }
+
+  const providers = loadProvidersDecrypted().providers
+
+  // Case 1 & 2: provider (with or without model) given
+  if (providerKey) {
+    const match = providers.find(
+      p => p.id === providerKey || p.name.toLowerCase() === providerKey.toLowerCase(),
+    )
+    if (!match) {
+      return { ok: false, error: `Provider "${providerKey}" not found. Available providers: ${providers.map(p => p.name).join(', ') || '(none)'}.` }
+    }
+
+    const enabledModels = match.enabledModels && match.enabledModels.length > 0
+      ? match.enabledModels
+      : [match.defaultModel]
+
+    let modelId: string
+    if (modelKey) {
+      const modelMatch = enabledModels.find(m => m.toLowerCase() === modelKey.toLowerCase())
+      if (!modelMatch) {
+        return { ok: false, error: `Model "${modelKey}" is not enabled for provider "${match.name}". Enabled models: ${enabledModels.join(', ')}.` }
+      }
+      modelId = modelMatch
+    } else {
+      modelId = match.defaultModel
+    }
+
+    return { ok: true, providerId: match.id, providerName: match.name, modelId, composite: `${match.id}:${modelId}` }
+  }
+
+  // Case 3: model only — search all providers for any enabled model that matches
+  const hits: Array<{ provider: ProviderConfig; modelId: string }> = []
+  for (const p of providers) {
+    const enabledModels = p.enabledModels && p.enabledModels.length > 0
+      ? p.enabledModels
+      : [p.defaultModel]
+    const modelMatch = enabledModels.find(m => m.toLowerCase() === modelKey.toLowerCase())
+    if (modelMatch) hits.push({ provider: p, modelId: modelMatch })
+  }
+
+  if (hits.length === 0) {
+    return { ok: false, error: `Model "${modelKey}" not found in any configured provider. Configured providers: ${providers.map(p => `${p.name} (${(p.enabledModels && p.enabledModels.length > 0 ? p.enabledModels : [p.defaultModel]).join(', ')})`).join('; ') || '(none)'}.` }
+  }
+  if (hits.length > 1) {
+    return { ok: false, error: `Model "${modelKey}" is ambiguous — enabled in multiple providers: ${hits.map(h => h.provider.name).join(', ')}. Specify the provider explicitly.` }
+  }
+
+  const { provider: match, modelId } = hits[0]!
+  return { ok: true, providerId: match.id, providerName: match.name, modelId, composite: `${match.id}:${modelId}` }
+}
+
+/**
  * Estimate cost from token counts using price table or model cost data
  */
 export function estimateCost(
