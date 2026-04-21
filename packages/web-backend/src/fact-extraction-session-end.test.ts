@@ -202,6 +202,7 @@ describe('fact-extraction session-end trigger', () => {
         'User: remember that I use dark mode',
         expect.objectContaining({ id: 'gpt-4o-mini' }),
         'key',
+        expect.objectContaining({ providerType: 'openai' }),
       )
       expect(error).toHaveBeenCalled()
     })
