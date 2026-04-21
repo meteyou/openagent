@@ -5,6 +5,7 @@ import type { AgentEvent, AgentTool } from '@mariozechner/pi-agent-core'
 import type { AssistantMessage, Message, Model, Api } from '@mariozechner/pi-ai'
 import type { Database } from './database.js'
 import { getAgentSkillsDir } from './agent-skills.js'
+import { getSkill } from './skill-config.js'
 import type { SettingsThinkingLevel } from './contracts/settings.js'
 import { readBackgroundThinkingLevelFromConfig } from './thinking-level.js'
 import { TaskStore } from './task-store.js'
@@ -125,16 +126,58 @@ const CLEANUP_INTERVAL_MS = 60 * 60 * 1000
 const MAX_PAUSE_DURATION_MS = 24 * 60 * 60 * 1000
 
 /**
- * Read an agent skill's SKILL.md and return its content, or null if not found / unreadable.
+ * Read a skill's SKILL.md and return its content, or null if not found / unreadable.
  * Logs a warning but never throws — missing skills must not crash a task.
+ *
+ * Supports two identifier shapes:
+ *  - `"<name>"` (no slash): an agent skill under `<skillsDir>/<name>/SKILL.md`
+ *  - `"<owner>/<name>"`: an installed skill, resolved via `getSkill(id)` so its
+ *    actual on-disk `path` (set by the skill installer) is used regardless of
+ *    where the file lives. This lets cronjobs attach the instructions of
+ *    normal installed skills — not only self-created agent skills.
  */
 export function loadAttachedSkillContent(skillName: string, skillsDir: string = getAgentSkillsDir()): string | null {
-  // Reject obviously unsafe names (path traversal / absolute paths).
-  if (!skillName || skillName.includes('/') || skillName.includes('\\') || skillName === '.' || skillName === '..') {
+  if (!skillName) return null
+
+  // Reject obvious traversal / absolute paths regardless of shape.
+  if (skillName.includes('\\') || skillName.includes('..') || path.isAbsolute(skillName)) {
     console.warn(`[task-runner] attachedSkills: ignoring invalid skill name "${skillName}"`)
     return null
   }
 
+  // Installed skill identifier `owner/name` — exactly one slash, both sides non-empty.
+  const slashIdx = skillName.indexOf('/')
+  if (slashIdx !== -1) {
+    const owner = skillName.slice(0, slashIdx)
+    const name = skillName.slice(slashIdx + 1)
+    if (!owner || !name || name.includes('/')) {
+      console.warn(`[task-runner] attachedSkills: invalid installed-skill id "${skillName}"`)
+      return null
+    }
+    try {
+      const skill = getSkill(skillName)
+      if (!skill) {
+        console.warn(`[task-runner] attachedSkills: installed skill "${skillName}" not found in skills.json`)
+        return null
+      }
+      if (!skill.path) {
+        console.warn(`[task-runner] attachedSkills: installed skill "${skillName}" has no path`)
+        return null
+      }
+      const skillPath = path.join(skill.path, 'SKILL.md')
+      return fs.readFileSync(skillPath, 'utf-8')
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err)
+      console.warn(`[task-runner] attachedSkills: could not read installed skill "${skillName}": ${reason}`)
+      return null
+    }
+  }
+
+  // Agent skill — plain directory name under the agent skills dir.
+  if (skillName === '.' || skillName === '..') {
+    console.warn(`[task-runner] attachedSkills: ignoring invalid skill name "${skillName}"`)
+    return null
+  }
   const skillPath = path.join(skillsDir, skillName, 'SKILL.md')
   try {
     return fs.readFileSync(skillPath, 'utf-8')
