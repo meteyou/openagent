@@ -58,6 +58,12 @@ export interface ChatEvent {
   isTaskInjection?: boolean
   /** Uploaded file attached to the current assistant turn (for type='attachment') */
   attachment?: UploadDescriptor
+  /**
+   * Excerpt of the message the user replied to (e.g. in Telegram), truncated to 500 chars.
+   * Forwarded to web clients so they can render a quote bubble above the user message.
+   * Only set for `type: 'user_message'`.
+   */
+  replyContext?: string
 }
 
 /**

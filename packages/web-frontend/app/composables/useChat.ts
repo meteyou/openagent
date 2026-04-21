@@ -49,6 +49,12 @@ export interface ChatMessage {
    * Rendered as a separate collapsible card (sparkles icon).
    */
   isThinking?: boolean
+  /**
+   * Excerpt of the message the user replied to (e.g. Telegram reply-to), truncated to 500 chars.
+   * When present, the UI renders a WhatsApp/Telegram-style quote bubble above the
+   * message body with `[Replying to: "…"]`. Only set for `role: 'user'`.
+   */
+  replyContext?: string
 }
 
 interface WsMessage {
@@ -69,6 +75,8 @@ interface WsMessage {
   source?: string
   /** Sender display name */
   senderName?: string
+  /** Excerpt of the message the user replied to (for type='external_user_message') */
+  replyContext?: string
   /** Reminder message */
   reminderMessage?: string
   /** Reminder name */
@@ -305,6 +313,7 @@ export function useChat() {
             timestamp: new Date().toISOString(),
             source: (msg.source as 'web' | 'telegram') ?? undefined,
             senderName: msg.senderName,
+            replyContext: msg.replyContext,
           }]
         }
         break

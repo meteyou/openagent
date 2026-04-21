@@ -45,6 +45,12 @@ export interface TelegramChatEvent {
   senderName?: string
   /** Uploaded file attached to the current assistant turn (for type='attachment') */
   attachment?: UploadDescriptor
+  /**
+   * Excerpt of the message the user replied to in Telegram (truncated to 500 chars).
+   * Forwarded to the web UI so it can render a quote bubble above the user
+   * message. Absent for non-reply messages.
+   */
+  replyContext?: string
 }
 
 export interface TelegramBotOptions {
@@ -77,11 +83,24 @@ interface QueuedMessage {
   ctx: Context
   text: string
   attachments?: UploadDescriptor[]
+  /**
+   * Plain-text excerpt of the message the user replied to (`reply_to_message`),
+   * already truncated to REPLY_CONTEXT_MAX_LENGTH. Present only when the incoming
+   * Telegram update carried a `reply_to_message` with extractable text/caption.
+   * Used to:
+   *   1. wrap the agent-facing prompt with `<reply-context>…</reply-context>`,
+   *   2. persist alongside the user's message in `chat_messages.metadata` so the
+   *      web UI can render a quote bubble on reload,
+   *   3. ship to live web clients via the `user_message` chat event.
+   */
+  replyContext?: string
 }
 
 interface PendingBatch {
   ctx: Context
   text: string
+  /** Reply context of the first message in the batch that carried one. */
+  replyContext?: string
   timer: ReturnType<typeof setTimeout>
 }
 
@@ -94,6 +113,42 @@ interface ChatState {
 
 /** Telegram's maximum message length */
 const MAX_MESSAGE_LENGTH = 4096
+
+/**
+ * Maximum number of characters kept from a replied-to message. Longer texts are
+ * truncated with a trailing ellipsis (U+2026) before being stored / forwarded.
+ */
+const REPLY_CONTEXT_MAX_LENGTH = 500
+
+/**
+ * Extract the plain-text excerpt from a Telegram `reply_to_message`, if any.
+ * Returns the truncated text (<=500 chars, trailing `…` when truncated) or
+ * `undefined` for non-text replies (stickers, voice without caption, …).
+ */
+export function extractReplyContext(replyTo: unknown): string | undefined {
+  if (!replyTo || typeof replyTo !== 'object') return undefined
+  const r = replyTo as { text?: unknown; caption?: unknown }
+  const raw = (typeof r.text === 'string' && r.text)
+    || (typeof r.caption === 'string' && r.caption)
+    || ''
+  if (!raw) return undefined
+  return raw.length > REPLY_CONTEXT_MAX_LENGTH
+    ? raw.slice(0, REPLY_CONTEXT_MAX_LENGTH) + '\u2026'
+    : raw
+}
+
+/**
+ * Build the agent-facing prompt string for a Telegram turn. When `replyContext`
+ * is present the original user text is prefixed with a `<reply-context>…</reply-context>`
+ * wrapper on its own line so the model can see what the user replied to without
+ * confusing it with the user's own words. The DB-persisted `content` field
+ * stores the user's original text unchanged — the wrapper lives only in the
+ * agent-facing string.
+ */
+export function buildAgentMessage(text: string, replyContext?: string): string {
+  if (!replyContext) return text
+  return `<reply-context>${replyContext}</reply-context>\n${text}`
+}
 const STOP_COMMANDS = new Set(['/stop', '/kill'])
 
 /**
@@ -570,7 +625,8 @@ export class TelegramBot {
 
     if (!await this.checkAuthorized(ctx)) return
 
-    this.bufferMessage(ctx, text)
+    const replyContext = extractReplyContext(ctx.message?.reply_to_message)
+    this.bufferMessage(ctx, text, replyContext)
   }
 
   private async downloadTelegramFile(fileId: string): Promise<{ buffer: Buffer; mimeType?: string }> {
@@ -680,7 +736,7 @@ export class TelegramBot {
     }
   }
 
-  private bufferMessage(ctx: Context, text: string): void {
+  private bufferMessage(ctx: Context, text: string, replyContext?: string): void {
     const chatKey = getChatKey(ctx)
     const state = this.getOrCreateChatState(chatKey)
 
@@ -689,12 +745,17 @@ export class TelegramBot {
       state.pendingBatch = {
         ctx,
         text: `${state.pendingBatch.text}\n${text}`,
+        // Keep the first reply context we saw in this batch; later messages in
+        // the same batch don't usually come with their own reply and would
+        // otherwise drop the context.
+        replyContext: state.pendingBatch.replyContext ?? replyContext,
         timer: this.createBatchTimer(chatKey),
       }
     } else {
       state.pendingBatch = {
         ctx,
         text,
+        replyContext,
         timer: this.createBatchTimer(chatKey),
       }
     }
@@ -714,7 +775,7 @@ export class TelegramBot {
 
     const batch = state.pendingBatch
     state.pendingBatch = null
-    state.queue.push({ ctx: batch.ctx, text: batch.text })
+    state.queue.push({ ctx: batch.ctx, text: batch.text, replyContext: batch.replyContext })
     this.emitQueueDepthChanged()
 
     await this.processQueue(chatKey)
@@ -813,10 +874,12 @@ export class TelegramBot {
     const state = this.chatStates.get(chatKey)
     if (!state) return
 
-    const { ctx, text, attachments } = queuedMessage
+    const { ctx, text, attachments, replyContext } = queuedMessage
     const userId = this.resolveUserId(ctx)
     const numericUserId = this.resolveNumericUserId(ctx)
-    const messageForAgent = text
+    // Agent sees the reply context wrapped as a pseudo-system hint on its own
+    // line; the DB-stored `content` remains exactly what the user typed.
+    const messageForAgent = buildAgentMessage(text, replyContext)
     const senderName = this.getSenderName(ctx)
 
     // Resolve username for DM chats to enable user profile injection
@@ -828,11 +891,14 @@ export class TelegramBot {
     const sessionId = smSession.id
 
     // Save user message to chat_messages (if linked to a web user)
-    // Skip if this came from handleIncomingAttachment (already saved)
+    // Skip if this came from handleIncomingAttachment (already saved).
+    // When a reply context is present we stash it in the metadata JSON blob so
+    // the web UI can render a WhatsApp/Telegram-style quote bubble on reload.
     if (this.db && numericUserId && !attachments?.length) {
+      const metadata = replyContext ? JSON.stringify({ replyContext }) : null
       this.db.prepare(
-        'INSERT INTO chat_messages (session_id, user_id, role, content) VALUES (?, ?, ?, ?)'
-      ).run(sessionId, numericUserId, 'user', text)
+        'INSERT INTO chat_messages (session_id, user_id, role, content, metadata) VALUES (?, ?, ?, ?, ?)'
+      ).run(sessionId, numericUserId, 'user', text, metadata)
     }
 
     // Broadcast user message event (skip if already broadcast by attachment handler)
@@ -843,6 +909,7 @@ export class TelegramBot {
         sessionId,
         text,
         senderName,
+        replyContext,
       })
     }
 

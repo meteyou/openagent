@@ -286,6 +286,15 @@
               <p v-else-if="msg.telegramDelivered" class="mb-1 text-xs font-medium text-[#2AABEE]">
                 via Telegram
               </p>
+              <!-- Reply-to quote bubble (WhatsApp/Telegram style). Shown above the
+                   user message body when the incoming Telegram message replied to
+                   another message. -->
+              <div
+                v-if="msg.role === 'user' && msg.replyContext"
+                class="mb-1.5 rounded-md border-l-2 border-primary/60 bg-background/60 px-2 py-1 text-xs text-muted-foreground"
+              >
+                <span class="whitespace-pre-wrap break-words">[Replying to: "{{ msg.replyContext }}"]</span>
+              </div>
               <div v-if="msg.role === 'assistant'" class="prose-chat break-words" v-html="renderMarkdown(msg.content ?? '')" />
               <p v-else class="whitespace-pre-wrap break-words">{{ msg.content }}</p>
               <ChatAttachments v-if="msg.attachments?.length" :attachments="msg.attachments" />
@@ -681,6 +690,11 @@ async function loadHistory() {
         }
         if (meta.type === 'task_injection_response') {
           base.isTaskInjection = true
+        }
+        // Reply-to context (Telegram reply-to-message) lives in metadata.replyContext
+        // so the quote bubble survives a page reload.
+        if (m.role === 'user' && typeof meta.replyContext === 'string' && meta.replyContext) {
+          base.replyContext = meta.replyContext
         }
         return base
       })

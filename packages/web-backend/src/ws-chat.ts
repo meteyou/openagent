@@ -37,6 +37,11 @@ interface ChatResponse {
   source?: string
   /** Sender display name (for external_user_message) */
   senderName?: string
+  /**
+   * Excerpt of the message the user replied to (Telegram reply-to), truncated to 500 chars.
+   * Rendered as a quote bubble above the user message. Only set for `external_user_message`.
+   */
+  replyContext?: string
   /** Task ID (for task events) */
   taskId?: string
   /** Task name (for task events) */
@@ -503,6 +508,7 @@ export function setupWebSocketChat(
             text: event.text,
             source: event.source,
             senderName: event.senderName,
+            replyContext: event.replyContext,
           })
         } else if (event.type === 'session_end') {
           // Session ended (timeout or explicit /new). Clear the cached ID and

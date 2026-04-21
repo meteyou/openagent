@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unsafe-function-type, @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import type { AgentCore, ResponseChunk } from '@openagent/core'
+import type { AgentCore, ResponseChunk, Database } from '@openagent/core'
 
 // Mock grammy before importing the module under test
 vi.mock('grammy', () => {
@@ -72,8 +72,8 @@ vi.mock('@openagent/core', () => ({
   }),
 }))
 
-import { TelegramBot, createTelegramBot } from './bot.js'
-import type { TelegramConfig } from './bot.js'
+import { TelegramBot, createTelegramBot, extractReplyContext, buildAgentMessage } from './bot.js'
+import type { TelegramConfig, TelegramChatEvent } from './bot.js'
 import { loadConfig } from '@openagent/core'
 
 function createMockAgentCore(): AgentCore {
@@ -670,6 +670,254 @@ describe('TelegramBot', () => {
         'telegram-group',
         undefined
       )
+    })
+  })
+
+  describe('reply-to message context', () => {
+    it('extractReplyContext returns the replied-to text', () => {
+      expect(extractReplyContext({ text: 'hello there' })).toBe('hello there')
+    })
+
+    it('extractReplyContext falls back to caption for photo/document replies', () => {
+      expect(extractReplyContext({ caption: 'a caption' })).toBe('a caption')
+    })
+
+    it('extractReplyContext prefers text over caption when both exist', () => {
+      expect(extractReplyContext({ text: 'the text', caption: 'ignored' })).toBe('the text')
+    })
+
+    it('extractReplyContext returns undefined for non-text replies (sticker/voice)', () => {
+      expect(extractReplyContext({ sticker: { file_id: 'x' } })).toBeUndefined()
+      expect(extractReplyContext(undefined)).toBeUndefined()
+      expect(extractReplyContext(null)).toBeUndefined()
+    })
+
+    it('extractReplyContext truncates long texts at 500 chars with a single ellipsis', () => {
+      const long = 'x'.repeat(600)
+      const result = extractReplyContext({ text: long })!
+      // 500 chars + U+2026
+      expect(result).toHaveLength(501)
+      expect(result.endsWith('\u2026')).toBe(true)
+      expect(result.slice(0, 500)).toBe('x'.repeat(500))
+    })
+
+    it('buildAgentMessage wraps the reply context and leaves the body below', () => {
+      expect(buildAgentMessage('do it again', 'Previous answer'))
+        .toBe('<reply-context>Previous answer</reply-context>\ndo it again')
+    })
+
+    it('buildAgentMessage returns the body unchanged when no reply context is present', () => {
+      expect(buildAgentMessage('just a message', undefined)).toBe('just a message')
+    })
+
+    it('prepends <reply-context> wrapper to the agent-facing message when the user replied to a bot message', async () => {
+      vi.mocked(agentCore.sendMessage).mockReturnValue(doneOnlyStream())
+
+      const bot = new TelegramBot({ agentCore, config: defaultConfig })
+      const underlying = bot.getBot() as unknown as MockBotInternals
+      const handler = underlying._handlers.get('message:text')!
+
+      const ctx = createMockContext({
+        message: {
+          text: 'can you explain?',
+          message_id: 10,
+          reply_to_message: { message_id: 9, text: 'The capital of France is Paris.', from: { id: 123456, is_bot: true } },
+        },
+      })
+      await handler(ctx)
+      await vi.advanceTimersByTimeAsync(2500)
+
+      expect(agentCore.sendMessage).toHaveBeenCalledWith(
+        'telegram-12345',
+        '<reply-context>The capital of France is Paris.</reply-context>\ncan you explain?',
+        'telegram',
+        undefined,
+      )
+    })
+
+    it('prepends wrapper when replying to another user message (non-bot)', async () => {
+      vi.mocked(agentCore.sendMessage).mockReturnValue(doneOnlyStream())
+
+      const bot = new TelegramBot({ agentCore, config: defaultConfig })
+      const underlying = bot.getBot() as unknown as MockBotInternals
+      const handler = underlying._handlers.get('message:text')!
+
+      const ctx = createMockContext({
+        message: {
+          text: 'agree',
+          message_id: 11,
+          reply_to_message: { message_id: 2, text: "let's ship it", from: { id: 77, is_bot: false } },
+        },
+      })
+      await handler(ctx)
+      await vi.advanceTimersByTimeAsync(2500)
+
+      expect(agentCore.sendMessage).toHaveBeenCalledWith(
+        'telegram-12345',
+        "<reply-context>let's ship it</reply-context>\nagree",
+        'telegram',
+        undefined,
+      )
+    })
+
+    it('does not inject any wrapper when there is no reply_to_message', async () => {
+      vi.mocked(agentCore.sendMessage).mockReturnValue(doneOnlyStream())
+
+      const bot = new TelegramBot({ agentCore, config: defaultConfig })
+      const underlying = bot.getBot() as unknown as MockBotInternals
+      const handler = underlying._handlers.get('message:text')!
+
+      await handler(createMockContext({ message: { text: 'hi', message_id: 1 } }))
+      await vi.advanceTimersByTimeAsync(2500)
+
+      expect(agentCore.sendMessage).toHaveBeenCalledWith(
+        'telegram-12345',
+        'hi',
+        'telegram',
+        undefined,
+      )
+    })
+
+    it('truncates long reply-to texts at 500 chars with a single ellipsis', async () => {
+      vi.mocked(agentCore.sendMessage).mockReturnValue(doneOnlyStream())
+
+      const bot = new TelegramBot({ agentCore, config: defaultConfig })
+      const underlying = bot.getBot() as unknown as MockBotInternals
+      const handler = underlying._handlers.get('message:text')!
+
+      const long = 'x'.repeat(600)
+      const ctx = createMockContext({
+        message: {
+          text: 'hm',
+          message_id: 12,
+          reply_to_message: { message_id: 11, text: long },
+        },
+      })
+      await handler(ctx)
+      await vi.advanceTimersByTimeAsync(2500)
+
+      const [, forwarded] = vi.mocked(agentCore.sendMessage).mock.calls[0]
+      const expected = `<reply-context>${'x'.repeat(500)}\u2026</reply-context>\nhm`
+      expect(forwarded).toBe(expected)
+    })
+
+    it('uses caption when replying to a photo with a caption', async () => {
+      vi.mocked(agentCore.sendMessage).mockReturnValue(doneOnlyStream())
+
+      const bot = new TelegramBot({ agentCore, config: defaultConfig })
+      const underlying = bot.getBot() as unknown as MockBotInternals
+      const handler = underlying._handlers.get('message:text')!
+
+      const ctx = createMockContext({
+        message: {
+          text: 'nice pic',
+          message_id: 13,
+          reply_to_message: { message_id: 12, caption: 'sunset over the mountains', photo: [{ file_id: 'p1' }] },
+        },
+      })
+      await handler(ctx)
+      await vi.advanceTimersByTimeAsync(2500)
+
+      expect(agentCore.sendMessage).toHaveBeenCalledWith(
+        'telegram-12345',
+        '<reply-context>sunset over the mountains</reply-context>\nnice pic',
+        'telegram',
+        undefined,
+      )
+    })
+
+    it('silently omits the wrapper when replying to a non-text message (sticker)', async () => {
+      vi.mocked(agentCore.sendMessage).mockReturnValue(doneOnlyStream())
+
+      const bot = new TelegramBot({ agentCore, config: defaultConfig })
+      const underlying = bot.getBot() as unknown as MockBotInternals
+      const handler = underlying._handlers.get('message:text')!
+
+      const ctx = createMockContext({
+        message: {
+          text: 'lol',
+          message_id: 14,
+          reply_to_message: { message_id: 13, sticker: { file_id: 's1' } },
+        },
+      })
+      await handler(ctx)
+      await vi.advanceTimersByTimeAsync(2500)
+
+      expect(agentCore.sendMessage).toHaveBeenCalledWith(
+        'telegram-12345',
+        'lol',
+        'telegram',
+        undefined,
+      )
+    })
+
+    it('stores the original user text in chat_messages (wrapper only in agent-facing string)', async () => {
+      vi.mocked(agentCore.sendMessage).mockReturnValue(doneOnlyStream())
+
+      // Capture DB writes
+      const inserts: Array<{ sql: string; args: unknown[] }> = []
+      const mockDb = {
+        prepare: (sql: string) => ({
+          run: (...args: unknown[]) => { inserts.push({ sql, args }); return { changes: 1, lastInsertRowid: 1 } },
+          // Any SELECT returns an approved linked user row (covers
+          // ensureTelegramUser + resolveNumericUserId + resolveUsername).
+          get: () => ({ id: 1, telegram_id: '12345', telegram_username: 'johndoe', telegram_display_name: 'John Doe', status: 'approved', user_id: 42, username: 'john', created_at: 'now', updated_at: 'now' }),
+          all: () => [],
+        }),
+      } as unknown as Database
+
+      const bot = new TelegramBot({ agentCore, db: mockDb, config: defaultConfig })
+      const underlying = bot.getBot() as unknown as MockBotInternals
+      const handler = underlying._handlers.get('message:text')!
+
+      const ctx = createMockContext({
+        message: {
+          text: 'follow-up question',
+          message_id: 15,
+          reply_to_message: { message_id: 14, text: 'the earlier answer' },
+        },
+      })
+      await handler(ctx)
+      await vi.advanceTimersByTimeAsync(2500)
+
+      const chatInsert = inserts.find(i => i.sql.startsWith('INSERT INTO chat_messages'))
+      expect(chatInsert).toBeDefined()
+      // content column must be the user's original text, NOT the wrapped string
+      const content = chatInsert!.args[3]
+      expect(content).toBe('follow-up question')
+      expect(String(content)).not.toContain('<reply-context>')
+      // metadata JSON carries the replyContext excerpt for the web UI
+      const metadata = chatInsert!.args[4] as string | null
+      expect(metadata).not.toBeNull()
+      expect(JSON.parse(metadata!)).toEqual({ replyContext: 'the earlier answer' })
+    })
+
+    it('forwards replyContext on the onChatEvent user_message for cross-channel sync', async () => {
+      vi.mocked(agentCore.sendMessage).mockReturnValue(doneOnlyStream())
+
+      const events: TelegramChatEvent[] = []
+      const bot = new TelegramBot({
+        agentCore,
+        config: defaultConfig,
+        onChatEvent: (e) => { events.push(e) },
+      })
+      const underlying = bot.getBot() as unknown as MockBotInternals
+      const handler = underlying._handlers.get('message:text')!
+
+      const ctx = createMockContext({
+        message: {
+          text: 'do X',
+          message_id: 16,
+          reply_to_message: { message_id: 15, text: 'previous bot reply' },
+        },
+      })
+      await handler(ctx)
+      await vi.advanceTimersByTimeAsync(2500)
+
+      const userMessageEvent = events.find(e => e.type === 'user_message')
+      expect(userMessageEvent).toBeDefined()
+      expect(userMessageEvent!.text).toBe('do X')
+      expect(userMessageEvent!.replyContext).toBe('previous bot reply')
     })
   })
 

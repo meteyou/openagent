@@ -776,6 +776,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
       toolIsError: event.toolIsError,
       senderName: event.senderName,
       attachment: event.attachment,
+      replyContext: event.replyContext,
     })
   }
 
