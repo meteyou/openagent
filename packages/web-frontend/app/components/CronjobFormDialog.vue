@@ -110,7 +110,10 @@
               <p class="text-xs text-muted-foreground">
                 {{ $t('cronjobs.form.toolOverridesHelp') }}
               </p>
-              <div class="space-y-2">
+              <div v-if="metaLoading" class="text-xs text-muted-foreground italic">
+                {{ $t('common.loading') }}
+              </div>
+              <div v-else-if="availableTools.length > 0" class="space-y-2">
                 <div
                   v-for="tool in availableTools"
                   :key="tool"
@@ -122,7 +125,26 @@
                     @update:checked="(val: boolean) => toggleTool(tool, val)"
                   />
                 </div>
+                <!--
+                  Stale disabled entries: tools that were disabled when this cronjob was
+                  saved but no longer exist. Keep them visible so the user can clean them
+                  up instead of silently carrying dead overrides forward.
+                -->
+                <div
+                  v-for="tool in staleDisabledTools"
+                  :key="`stale-${tool}`"
+                  class="flex items-center justify-between py-1 opacity-60"
+                >
+                  <span class="text-sm font-mono line-through">{{ tool }}</span>
+                  <Switch
+                    :checked="false"
+                    @update:checked="(val: boolean) => toggleTool(tool, val)"
+                  />
+                </div>
               </div>
+              <p v-else class="text-xs text-muted-foreground italic">
+                {{ $t('cronjobs.form.noTools') }}
+              </p>
             </div>
 
             <Separator />
@@ -133,15 +155,32 @@
               <p class="text-xs text-muted-foreground">
                 {{ $t('cronjobs.form.skillOverridesHelp') }}
               </p>
-              <div v-if="availableSkills.length > 0" class="space-y-2">
+              <div v-if="metaLoading" class="text-xs text-muted-foreground italic">
+                {{ $t('common.loading') }}
+              </div>
+              <div v-else-if="availableSkillEntries.length > 0" class="space-y-2">
                 <div
-                  v-for="skill in availableSkills"
-                  :key="skill"
+                  v-for="skill in availableSkillEntries"
+                  :key="skill.id"
                   class="flex items-center justify-between py-1"
                 >
-                  <span class="text-sm">{{ skill }}</span>
+                  <span class="text-sm">
+                    <span v-if="skill.emoji" class="mr-1">{{ skill.emoji }}</span>{{ skill.name }}
+                    <span class="ml-1 text-xs font-mono text-muted-foreground">({{ skill.id }})</span>
+                  </span>
                   <Switch
-                    :checked="!disabledSkills.includes(skill)"
+                    :checked="!disabledSkills.includes(skill.id)"
+                    @update:checked="(val: boolean) => toggleSkill(skill.id, val)"
+                  />
+                </div>
+                <div
+                  v-for="skill in staleDisabledSkills"
+                  :key="`stale-skill-${skill}`"
+                  class="flex items-center justify-between py-1 opacity-60"
+                >
+                  <span class="text-sm line-through">{{ skill }}</span>
+                  <Switch
+                    :checked="false"
                     @update:checked="(val: boolean) => toggleSkill(skill, val)"
                   />
                 </div>
@@ -153,22 +192,34 @@
 
             <Separator />
 
-            <!-- Attached Skills -->
+            <!-- Attached Skills — both installed and agent skills, their SKILL.md is injected into the task prompt -->
             <div class="space-y-3">
               <Label>{{ $t('cronjobs.form.attachedSkills') }}</Label>
               <p class="text-xs text-muted-foreground">
                 {{ $t('cronjobs.form.attachedSkillsHelp') }}
               </p>
-              <div v-if="availableAgentSkillNames.length > 0" class="space-y-2">
+              <div v-if="metaLoading" class="text-xs text-muted-foreground italic">
+                {{ $t('common.loading') }}
+              </div>
+              <div v-else-if="attachableSkillEntries.length > 0" class="space-y-2">
                 <div
-                  v-for="skill in availableAgentSkillNames"
-                  :key="`attached-${skill}`"
+                  v-for="skill in attachableSkillEntries"
+                  :key="`attached-${skill.id}`"
                   class="flex items-center justify-between py-1"
                 >
-                  <span class="text-sm font-mono">{{ skill }}</span>
+                  <span class="text-sm">
+                    <span v-if="skill.emoji" class="mr-1">{{ skill.emoji }}</span>
+                    <span class="font-mono">{{ skill.id }}</span>
+                    <span
+                      class="ml-1 text-xs uppercase tracking-wide"
+                      :class="skill.kind === 'agent' ? 'text-primary' : 'text-muted-foreground'"
+                    >
+                      {{ skill.kind === 'agent' ? $t('cronjobs.form.skillKindAgent') : $t('cronjobs.form.skillKindInstalled') }}
+                    </span>
+                  </span>
                   <Switch
-                    :checked="attachedSkills.includes(skill)"
-                    @update:checked="(val: boolean) => toggleAttachedSkill(skill, val)"
+                    :checked="attachedSkills.includes(skill.id)"
+                    @update:checked="(val: boolean) => toggleAttachedSkill(skill.id, val)"
                   />
                 </div>
                 <div v-if="attachedSkills.length > 0" class="flex flex-wrap gap-1.5 pt-1">
@@ -183,7 +234,7 @@
                 </div>
               </div>
               <p v-else class="text-xs text-muted-foreground italic">
-                {{ $t('cronjobs.form.noAgentSkills') }}
+                {{ $t('cronjobs.form.noAttachableSkills') }}
               </p>
             </div>
 
@@ -220,7 +271,7 @@
 </template>
 
 <script setup lang="ts">
-import type { Cronjob } from '~/composables/useCronjobs'
+import type { Cronjob, CronjobMeta } from '~/composables/useCronjobs'
 
 const props = defineProps<{
   open: boolean
@@ -245,7 +296,7 @@ const emit = defineEmits<{
 }>()
 
 const { providers, fetchProviders } = useProviders()
-const { agentSkills, fetchAgentSkills } = useSkills()
+const { fetchCronjobMeta } = useCronjobs()
 
 /**
  * Convert a stored cronjob provider value into the composite `providerId:modelId`
@@ -295,24 +346,36 @@ const providerModelOptions = computed(() => {
 
 const advancedOpen = ref(false)
 
-/** Well-known tools available to task agents */
-const availableTools = [
-  'shell',
-  'read_file',
-  'write_file',
-  'list_files',
-  'web_search',
-  'web_fetch',
-  'memory_read',
-  'memory_write',
-]
+/**
+ * Meta loaded from `/api/cronjobs/meta` on every open of the dialog.
+ * We always fetch fresh so the lists reflect any tool/skill added or
+ * removed since the dialog was last opened.
+ */
+const meta = ref<CronjobMeta>({ tools: [], installedSkills: [], agentSkills: [] })
+const metaLoading = ref(false)
 
-/** Available skills — loaded from backend or statically known */
-const availableSkills = ref<string[]>([
-  'brave-search',
-  'web-browser',
-  'github',
-])
+const availableTools = computed(() => meta.value.tools)
+
+/** Installed skills (enabled only) — the candidates for per-cronjob overrides. */
+const availableSkillEntries = computed(() =>
+  meta.value.installedSkills
+    .filter(s => s.enabled)
+    .map(s => ({ id: s.id, name: s.name, emoji: s.emoji })),
+)
+
+/**
+ * Union of attachable skills for the "Attached Skills" section:
+ * both installed skills (id `owner/name`) and agent skills (bare name).
+ * Backend resolves each id to its SKILL.md via `loadAttachedSkillContent`.
+ */
+const attachableSkillEntries = computed(() => {
+  const installed = meta.value.installedSkills
+    .filter(s => s.enabled)
+    .map(s => ({ id: s.id, emoji: s.emoji, kind: 'installed' as const }))
+  const agent = meta.value.agentSkills
+    .map(s => ({ id: s.name, emoji: undefined as string | undefined, kind: 'agent' as const }))
+  return [...agent, ...installed].sort((a, b) => a.id.localeCompare(b.id))
+})
 
 const form = reactive({
   name: '',
@@ -327,10 +390,18 @@ const disabledTools = ref<string[]>([])
 const disabledSkills = ref<string[]>([])
 const attachedSkills = ref<string[]>([])
 
-/** List of agent skill names available for the attached-skills picker. */
-const availableAgentSkillNames = computed<string[]>(() =>
-  (agentSkills.value ?? []).map(s => s.name).sort((a, b) => a.localeCompare(b)),
+/**
+ * Tools/skills that were disabled in this cronjob but no longer exist in the
+ * current meta — surfaced in the UI so users can see and clean them up
+ * instead of carrying silent dead overrides.
+ */
+const staleDisabledTools = computed(() =>
+  disabledTools.value.filter(t => !meta.value.tools.includes(t)),
 )
+const staleDisabledSkills = computed(() => {
+  const ids = new Set(meta.value.installedSkills.map(s => s.id))
+  return disabledSkills.value.filter(s => !ids.has(s))
+})
 
 const hasOverrides = computed(() => {
   return disabledTools.value.length > 0
@@ -349,11 +420,24 @@ function toggleAttachedSkill(skill: string, enabled: boolean) {
   }
 }
 
+async function loadMeta(): Promise<void> {
+  metaLoading.value = true
+  try {
+    meta.value = await fetchCronjobMeta()
+  } catch {
+    // Fall back to empty lists on error — the form still works, just shows
+    // no toggles. Errors are not fatal for save/cancel flows.
+    meta.value = { tools: [], installedSkills: [], agentSkills: [] }
+  } finally {
+    metaLoading.value = false
+  }
+}
+
 watch(() => props.open, async (isOpen) => {
   if (isOpen) {
     // Providers must be loaded before normalizing the stored provider value,
     // otherwise legacy "provider name" values cannot be mapped to `providerId:modelId`.
-    await Promise.all([fetchProviders(), fetchAgentSkills()])
+    await Promise.all([fetchProviders(), loadMeta()])
     if (props.mode === 'edit' && props.cronjob) {
       form.name = props.cronjob.name
       form.prompt = props.cronjob.prompt
