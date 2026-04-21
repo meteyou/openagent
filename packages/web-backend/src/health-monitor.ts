@@ -36,6 +36,7 @@ const DEFAULT_NOTIFICATION_TOGGLES: HealthMonitorNotificationToggles = {
 type NotificationTransition = keyof HealthMonitorNotificationToggles
 
 interface HealthMonitorSettings {
+  enabled: boolean
   intervalMinutes: number
   fallbackTrigger: 'down' | 'degraded'
   failuresBeforeFallback: number
@@ -46,6 +47,7 @@ interface HealthMonitorSettings {
 
 export interface HealthMonitorSnapshot {
   agentStatus: 'running' | 'stopped'
+  enabled: boolean
   intervalMinutes: number
   operatingMode: OperatingMode
   activeProvider: {
@@ -101,8 +103,9 @@ export class HealthMonitorService {
 
   start(): void {
     if (this.running) return
-    this.running = true
     this.settings = this.loadHealthMonitorSettings()
+    if (!this.settings.enabled) return
+    this.running = true
     this.scheduleNext(0)
   }
 
@@ -135,9 +138,16 @@ export class HealthMonitorService {
       this.timer = null
     }
 
-    if (this.running) {
-      this.scheduleNext(0)
+    if (!this.settings.enabled) {
+      this.running = false
+      return
     }
+
+    if (!this.running) {
+      this.running = true
+    }
+
+    this.scheduleNext(0)
   }
 
   async runNow(): Promise<ProviderHealthCheckResult> {
@@ -187,6 +197,7 @@ export class HealthMonitorService {
 
     return {
       agentStatus: this.running ? 'running' : 'stopped',
+      enabled: this.settings.enabled,
       intervalMinutes: this.settings.intervalMinutes,
       operatingMode: mode,
       activeProvider: provider
@@ -378,6 +389,7 @@ export class HealthMonitorService {
       if (healthMonitor) {
         const intervalMinutes = healthMonitor.intervalMinutes ?? 5
         return {
+          enabled: healthMonitor.enabled ?? true,
           intervalMinutes: Number.isFinite(intervalMinutes) && intervalMinutes >= 1 ? intervalMinutes : 5,
           fallbackTrigger: healthMonitor.fallbackTrigger === 'degraded' ? 'degraded' : 'down',
           failuresBeforeFallback: this.safePositiveInt(healthMonitor.failuresBeforeFallback, 1),
@@ -390,6 +402,7 @@ export class HealthMonitorService {
       // Fallback: read top-level healthMonitorIntervalMinutes
       const topLevelInterval = settings.healthMonitorIntervalMinutes ?? 5
       return {
+        enabled: true,
         intervalMinutes: Number.isFinite(topLevelInterval) && topLevelInterval >= 1 ? topLevelInterval : 5,
         fallbackTrigger: 'down',
         failuresBeforeFallback: 1,
@@ -399,6 +412,7 @@ export class HealthMonitorService {
       }
     } catch {
       return {
+        enabled: true,
         intervalMinutes: 5,
         fallbackTrigger: 'down',
         failuresBeforeFallback: 1,
