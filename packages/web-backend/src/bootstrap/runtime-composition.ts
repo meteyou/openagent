@@ -105,6 +105,12 @@ export interface RuntimeComposition {
   chatEventBus: ChatEventBus
   getAgentCore: () => AgentCore | null
   getTaskRuntime: () => TaskRuntimeBoundary
+  /**
+   * Names of the tools the task runner gives to background task agents.
+   * Exposed so the cronjob UI can render the current tool list dynamically
+   * instead of hardcoding a stale copy.
+   */
+  getBackgroundTaskToolNames: () => string[]
   getTelegramBot: () => TelegramBot | null
   onTelegramSettingsChanged: () => void
   onActiveProviderChanged: () => void
@@ -1045,6 +1051,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
     chatEventBus,
     getAgentCore: () => agentCore,
     getTaskRuntime: () => taskRuntime,
+    getBackgroundTaskToolNames: () => backgroundTaskTools.map(t => t.name),
     getTelegramBot: () => telegramBot,
     onTelegramSettingsChanged: () => {
       restartTelegramBot().catch((err) => {
