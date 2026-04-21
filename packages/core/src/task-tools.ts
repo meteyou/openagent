@@ -2,6 +2,7 @@ import type { AgentTool } from '@mariozechner/pi-agent-core'
 import { Type } from '@mariozechner/pi-ai'
 import type { TaskStatus, TaskTriggerType } from './task-store.js'
 import type { ProviderConfig } from './provider-config.js'
+import { resolveProviderModelInput } from './provider-config.js'
 import type { TaskRuntimeTaskBoundary } from './task-runtime.js'
 
 export interface TaskToolsOptions {
@@ -121,7 +122,12 @@ export function createTaskTool(options: TaskToolsOptions): AgentTool {
       }),
       provider: Type.Optional(
         Type.String({
-          description: 'Provider to use for this task. Only specify if the user explicitly requests a specific provider. Otherwise the default task provider is used.',
+          description: 'Provider name or id to use for this task (e.g. "Kimi.ai", "OpenAI"). Only specify if the user explicitly requests a specific provider. Can be combined with `model` to pin both. Otherwise the default task provider is used.',
+        })
+      ),
+      model: Type.Optional(
+        Type.String({
+          description: 'Specific model id to use for this task (e.g. "kimi-k2.6", "gpt-5", "claude-sonnet-4-5"). Only specify if the user explicitly requests a specific model. If `provider` is omitted, the provider is auto-detected from the configured providers (requires a unique match).',
         })
       ),
       max_duration_minutes: Type.Optional(
@@ -131,25 +137,41 @@ export function createTaskTool(options: TaskToolsOptions): AgentTool {
       ),
     }),
     execute: async (_toolCallId, params) => {
-      const { prompt, name, provider: providerName, max_duration_minutes } = params as {
+      const { prompt, name, provider: providerName, model: modelName, max_duration_minutes } = params as {
         prompt: string
         name: string
         provider?: string
+        model?: string
         max_duration_minutes?: number
       }
 
       try {
-        // Resolve provider
+        // Resolve (provider, model) into a concrete provider config.
+        // - Both empty       → use default task provider
+        // - Any combination  → run through the shared resolver so a bare
+        //                       model name ("kimi-k2.6") auto-selects its
+        //                       provider and an enabled-model guard runs.
         let provider: ProviderConfig
-        if (providerName) {
-          const resolved = options.resolveProvider(providerName)
-          if (!resolved) {
+        if (providerName || modelName) {
+          const resolved = resolveProviderModelInput({ provider: providerName, model: modelName })
+          if (!resolved.ok) {
             return {
-              content: [{ type: 'text' as const, text: `Error: Provider "${providerName}" not found. Using default provider.` }],
+              content: [{ type: 'text' as const, text: `Error: ${resolved.error}` }],
               details: { error: true },
             }
           }
-          provider = resolved
+          const base = options.resolveProvider(resolved.providerId)
+          if (!base) {
+            return {
+              content: [{ type: 'text' as const, text: `Error: Provider "${resolved.providerName}" could not be loaded.` }],
+              details: { error: true },
+            }
+          }
+          // Pin the requested model by cloning the provider config (same
+          // pattern as `getTaskDefaultProvider` and the cron scheduler).
+          provider = resolved.modelId === base.defaultModel
+            ? base
+            : { ...base, defaultModel: resolved.modelId }
         } else {
           provider = options.getDefaultProvider()
         }
