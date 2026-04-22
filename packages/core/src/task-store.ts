@@ -14,6 +14,13 @@ export interface Task {
   triggerSourceId: string | null
   provider: string | null
   model: string | null
+  /**
+   * Whether the (provider, model) pair used to run this task came from the
+   * configured task default (Settings → Tasks → Default Provider) rather than
+   * an explicit override by the user or agent. `null` means the flag was not
+   * recorded (legacy rows created before this column existed).
+   */
+  isDefaultModel: boolean | null
   maxDurationMinutes: number | null
   promptTokens: number
   completionTokens: number
@@ -35,6 +42,12 @@ export interface CreateTaskInput {
   triggerSourceId?: string
   provider?: string
   model?: string
+  /**
+   * Set to `true` when (provider, model) come from the configured task
+   * default, `false` when the caller explicitly pinned a provider/model.
+   * Leave unset for legacy paths that do not track this distinction.
+   */
+  isDefaultModel?: boolean
   maxDurationMinutes?: number
   sessionId?: string
 }
@@ -72,6 +85,7 @@ interface TaskRow {
   trigger_source_id: string | null
   provider: string | null
   model: string | null
+  is_default_model: number | null
   max_duration_minutes: number | null
   prompt_tokens: number
   completion_tokens: number
@@ -96,6 +110,10 @@ function rowToTask(row: TaskRow): Task {
     triggerSourceId: row.trigger_source_id,
     provider: row.provider,
     model: row.model,
+    isDefaultModel:
+      row.is_default_model === null || row.is_default_model === undefined
+        ? null
+        : row.is_default_model === 1,
     maxDurationMinutes: row.max_duration_minutes,
     promptTokens: row.prompt_tokens,
     completionTokens: row.completion_tokens,
@@ -125,6 +143,7 @@ export function initTasksTable(db: Database): void {
       trigger_source_id TEXT,
       provider TEXT,
       model TEXT,
+      is_default_model INTEGER,
       max_duration_minutes INTEGER,
       prompt_tokens INTEGER NOT NULL DEFAULT 0,
       completion_tokens INTEGER NOT NULL DEFAULT 0,
@@ -160,8 +179,8 @@ export class TaskStore {
     const now = new Date().toISOString().replace('T', ' ').slice(0, 19)
 
     this.db.prepare(`
-      INSERT INTO tasks (id, name, prompt, status, trigger_type, trigger_source_id, provider, model, max_duration_minutes, session_id, created_at)
-      VALUES (?, ?, ?, 'running', ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO tasks (id, name, prompt, status, trigger_type, trigger_source_id, provider, model, is_default_model, max_duration_minutes, session_id, created_at)
+      VALUES (?, ?, ?, 'running', ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       input.name,
@@ -170,6 +189,7 @@ export class TaskStore {
       input.triggerSourceId ?? null,
       input.provider ?? null,
       input.model ?? null,
+      input.isDefaultModel === undefined ? null : (input.isDefaultModel ? 1 : 0),
       input.maxDurationMinutes ?? null,
       input.sessionId ?? null,
       now,
