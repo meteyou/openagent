@@ -360,6 +360,9 @@ export class MemoryConsolidationScheduler {
         triggerSourceId: 'memory-consolidation',
         provider: provider.name,
         model: provider.defaultModel,
+        // Consolidation never accepts an explicit provider/model override
+        // from the user or agent — it always uses the configured default.
+        isDefaultModel: true,
         // Pre-allocated session ID so the TaskRunner re-uses this session
         // (it only creates a new session when sessionId is null).
         sessionId,

@@ -1322,6 +1322,9 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
         prompt: `${task.prompt}${progressSummary}\n\nNote: This task was interrupted by a server restart. Continue from where you left off.`,
         triggerType: task.triggerType,
         triggerSourceId: task.triggerSourceId ?? undefined,
+        provider: task.provider ?? undefined,
+        model: task.model ?? undefined,
+        isDefaultModel: task.isDefaultModel ?? undefined,
         maxDurationMinutes: task.maxDurationMinutes ?? undefined,
         sessionId: task.sessionId ?? undefined,
       })

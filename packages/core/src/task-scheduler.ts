@@ -365,6 +365,10 @@ export class TaskScheduler {
 
     // Create task in the task store — sessionId is created by the
     // TaskRunner via SessionManager when the task starts.
+    // A cronjob is considered to run on the "default" provider/model when its
+    // stored `provider` is null — in that case `getDefaultProvider()` above
+    // decided the (provider, model) pair, which matches what the Settings
+    // UI exposes as the Task Default.
     const task = this.taskStore.create({
       name: scheduledTask.name,
       prompt: scheduledTask.prompt,
@@ -372,6 +376,7 @@ export class TaskScheduler {
       triggerSourceId: scheduledTask.id,
       provider: provider.name,
       model: provider.defaultModel,
+      isDefaultModel: !scheduledTask.provider,
     })
 
     // Update last_run_at on the scheduled task

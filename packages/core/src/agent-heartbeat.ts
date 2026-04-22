@@ -184,6 +184,8 @@ export class AgentHeartbeatService {
 
     // Create a task — sessionId is created by the TaskRunner via
     // SessionManager (with type='heartbeat') when the task starts.
+    // Heartbeat runs never accept an explicit model override, so they always
+    // use the configured task default.
     const task: Task = this.taskRuntime.create({
       name: 'Agent Heartbeat',
       prompt: HEARTBEAT_PROMPT,
@@ -191,6 +193,7 @@ export class AgentHeartbeatService {
       triggerSourceId: 'agent-heartbeat',
       provider: provider.name,
       model: provider.defaultModel,
+      isDefaultModel: true,
     })
 
     try {

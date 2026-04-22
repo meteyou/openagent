@@ -151,6 +151,7 @@ export function createTaskTool(options: TaskToolsOptions): AgentTool {
         // - Any combination  → run through the shared resolver so a bare
         //                       model name ("kimi-k2.6") auto-selects its
         //                       provider and an enabled-model guard runs.
+        const isDefaultModel = !providerName && !modelName
         let provider: ProviderConfig
         if (providerName || modelName) {
           const resolved = resolveProviderModelInput({ provider: providerName, model: modelName })
@@ -193,6 +194,7 @@ export function createTaskTool(options: TaskToolsOptions): AgentTool {
           triggerType: 'agent',
           provider: provider.name,
           model: provider.defaultModel,
+          isDefaultModel,
           maxDurationMinutes: maxDuration,
         })
 
