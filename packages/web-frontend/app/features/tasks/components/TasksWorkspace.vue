@@ -151,9 +151,18 @@
                 </Badge>
               </TableCell>
               <TableCell>
-                <Badge variant="outline">
-                  {{ $t(`tasks.trigger.${task.triggerType}`) }}
-                </Badge>
+                <div class="flex flex-col items-start gap-1">
+                  <Badge variant="outline">
+                    {{ $t(`tasks.trigger.${task.triggerType}`) }}
+                  </Badge>
+                  <span
+                    v-if="formatTriggerModel(task)"
+                    class="text-xs text-muted-foreground"
+                    :title="task.isDefaultModel ? $t('tasks.triggerModelDefaultTooltip') : undefined"
+                  >
+                    {{ formatTriggerModel(task) }}
+                  </span>
+                </div>
               </TableCell>
               <TableCell class="text-right tabular-nums text-muted-foreground">
                 {{ formatDuration(task) }}
@@ -234,7 +243,7 @@ import type { Task } from '~/api/tasks'
 import TaskEventsViewer from '~/features/tasks/components/TaskEventsViewer.vue'
 import { useTasksList } from '~/features/tasks/composables/useTasksList'
 
-const { locale } = useI18n()
+const { locale, t } = useI18n()
 const { formatNumber, formatCurrency } = useFormat()
 
 const selectedTaskId = ref<string | null>(null)
@@ -297,6 +306,18 @@ function statusVariant(status: string): 'default' | 'success' | 'destructive' | 
     case 'paused': return 'warning'
     default: return 'muted'
   }
+}
+
+function formatTriggerModel(task: Task): string | null {
+  const provider = task.provider
+  const model = task.model
+  if (!provider && !model) return null
+
+  const parts = [provider, model].filter(Boolean).join(' – ')
+  if (task.isDefaultModel === true) {
+    return t('tasks.triggerModelDefault', { value: parts })
+  }
+  return parts
 }
 
 function formatDuration(task: Task): string {
