@@ -123,7 +123,7 @@ export interface RuntimeCompositionOptions {
 }
 
 function loadRuntimeSettings(): RuntimeSettings {
-  let sessionTimeoutMinutes = 15
+  let sessionTimeoutMinutes = 30
   const taskSettings: TaskSettings = {
     defaultProvider: '',
     maxDurationMinutes: 60,
