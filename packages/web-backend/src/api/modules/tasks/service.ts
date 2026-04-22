@@ -1,5 +1,5 @@
-import { TaskStore, getToolCalls } from '@openagent/core'
-import type { Database, Task, TaskRuntimeTaskBoundary, TaskStatus, TaskTriggerType } from '@openagent/core'
+import { TaskStore, getToolCalls } from '@axiom/core'
+import type { Database, Task, TaskRuntimeTaskBoundary, TaskStatus, TaskTriggerType } from '@axiom/core'
 import type { TaskTimelineEvent, TaskToolCallTimelineEvent } from './types.js'
 
 export interface TasksServiceOptions {
