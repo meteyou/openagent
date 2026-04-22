@@ -258,6 +258,7 @@ export function initDatabase(dbPath?: string): Database {
       trigger_source_id TEXT,
       provider TEXT,
       model TEXT,
+      is_default_model INTEGER,
       max_duration_minutes INTEGER,
       prompt_tokens INTEGER NOT NULL DEFAULT 0,
       completion_tokens INTEGER NOT NULL DEFAULT 0,
@@ -462,6 +463,14 @@ export function initDatabase(dbPath?: string): Database {
       CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks(created_at);
       CREATE INDEX IF NOT EXISTS idx_tasks_session_id ON tasks(session_id);
     `)
+  }
+
+  // Migration: add is_default_model column to tasks table
+  // Tracks whether the (provider, model) pair was the configured task default
+  // (true) or an explicit user/agent override (false). NULL = unknown (legacy).
+  const taskColsForDefaultModel = db.prepare("PRAGMA table_info(tasks)").all() as { name: string }[]
+  if (!taskColsForDefaultModel.find(c => c.name === 'is_default_model')) {
+    db.exec("ALTER TABLE tasks ADD COLUMN is_default_model INTEGER")
   }
 
   // Migration: add last_activity, session_user, and token columns to sessions table
