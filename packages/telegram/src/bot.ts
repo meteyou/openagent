@@ -3,7 +3,7 @@ import path from 'node:path'
 import { Bot, GrammyError, HttpError, InputFile } from 'grammy'
 import type { Context } from 'grammy'
 import type { AgentCore, Database } from '@openagent/core'
-import { loadConfig, saveUpload, serializeUploadsMetadata, parseUploadsMetadata, loadSttSettings, transcribeAudio, extractUploadsFromToolResult } from '@openagent/core'
+import { loadConfig, saveUpload, saveUploadWithExtraction, serializeUploadsMetadata, parseUploadsMetadata, loadSttSettings, transcribeAudio, extractUploadsFromToolResult } from '@openagent/core'
 import type { UploadDescriptor } from '@openagent/core'
 
 /**
@@ -656,7 +656,7 @@ export class TelegramBot {
       let upload
       if (kind === 'document' && ctx.message?.document) {
         const payload = await this.downloadTelegramFile(ctx.message.document.file_id)
-        upload = saveUpload({
+        upload = await saveUploadWithExtraction({
           buffer: payload.buffer,
           originalName: ctx.message.document.file_name ?? 'document',
           mimeType: ctx.message.document.mime_type ?? 'application/octet-stream',
